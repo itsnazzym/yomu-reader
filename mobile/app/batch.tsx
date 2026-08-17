@@ -1,0 +1,651 @@
+import React, { useState, useSyncExternalStore, useMemo } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  Modal,
+  Pressable,
+  ScrollView,
+  ActivityIndicator,
+  Platform,
+  ToastAndroid,
+} from "react-native";
+import { FlashList } from "@shopify/flash-list";
+import { Feather } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTheme } from "@/lib/ThemeContext";
+import { CardPressable } from "@/components/ui/CardPressable";
+import { IconBtn } from "@/components/ui/IconBtn";
+import SmartImage from "@/components/SmartImage";
+import {
+  subscribeDownloadQueue,
+  getDownloadQueueSnapshot,
+  enqueueGalleries,
+  pauseQueueItem,
+  resumeQueueItem,
+  removeQueueItem,
+  clearCompletedQueue,
+  pauseAllQueue,
+  resumeAllQueue,
+  setMaxConcurrent,
+  QueueItem,
+} from "@/lib/downloadQueueStore";
+import { searchGalleries, getGallery } from "@/lib/api/nhentai";
+import { Gallery } from "@/lib/api/types";
+
+export default function BatchScreen() {
+  const { colors } = useTheme();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+
+  const queueState = useSyncExternalStore(
+    subscribeDownloadQueue,
+    getDownloadQueueSnapshot,
+    getDownloadQueueSnapshot
+  );
+
+  const [activeTab, setActiveTab] = useState<"all" | "active" | "completed">("all");
+  const [isAddModalVisible, setIsAddModalVisible] = useState(false);
+  const [addMode, setAddMode] = useState<"query" | "ids">("query");
+
+  // Query mode states
+  const [queryInput, setQueryInput] = useState("");
+  const [queryPages, setQueryPages] = useState("1");
+  const [queryLanguage, setQueryLanguage] = useState<"all" | "english" | "japanese" | "chinese">("all");
+
+  // IDs mode states
+  const [idsInput, setIdsInput] = useState("");
+
+  const [isFetchingBatch, setIsFetchingBatch] = useState(false);
+  const [fetchStatusText, setFetchStatusText] = useState("");
+
+  const filteredItems = useMemo(() => {
+    if (activeTab === "active") {
+      return queueState.items.filter(
+        (i) => i.status === "downloading" || i.status === "queued" || i.status === "paused"
+      );
+    }
+    if (activeTab === "completed") {
+      return queueState.items.filter((i) => i.status === "completed");
+    }
+    return queueState.items;
+  }, [queueState.items, activeTab]);
+
+  const stats = useMemo(() => {
+    let queued = 0;
+    let downloading = 0;
+    let completed = 0;
+    let error = 0;
+    for (const it of queueState.items) {
+      if (it.status === "queued") queued++;
+      else if (it.status === "downloading") downloading++;
+      else if (it.status === "completed") completed++;
+      else if (it.status === "error") error++;
+    }
+    return { queued, downloading, completed, error, total: queueState.items.length };
+  }, [queueState.items]);
+
+  const handleStartBatchFromQuery = async () => {
+    const q = queryInput.trim();
+    if (!q) {
+      if (Platform.OS === "android") ToastAndroid.show("Veuillez saisir un mot-clé ou tag", ToastAndroid.SHORT);
+      return;
+    }
+    setIsFetchingBatch(true);
+    setFetchStatusText("Recherche des galeries...");
+    try {
+      let fullQuery = q;
+      if (queryLanguage !== "all") {
+        fullQuery += ` language:${queryLanguage}`;
+      }
+      const maxPagesToFetch = Math.max(1, Math.min(5, parseInt(queryPages, 10) || 1));
+      const foundGalleries: Array<{ id: number; title: string; cover?: string }> = [];
+
+      for (let p = 1; p <= maxPagesToFetch; p++) {
+        setFetchStatusText(`Chargement page ${p}/${maxPagesToFetch}...`);
+        const res = await searchGalleries(fullQuery, p, "popular");
+        if (res && res.result && res.result.length > 0) {
+          for (const g of res.result) {
+            foundGalleries.push({
+              id: g.id,
+              title: g.title?.pretty || g.title?.english || `Gallery #${g.id}`,
+              cover: g.images?.cover?.url || "",
+            });
+          }
+        }
+      }
+
+      if (foundGalleries.length === 0) {
+        if (Platform.OS === "android") ToastAndroid.show("Aucune galerie trouvée", ToastAndroid.SHORT);
+      } else {
+        enqueueGalleries(foundGalleries);
+        if (Platform.OS === "android") {
+          ToastAndroid.show(`${foundGalleries.length} galeries ajoutées à la file`, ToastAndroid.SHORT);
+        }
+        setIsAddModalVisible(false);
+        setQueryInput("");
+      }
+    } catch (err: any) {
+      console.error("[BatchScreen] Query search error:", err);
+      if (Platform.OS === "android") ToastAndroid.show(`Erreur: ${err?.message || "Réseau"}`, ToastAndroid.LONG);
+    } finally {
+      setIsFetchingBatch(false);
+      setFetchStatusText("");
+    }
+  };
+
+  const handleStartBatchFromIds = async () => {
+    const raw = idsInput.trim();
+    if (!raw) return;
+
+    const matches = raw.match(/\d{1,7}/g);
+    if (!matches || matches.length === 0) {
+      if (Platform.OS === "android") ToastAndroid.show("Aucun code ID valide détecté", ToastAndroid.SHORT);
+      return;
+    }
+
+    const uniqueIds = Array.from(new Set(matches.map((m) => parseInt(m, 10))));
+    setIsFetchingBatch(true);
+    setFetchStatusText(`Récupération métadonnées (0/${uniqueIds.length})...`);
+
+    const batchList: Array<{ id: number; title: string; cover?: string }> = [];
+
+    for (let i = 0; i < uniqueIds.length; i++) {
+      const id = uniqueIds[i];
+      setFetchStatusText(`Récupération #${id} (${i + 1}/${uniqueIds.length})...`);
+      try {
+        const g = await getGallery(id);
+        batchList.push({
+          id: g.id,
+          title: g.title?.pretty || g.title?.english || `Gallery #${g.id}`,
+          cover: g.images?.cover?.url || "",
+        });
+      } catch {
+        batchList.push({
+          id,
+          title: `nHentai #${id}`,
+          cover: "",
+        });
+      }
+    }
+
+    enqueueGalleries(batchList);
+    if (Platform.OS === "android") {
+      ToastAndroid.show(`${batchList.length} galeries ajoutées`, ToastAndroid.SHORT);
+    }
+    setIsAddModalVisible(false);
+    setIdsInput("");
+    setIsFetchingBatch(false);
+    setFetchStatusText("");
+  };
+
+  const renderItem = ({ item }: { item: QueueItem }) => {
+    const isDownloading = item.status === "downloading";
+    const isPaused = item.status === "paused";
+    const isCompleted = item.status === "completed";
+    const isError = item.status === "error";
+
+    const statusColor = isCompleted
+      ? "#2ed573"
+      : isError
+      ? "#ff4757"
+      : isDownloading
+      ? colors.accent
+      : colors.sub;
+
+    const statusLabel = isDownloading
+      ? "Téléchargement..."
+      : isPaused
+      ? "En pause"
+      : isCompleted
+      ? "Téléchargé"
+      : isError
+      ? (item.errorMessage || "Erreur")
+      : "En attente";
+
+    return (
+      <View style={[styles.card, { backgroundColor: colors.page, borderColor: colors.tagBg }]}>
+        <View style={styles.cardCoverContainer}>
+          {item.cover ? (
+            <SmartImage uri={item.cover} style={styles.cardCover} contentFit="cover" />
+          ) : (
+            <View style={[styles.cardCoverPlaceholder, { backgroundColor: colors.tagBg }]}>
+              <Feather name="image" size={22} color={colors.sub} />
+            </View>
+          )}
+        </View>
+
+        <View style={styles.cardInfo}>
+          <Text style={[styles.cardTitle, { color: colors.txt }]} numberOfLines={2}>
+            {item.title}
+          </Text>
+
+          <View style={styles.cardMetaRow}>
+            <Text style={[styles.statusBadge, { color: statusColor }]}>{statusLabel}</Text>
+            {item.totalPages > 0 && (
+              <Text style={[styles.cardPagesText, { color: colors.sub }]}>
+                {item.downloadedPages}/{item.totalPages} p.
+              </Text>
+            )}
+          </View>
+
+          <View style={[styles.progressBarTrack, { backgroundColor: colors.tagBg }]}>
+            <View
+              style={[
+                styles.progressBarFill,
+                {
+                  backgroundColor: statusColor,
+                  width: `${Math.max(0, Math.min(1, item.progress)) * 100}%`,
+                },
+              ]}
+            />
+          </View>
+        </View>
+
+        <View style={styles.cardActions}>
+          {isDownloading && (
+            <Pressable
+              onPress={() => pauseQueueItem(item.id)}
+              style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.6 : 1 }]}
+            >
+              <Feather name="pause" size={18} color={colors.accent} />
+            </Pressable>
+          )}
+          {(isPaused || isError) && (
+            <Pressable
+              onPress={() => resumeQueueItem(item.id)}
+              style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.6 : 1 }]}
+            >
+              <Feather name="play" size={18} color={colors.accent} />
+            </Pressable>
+          )}
+          {isCompleted && (
+            <Pressable
+              onPress={() =>
+                router.push({
+                  pathname: "/read",
+                  params: { id: String(item.id) },
+                })
+              }
+              style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.6 : 1 }]}
+            >
+              <Feather name="book-open" size={18} color="#2ed573" />
+            </Pressable>
+          )}
+          <Pressable
+            onPress={() => removeQueueItem(item.id)}
+            style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.6 : 1 }]}
+          >
+            <Feather name="trash-2" size={16} color="#ff4757" />
+          </Pressable>
+        </View>
+      </View>
+    );
+  };
+
+  return (
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: colors.bg,
+          paddingTop: insets.top,
+        },
+      ]}
+    >
+      {/* Top Header */}
+      <View style={[styles.header, { borderBottomColor: colors.tagBg }]}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <IconBtn onPress={() => router.back()} size={36}>
+            <Feather name="arrow-left" size={20} color={colors.txt} />
+          </IconBtn>
+          <View>
+            <Text style={[styles.headerTitle, { color: colors.txt }]}>
+              Téléchargement par lot
+            </Text>
+            <Text style={[styles.headerSubtitle, { color: colors.sub }]}>
+              {stats.downloading > 0 ? `${stats.downloading} actifs · ` : ""}
+              {stats.queued} en attente · {stats.completed} terminés
+            </Text>
+          </View>
+        </View>
+
+        <Pressable
+          onPress={() => setIsAddModalVisible(true)}
+          style={({ pressed }) => [
+            styles.addBatchBtn,
+            { backgroundColor: colors.accent, opacity: pressed ? 0.8 : 1 },
+          ]}
+        >
+          <Feather name="plus" size={16} color="#fff" />
+          <Text style={styles.addBatchBtnText}>Nouveau lot</Text>
+        </Pressable>
+      </View>
+
+      {/* Toolbar / Tabs */}
+      <View style={[styles.toolbar, { backgroundColor: colors.page }]}>
+        <View style={styles.toolbarTabs}>
+          {(["all", "active", "completed"] as const).map((tab) => {
+            const isActive = activeTab === tab;
+            return (
+              <Pressable
+                key={tab}
+                onPress={() => setActiveTab(tab)}
+                style={[
+                  styles.tabButton,
+                  isActive && { borderBottomColor: colors.accent, borderBottomWidth: 2 },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.tabButtonText,
+                    { color: isActive ? colors.accent : colors.sub },
+                  ]}
+                >
+                  {tab === "all"
+                    ? `Tous (${stats.total})`
+                    : tab === "active"
+                    ? `En cours (${stats.queued + stats.downloading})`
+                    : `Terminés (${stats.completed})`}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <View style={styles.toolbarButtons}>
+          <Pressable
+            onPress={resumeAllQueue}
+            style={({ pressed }) => [styles.toolbarBtn, { opacity: pressed ? 0.6 : 1 }]}
+          >
+            <Feather name="play" size={16} color={colors.accent} />
+          </Pressable>
+          <Pressable
+            onPress={pauseAllQueue}
+            style={({ pressed }) => [styles.toolbarBtn, { opacity: pressed ? 0.6 : 1 }]}
+          >
+            <Feather name="pause" size={16} color={colors.sub} />
+          </Pressable>
+          <Pressable
+            onPress={clearCompletedQueue}
+            style={({ pressed }) => [styles.toolbarBtn, { opacity: pressed ? 0.6 : 1 }]}
+          >
+            <Feather name="trash" size={16} color={colors.sub} />
+          </Pressable>
+        </View>
+      </View>
+
+      {/* Queue List */}
+      {filteredItems.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Feather name="download-cloud" size={48} color={colors.sub} style={{ opacity: 0.4 }} />
+          <Text style={[styles.emptyTitle, { color: colors.txt }]}>File de téléchargement vide</Text>
+          <Text style={[styles.emptySub, { color: colors.sub }]}>
+            Créez un nouveau lot pour télécharger plusieurs galeries en tâche de fond.
+          </Text>
+        </View>
+      ) : (
+        <FlashList
+          data={filteredItems}
+          renderItem={renderItem}
+          estimatedItemSize={90}
+          contentContainerStyle={{
+            padding: 12,
+            paddingBottom: insets.bottom + 40,
+          }}
+          keyExtractor={(item) => String(item.id)}
+        />
+      )}
+
+      {/* Add Batch Modal */}
+      <Modal
+        visible={isAddModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => !isFetchingBatch && setIsAddModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View
+            style={[
+              styles.modalBox,
+              { backgroundColor: colors.page, borderColor: colors.tagBg },
+            ]}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.txt }]}>Ajouter un lot</Text>
+              {!isFetchingBatch && (
+                <Pressable onPress={() => setIsAddModalVisible(false)}>
+                  <Feather name="x" size={22} color={colors.sub} />
+                </Pressable>
+              )}
+            </View>
+
+            <View style={[styles.modeToggle, { backgroundColor: colors.tagBg }]}>
+              <Pressable
+                onPress={() => setAddMode("query")}
+                style={[
+                  styles.modeToggleBtn,
+                  addMode === "query" && { backgroundColor: colors.accent },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.modeToggleText,
+                    { color: addMode === "query" ? "#fff" : colors.sub },
+                  ]}
+                >
+                  Recherche / Tags
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setAddMode("ids")}
+                style={[
+                  styles.modeToggleBtn,
+                  addMode === "ids" && { backgroundColor: colors.accent },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.modeToggleText,
+                    { color: addMode === "ids" ? "#fff" : colors.sub },
+                  ]}
+                >
+                  Liste d'IDs
+                </Text>
+              </Pressable>
+            </View>
+
+            {isFetchingBatch ? (
+              <View style={styles.fetchingContainer}>
+                <ActivityIndicator size="large" color={colors.accent} />
+                <Text style={[styles.fetchingText, { color: colors.txt }]}>
+                  {fetchStatusText}
+                </Text>
+              </View>
+            ) : addMode === "query" ? (
+              <ScrollView style={styles.modalBody}>
+                <Text style={[styles.inputLabel, { color: colors.txt }]}>Mots-clés / Tags</Text>
+                <TextInput
+                  value={queryInput}
+                  onChangeText={setQueryInput}
+                  placeholder="Ex: parody:fate cosplay english"
+                  placeholderTextColor={colors.sub}
+                  style={[
+                    styles.textInput,
+                    { backgroundColor: colors.bg, color: colors.txt, borderColor: colors.tagBg },
+                  ]}
+                />
+
+                <Text style={[styles.inputLabel, { color: colors.txt }]}>Langue</Text>
+                <View style={styles.langPillsRow}>
+                  {(["all", "english", "japanese", "chinese"] as const).map((l) => (
+                    <Pressable
+                      key={l}
+                      onPress={() => setQueryLanguage(l)}
+                      style={[
+                        styles.langPill,
+                        { backgroundColor: queryLanguage === l ? colors.accent : colors.tagBg },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.langPillText,
+                          { color: queryLanguage === l ? "#fff" : colors.sub },
+                        ]}
+                      >
+                        {l === "all"
+                          ? "Toutes"
+                          : l === "english"
+                          ? "English"
+                          : l === "japanese"
+                          ? "Japanese"
+                          : "Chinese"}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <Text style={[styles.inputLabel, { color: colors.txt }]}>
+                  Nombre de pages de résultats (1-5)
+                </Text>
+                <TextInput
+                  value={queryPages}
+                  onChangeText={setQueryPages}
+                  keyboardType="numeric"
+                  placeholder="1"
+                  placeholderTextColor={colors.sub}
+                  style={[
+                    styles.textInput,
+                    { backgroundColor: colors.bg, color: colors.txt, borderColor: colors.tagBg },
+                  ]}
+                />
+
+                <Pressable
+                  onPress={handleStartBatchFromQuery}
+                  style={[styles.submitBatchBtn, { backgroundColor: colors.accent }]}
+                >
+                  <Feather name="download" size={18} color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={styles.submitBatchBtnText}>Rechercher et Ajouter</Text>
+                </Pressable>
+              </ScrollView>
+            ) : (
+              <ScrollView style={styles.modalBody}>
+                <Text style={[styles.inputLabel, { color: colors.txt }]}>
+                  Coller des IDs (séparés par virgule, espace ou ligne)
+                </Text>
+                <TextInput
+                  value={idsInput}
+                  onChangeText={setIdsInput}
+                  multiline
+                  numberOfLines={4}
+                  placeholder="Ex: 177013, 385012, 411749"
+                  placeholderTextColor={colors.sub}
+                  style={[
+                    styles.textInput,
+                    styles.textArea,
+                    { backgroundColor: colors.bg, color: colors.txt, borderColor: colors.tagBg },
+                  ]}
+                />
+
+                <Pressable
+                  onPress={handleStartBatchFromIds}
+                  style={[styles.submitBatchBtn, { backgroundColor: colors.accent }]}
+                >
+                  <Feather name="download" size={18} color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={styles.submitBatchBtnText}>Ajouter les identifiants</Text>
+                </Pressable>
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  header: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderBottomWidth: 1,
+  },
+  headerTitle: { fontSize: 18, fontWeight: "800" },
+  headerSubtitle: { fontSize: 12, marginTop: 2 },
+  addBatchBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 18,
+    gap: 6,
+  },
+  addBatchBtnText: { color: "#fff", fontWeight: "700", fontSize: 12 },
+  toolbar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+  },
+  toolbarTabs: { flexDirection: "row", gap: 12 },
+  tabButton: { paddingVertical: 6 },
+  tabButtonText: { fontSize: 13, fontWeight: "600" },
+  toolbarButtons: { flexDirection: "row", gap: 14, alignItems: "center" },
+  toolbarBtn: { padding: 6 },
+  card: {
+    flexDirection: "row",
+    borderRadius: 14,
+    padding: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    alignItems: "center",
+  },
+  cardCoverContainer: { width: 52, height: 72, borderRadius: 8, overflow: "hidden", marginRight: 12 },
+  cardCover: { width: "100%", height: "100%" },
+  cardCoverPlaceholder: { width: "100%", height: "100%", alignItems: "center", justifyContent: "center" },
+  cardInfo: { flex: 1, marginRight: 8 },
+  cardTitle: { fontSize: 13, fontWeight: "700", lineHeight: 17, marginBottom: 4 },
+  cardMetaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 },
+  statusBadge: { fontSize: 11, fontWeight: "700" },
+  cardPagesText: { fontSize: 11 },
+  progressBarTrack: { width: "100%", height: 4, borderRadius: 2, overflow: "hidden" },
+  progressBarFill: { height: "100%", borderRadius: 2 },
+  cardActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  iconButton: { padding: 6 },
+  emptyContainer: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32 },
+  emptyTitle: { fontSize: 16, fontWeight: "700", marginTop: 16, marginBottom: 6 },
+  emptySub: { fontSize: 13, textAlign: "center", lineHeight: 18 },
+  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", padding: 16 },
+  modalBox: { borderRadius: 18, borderWidth: 1, padding: 18, maxHeight: "85%" },
+  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
+  modalTitle: { fontSize: 18, fontWeight: "800" },
+  modeToggle: { flexDirection: "row", borderRadius: 10, padding: 3, marginBottom: 16 },
+  modeToggleBtn: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: "center" },
+  modeToggleText: { fontSize: 13, fontWeight: "700" },
+  modalBody: {},
+  inputLabel: { fontSize: 13, fontWeight: "700", marginTop: 10, marginBottom: 6 },
+  textInput: { borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
+  textArea: { height: 90, textAlignVertical: "top" },
+  langPillsRow: { flexDirection: "row", gap: 8, flexWrap: "wrap", marginBottom: 6 },
+  langPill: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
+  langPillText: { fontSize: 12, fontWeight: "700" },
+  submitBatchBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 20,
+    marginBottom: 8,
+  },
+  submitBatchBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+  fetchingContainer: { alignItems: "center", justifyContent: "center", paddingVertical: 40 },
+  fetchingText: { marginTop: 16, fontSize: 14, fontWeight: "600" },
+});
