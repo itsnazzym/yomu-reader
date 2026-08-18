@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import PagerView from "react-native-pager-view";
 import { useTheme } from "@/lib/ThemeContext";
 import { getGallery, resolvePageUrl } from "@/lib/api/nhentai";
+import { readLocalGallery } from "@/lib/localLibrary";
 import { Gallery } from "@/lib/api/types";
 import SmartImage from "@/components/SmartImage";
 import { IconBtn } from "@/components/ui/IconBtn";
@@ -22,9 +23,11 @@ import { recordReadingProgress } from "@/lib/historyStore";
 import { QuickShareModal } from "@/components/modals/QuickShareModal";
 
 export default function ReaderScreen() {
-  const { id, initialPage } = useLocalSearchParams<{
+  const { id, initialPage, local, localId } = useLocalSearchParams<{
     id: string;
     initialPage?: string;
+    local?: string;
+    localId?: string;
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -33,6 +36,7 @@ export default function ReaderScreen() {
 
   const [gallery, setGallery] = useState<Gallery | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(
     initialPage ? parseInt(initialPage, 10) : 0
   );
@@ -43,10 +47,33 @@ export default function ReaderScreen() {
 
   const flatListRef = useRef<FlatList>(null);
   const pagerRef = useRef<PagerView>(null);
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
   useEffect(() => {
+    // Mode hors-ligne : la galerie est lue depuis le disque (Bibliothèque
+    // Hors-Ligne / batch). Le localId est validé et résolu par le repository
+    // (garde anti-traversée incluse).
+    const rawLocal = typeof localId === "string" && localId ? localId : local;
+    if (rawLocal) {
+      setLoading(true);
+      setError(null);
+      readLocalGallery(rawLocal)
+        .then(({ gallery }) => {
+          setGallery(gallery);
+        })
+        .catch((err: any) => {
+          console.error("Local reader error:", err);
+          setError(err?.message || "Impossible d'ouvrir la galerie locale.");
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+      return;
+    }
+
     if (!id) return;
     setLoading(true);
+    setError(null);
     getGallery(id)
       .then((g) => {
         setGallery(g);
@@ -54,9 +81,10 @@ export default function ReaderScreen() {
       })
       .catch((err) => {
         console.error("Reader gallery fetch error:", err);
+        setError(err?.message || "Impossible de charger la galerie.");
         setLoading(false);
       });
-  }, [id]);
+  }, [id, local, localId]);
 
   const pages = gallery?.images?.pages || [];
   const totalPages = pages.length || gallery?.num_pages || 1;
@@ -76,6 +104,26 @@ export default function ReaderScreen() {
     setControlsVisible((prev) => !prev);
   };
 
+  // Ne pas entourer PagerView d'un Pressable : il capture les gestes horizontaux
+  // et empêche le changement de page. On ne bascule les contrôles que pour un
+  // vrai tap, en laissant les swipes au composant natif.
+  const handleReaderTouchStart = (event: any) => {
+    const { pageX, pageY } = event.nativeEvent;
+    touchStartRef.current = { x: pageX, y: pageY, time: Date.now() };
+  };
+
+  const handleReaderTouchEnd = (event: any) => {
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    if (!start) return;
+
+    const { pageX, pageY } = event.nativeEvent;
+    const distance = Math.hypot(pageX - start.x, pageY - start.y);
+    if (distance < 12 && Date.now() - start.time < 500) {
+      toggleControls();
+    }
+  };
+
   const jumpToPage = (index: number) => {
     handlePageChange(index);
     if (readMode === "webtoon") {
@@ -84,6 +132,23 @@ export default function ReaderScreen() {
       pagerRef.current?.setPage(index);
     }
   };
+
+  if (error && !gallery) {
+    return (
+      <View style={[styles.centerContainer, { backgroundColor: "#000" }]}>
+        <Feather name="alert-circle" size={44} color="#ff4757" />
+        <Text style={[styles.loadingText, { color: "#fff", marginTop: 12 }]}>
+          {error}
+        </Text>
+        <Pressable
+          onPress={() => router.back()}
+          style={[styles.errorBackBtn, { backgroundColor: colors.accent }]}
+        >
+          <Text style={styles.errorBackText}>Retour</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   if (loading || !gallery) {
     return (
@@ -101,7 +166,14 @@ export default function ReaderScreen() {
       <StatusBar hidden={!controlsVisible} animated />
 
       {/* Reader Main Content */}
-      <Pressable style={styles.readerArea} onPress={toggleControls}>
+      <View
+        style={styles.readerArea}
+        onTouchStart={handleReaderTouchStart}
+        onTouchEnd={handleReaderTouchEnd}
+        onTouchCancel={() => {
+          touchStartRef.current = null;
+        }}
+      >
         {readMode === "webtoon" ? (
           <FlatList
             ref={flatListRef}
@@ -159,7 +231,7 @@ export default function ReaderScreen() {
             })}
           </PagerView>
         )}
-      </Pressable>
+      </View>
 
       {/* Floating Top Controls Overlay */}
       {controlsVisible && (
@@ -290,6 +362,13 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   centerContainer: { flex: 1, alignItems: "center", justifyContent: "center" },
   loadingText: { marginTop: 14, fontSize: 14, fontWeight: "600" },
+  errorBackBtn: {
+    marginTop: 18,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  errorBackText: { color: "#fff", fontWeight: "700" },
   readerArea: { flex: 1 },
   webtoonPageWrap: { position: "relative", backgroundColor: "#000" },
   webtoonPageNumber: {

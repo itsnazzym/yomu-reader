@@ -1,5 +1,12 @@
 import { Gallery, DownloadFormat, DownloadProgressPayload } from "../types";
-import { getGallery, getExtension, saveDownloadedArchive, fetchImageData, cleanCdnPath, logToTerminal, isElectron } from "./ipc";
+import {
+  getGallery,
+  saveDownloadedArchive,
+  fetchImageData,
+  cleanCdnPath,
+  logToTerminal,
+  isElectron,
+} from "./ipc";
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
@@ -135,26 +142,25 @@ export async function executeHighSpeedDownload(params: {
       const i = nextIndex++;
       const pageNum = i + 1;
       const pInfo = rawPages[i] || {};
-      const primaryExt = getExtension(pInfo.t || "w");
       const rawPath = cleanCdnPath(pInfo.path);
-
-      // Clean candidate URLs ordered by reliability (excluding dead hosts like i1)
+      // Prioritize Direct Gigabit CDN mirrors (8000-15000 KB/s) with Photon Edge fallback
+      const mirrors = ["i3", "i2", "i1", "i4", "t3", "t2", "t1", "t4"];
       const candidateUrls: string[] = [];
       if (rawPath) {
-        candidateUrls.push(`https://i.nhentai.net/${rawPath}`);
+        for (const m of mirrors) {
+          candidateUrls.push(`https://${m}.nhentai.net/${rawPath}`);
+        }
       }
-      candidateUrls.push(`https://i.nhentai.net/galleries/${mediaId}/${pageNum}.${primaryExt}`);
-      if (primaryExt !== "webp") {
-        candidateUrls.push(`https://i.nhentai.net/galleries/${mediaId}/${pageNum}.webp`);
+      for (const m of mirrors) {
+        for (const e of ["webp", "jpg", "png", "gif"]) {
+          const u = `https://${m}.nhentai.net/galleries/${mediaId}/${pageNum}.${e}`;
+          if (!candidateUrls.includes(u)) candidateUrls.push(u);
+        }
       }
-      if (primaryExt !== "jpg") {
-        candidateUrls.push(`https://i.nhentai.net/galleries/${mediaId}/${pageNum}.jpg`);
-      }
-      if (primaryExt !== "png") {
-        candidateUrls.push(`https://i.nhentai.net/galleries/${mediaId}/${pageNum}.png`);
-      }
-      candidateUrls.push(`https://t.nhentai.net/galleries/${mediaId}/${pageNum}t.${primaryExt}`);
-      candidateUrls.push(`https://t.nhentai.net/galleries/${mediaId}/${pageNum}t.webp`);
+      // Edge mirror fallbacks
+      candidateUrls.push(`https://i0.wp.com/i3.nhentai.net/galleries/${mediaId}/${pageNum}.webp`);
+      candidateUrls.push(`https://i1.wp.com/i2.nhentai.net/galleries/${mediaId}/${pageNum}.webp`);
+      candidateUrls.push(`https://external-content.duckduckgo.com/iu/?u=https://i3.nhentai.net/galleries/${mediaId}/${pageNum}.webp`);
 
       const pageRes = await fetchPageBuffer(
         candidateUrls,

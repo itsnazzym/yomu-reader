@@ -24,31 +24,26 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
   const { colors } = useTheme();
   const { loginWithSession, syncFavorites, session, logout } = useAccount();
 
-  const [activeTab, setActiveTab] = useState<"cookie" | "credentials" | "register">("cookie");
   const [sessionCookie, setSessionCookie] = useState(session.sessionId || "");
   const [username, setUsername] = useState(session.username || "");
-  const [password, setPassword] = useState("");
-  const [isVerified, setIsVerified] = useState(false);
+  const [credentialType, setCredentialType] = useState<"refresh" | "apiKey">(
+    session.credentialType === "apiKey" ? "apiKey" : "refresh"
+  );
   const [loading, setLoading] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
 
   const handleCookieLogin = async () => {
     const clean = sessionCookie.trim();
     if (!clean) {
-      Alert.alert("Requis", "Veuillez entrer votre cookie de session (sessionid).");
+      Alert.alert("Requis", "Veuillez coller votre clé API ou votre refresh_token nhentai.net.");
       return;
     }
-
-    // Extract sessionid if user pasted whole cookie string
-    let sid = clean;
-    const match = clean.match(/sessionid=([^;]+)/);
-    if (match) sid = match[1];
 
     setLoading(true);
     setSyncStatus("Connexion & Vérification...");
 
     try {
-      await loginWithSession(sid, username.trim() || "Membre nHentai");
+      await loginWithSession(clean, username.trim() || "Membre nHentai", credentialType);
       setSyncStatus("Synchronisation des favoris cloud...");
 
       const res = await syncFavorites((msg) => setSyncStatus(msg));
@@ -58,7 +53,10 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
         onSuccess?.();
         onClose();
       } else {
-        Alert.alert("Session Enregistrée", `Connecté avec succès. (${res.error || "Favoris synchronisés"})`);
+        Alert.alert(
+          "Compte enregistré",
+          `Votre credential est enregistré, mais la synchro a échoué : ${res.error || "erreur inconnue"}`
+        );
         onClose();
       }
     } catch (err: any) {
@@ -67,29 +65,6 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
       setLoading(false);
       setSyncStatus(null);
     }
-  };
-
-  const handleCredentialsLogin = () => {
-    if (!isVerified) {
-      Alert.alert("Vérification", "Veuillez valider la case de vérification humaine.");
-      return;
-    }
-    if (!username || !password) {
-      Alert.alert("Requis", "Veuillez remplir vos identifiants.");
-      return;
-    }
-
-    setLoading(true);
-    setSyncStatus("Authentification en cours...");
-
-    setTimeout(async () => {
-      await loginWithSession("auth_" + Date.now(), username);
-      setLoading(false);
-      setSyncStatus(null);
-      Alert.alert("Connexion", `Bienvenue, ${username} !`);
-      onSuccess?.();
-      onClose();
-    }, 1000);
   };
 
   return (
@@ -126,8 +101,17 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
                 radius={12}
                 onPress={async () => {
                   setLoading(true);
-                  await syncFavorites((msg) => setSyncStatus(msg));
-                  setLoading(false);
+                  try {
+                    const res = await syncFavorites((msg) => setSyncStatus(msg));
+                    if (res.success) {
+                      Alert.alert("Cloud Synchronisé", `${res.count} favoris mis à jour avec le compte officiel.`);
+                    } else {
+                      Alert.alert("Synchronisation impossible", res.error || "Erreur inconnue.");
+                    }
+                  } finally {
+                    setLoading(false);
+                    setSyncStatus(null);
+                  }
                 }}
                 disabled={loading}
                 style={[styles.syncBtn, { backgroundColor: colors.accent }]}
@@ -156,154 +140,93 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
             </View>
           ) : (
             <>
-              {/* Tabs */}
-              <View style={styles.tabRow}>
-                <Pressable onPress={() => setActiveTab("cookie")} style={styles.tab}>
-                  <Text
-                    style={[
-                      styles.tabText,
-                      activeTab === "cookie" && { color: colors.accent, fontWeight: "800" },
-                    ]}
-                  >
-                    Cookie de Session
-                  </Text>
-                  {activeTab === "cookie" && (
-                    <View style={[styles.tabIndicator, { backgroundColor: colors.accent }]} />
-                  )}
-                </Pressable>
+              <View style={styles.form}>
+                <Text style={styles.hintText}>
+                  {credentialType === "apiKey"
+                    ? "Générez une clé API sur nhentai.net → Réglages du compte → API Keys, puis collez-la ici."
+                    : "Collez votre cookie refresh_token nhentai.net (DevTools → Application → Cookies)."}
+                </Text>
 
-                <Pressable onPress={() => setActiveTab("credentials")} style={styles.tab}>
-                  <Text
-                    style={[
-                      styles.tabText,
-                      activeTab === "credentials" && { color: colors.accent, fontWeight: "800" },
-                    ]}
-                  >
-                    Identifiants
-                  </Text>
-                  {activeTab === "credentials" && (
-                    <View style={[styles.tabIndicator, { backgroundColor: colors.accent }]} />
-                  )}
-                </Pressable>
-              </View>
-
-              {/* Cookie Sync Tab */}
-              {activeTab === "cookie" ? (
-                <View style={styles.form}>
-                  <Text style={styles.hintText}>
-                    Collez votre cookie <Text style={{ color: colors.accent }}>sessionid</Text> du site officiel nhentai.net pour synchroniser instantanément tous vos favoris cloud.
-                  </Text>
-
-                  <View style={styles.fieldGroup}>
-                    <Text style={styles.label}>Cookie de session (sessionid)</Text>
-                    <TextInput
-                      value={sessionCookie}
-                      onChangeText={setSessionCookie}
-                      placeholder="Ex: 3m56q2... ou sessionid=..."
-                      placeholderTextColor="#6b7280"
-                      autoCapitalize="none"
-                      style={styles.input}
-                    />
-                  </View>
-
-                  <View style={styles.fieldGroup}>
-                    <Text style={styles.label}>Pseudo (Optionnel)</Text>
-                    <TextInput
-                      value={username}
-                      onChangeText={setUsername}
-                      placeholder="Votre pseudo nHentai"
-                      placeholderTextColor="#6b7280"
-                      style={styles.input}
-                    />
-                  </View>
-
-                  <CardPressable
-                    radius={14}
-                    onPress={handleCookieLogin}
-                    disabled={loading}
-                    style={[styles.submitBtn, { backgroundColor: colors.accent }]}
-                  >
-                    <View style={styles.submitBtnContent}>
-                      {loading ? (
-                        <ActivityIndicator size="small" color="#fff" />
-                      ) : (
-                        <Feather name="cloud" size={18} color="#fff" />
-                      )}
-                      <Text style={styles.submitBtnText}>
-                        {loading ? (syncStatus || "Connexion...") : "Connecter & Synchroniser Favoris"}
-                      </Text>
-                    </View>
-                  </CardPressable>
-                </View>
-              ) : (
-                /* Credentials Tab */
-                <View style={styles.form}>
-                  <View style={styles.fieldGroup}>
-                    <Text style={styles.label}>Username or email</Text>
-                    <TextInput
-                      value={username}
-                      onChangeText={setUsername}
-                      placeholder="username or email"
-                      placeholderTextColor="#6b7280"
-                      autoCapitalize="none"
-                      style={styles.input}
-                    />
-                  </View>
-
-                  <View style={styles.fieldGroup}>
-                    <Text style={styles.label}>Password</Text>
-                    <TextInput
-                      value={password}
-                      onChangeText={setPassword}
-                      placeholder="••••••••"
-                      placeholderTextColor="#6b7280"
-                      secureTextEntry
-                      style={styles.input}
-                    />
-                  </View>
-
-                  {/* Cloudflare Verification Box */}
-                  <View style={styles.fieldGroup}>
-                    <Text style={styles.label}>Verification</Text>
+                <View style={styles.typeRow}>
+                  {(
+                    [
+                      { key: "apiKey", label: "Clé API", icon: "key" },
+                      { key: "refresh", label: "refresh_token", icon: "refresh-cw" },
+                    ] as const
+                  ).map((opt) => (
                     <Pressable
-                      onPress={() => setIsVerified((prev) => !prev)}
-                      style={[styles.turnstileBox, isVerified && { borderColor: colors.accent }]}
+                      key={opt.key}
+                      onPress={() => setCredentialType(opt.key)}
+                      style={[
+                        styles.typeChip,
+                        credentialType === opt.key && { borderColor: colors.accent, backgroundColor: "#1c1c28" },
+                      ]}
                     >
-                      <View style={styles.turnstileLeft}>
-                        <View
-                          style={[
-                            styles.checkbox,
-                            isVerified && { backgroundColor: colors.accent, borderColor: colors.accent },
-                          ]}
-                        >
-                          {isVerified && <Feather name="check" size={13} color="#fff" />}
-                        </View>
-                        <Text style={styles.turnstileText}>Verify you are human</Text>
-                      </View>
-
-                      <View style={styles.turnstileRight}>
-                        <Text style={styles.turnstileBrand}>Cloudflare</Text>
-                        <Text style={styles.turnstileSub}>Privacy · Terms</Text>
-                      </View>
+                      <Feather
+                        name={opt.icon}
+                        size={14}
+                        color={credentialType === opt.key ? colors.accent : "#9ca3af"}
+                      />
+                      <Text
+                        style={[
+                          styles.typeChipText,
+                          credentialType === opt.key && { color: colors.accent },
+                        ]}
+                      >
+                        {opt.label}
+                      </Text>
                     </Pressable>
-                  </View>
-
-                  <CardPressable
-                    radius={14}
-                    onPress={handleCredentialsLogin}
-                    disabled={loading}
-                    style={[styles.submitBtn, { backgroundColor: colors.accent }]}
-                  >
-                    <View style={styles.submitBtnContent}>
-                      {loading ? (
-                        <ActivityIndicator size="small" color="#fff" />
-                      ) : (
-                        <Text style={styles.submitBtnText}>Sign in & Sync</Text>
-                      )}
-                    </View>
-                  </CardPressable>
+                  ))}
                 </View>
-              )}
+
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>
+                    {credentialType === "apiKey" ? "Clé API nhentai.net" : "refresh_token (cookie officiel)"}
+                  </Text>
+                  <TextInput
+                    value={sessionCookie}
+                    onChangeText={setSessionCookie}
+                    placeholder={
+                      credentialType === "apiKey" ? "Ex: nhk_xxxxxxxxxxxxxxxx" : "Ex: 9f3a2c1b..."
+                    }
+                    placeholderTextColor="#6b7280"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    returnKeyType="done"
+                    onSubmitEditing={handleCookieLogin}
+                    style={styles.input}
+                  />
+                </View>
+
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>Pseudo (Optionnel)</Text>
+                  <TextInput
+                    value={username}
+                    onChangeText={setUsername}
+                    placeholder="Votre pseudo nHentai"
+                    placeholderTextColor="#6b7280"
+                    style={styles.input}
+                  />
+                </View>
+
+                <CardPressable
+                  radius={14}
+                  onPress={handleCookieLogin}
+                  disabled={loading}
+                  style={[styles.submitBtn, { backgroundColor: colors.accent }]}
+                >
+                  <View style={styles.submitBtnContent}>
+                    {loading ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Feather name="cloud" size={18} color="#fff" />
+                    )}
+                    <Text style={styles.submitBtnText}>
+                      {loading ? (syncStatus || "Connexion...") : "Connecter & Synchroniser Favoris"}
+                    </Text>
+                  </View>
+                </CardPressable>
+              </View>
             </>
           )}
 
@@ -403,30 +326,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
   },
-  tabRow: {
-    flexDirection: "row",
-    borderBottomWidth: 1,
-    borderBottomColor: "#28283a",
-    marginBottom: 16,
-    gap: 16,
-  },
-  tab: {
-    paddingBottom: 8,
-    position: "relative",
-  },
-  tabText: {
-    fontSize: 13.5,
-    color: "#9ca3af",
-    fontWeight: "600",
-  },
-  tabIndicator: {
-    position: "absolute",
-    bottom: -1,
-    left: 0,
-    right: 0,
-    height: 2,
-    borderRadius: 1,
-  },
   hintText: {
     fontSize: 11.5,
     color: "#9ca3af",
@@ -435,6 +334,26 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: 12,
+  },
+  typeRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  typeChip: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 9,
+    borderWidth: 1,
+    borderColor: "#28283a",
+    borderRadius: 12,
+  },
+  typeChipText: {
+    fontSize: 12.5,
+    fontWeight: "700",
+    color: "#9ca3af",
   },
   fieldGroup: {
     gap: 6,
@@ -453,48 +372,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     color: "#f3f4f6",
     fontSize: 13,
-  },
-  turnstileBox: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: "#1c1c28",
-    borderColor: "#28283a",
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-  },
-  turnstileLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 5,
-    borderWidth: 1.5,
-    borderColor: "#6b7280",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  turnstileText: {
-    fontSize: 12.5,
-    fontWeight: "600",
-    color: "#f3f4f6",
-  },
-  turnstileRight: {
-    alignItems: "flex-end",
-  },
-  turnstileBrand: {
-    fontSize: 10.5,
-    fontWeight: "700",
-    color: "#9ca3af",
-  },
-  turnstileSub: {
-    fontSize: 8.5,
-    color: "#6b7280",
   },
   submitBtn: {
     borderRadius: 14,

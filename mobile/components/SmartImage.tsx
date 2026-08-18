@@ -27,19 +27,27 @@ export function SmartImage({
   const candidateUrls = useMemo(() => {
     if (!uri) return [];
 
+    // URL déjà résolue (miroir proxy local, CDN tiers, etc.) : on la garde telle quelle.
+    // La transformation ci-dessous ne concerne que les hôtes d'images nhentai.net
+    // (t3/i3 bloqués par certains FAI/DNS).
+    const host = (uri.match(/^https?:\/\/([^\/]+)/) || [])[1] || "";
+    if (!/(^|\.)nhentai\.net$/i.test(host)) {
+      return [uri];
+    }
+
     // Extract path e.g. "galleries/4123755/thumb.webp" or clean host
     const clean = uri.replace(/^https?:\/\//, "");
     const isThumb = clean.includes("/thumb.") || clean.includes("t.nhentai.net") || clean.includes("t3.");
-    const host = isThumb ? "t.nhentai.net" : "i.nhentai.net";
+    const host2 = isThumb ? "t.nhentai.net" : "i.nhentai.net";
     const pathOnly = clean.replace(/^[^\/]+\//, "");
 
     return [
       // 1. Photon Edge CDN (Instant 200 OK, bypasses all French/EU ISP DNS blocks)
-      `https://i0.wp.com/${host}/${pathOnly}`,
-      `https://i1.wp.com/${host}/${pathOnly}`,
-      `https://i2.wp.com/${host}/${pathOnly}`,
+      `https://i0.wp.com/${host2}/${pathOnly}`,
+      `https://i1.wp.com/${host2}/${pathOnly}`,
+      `https://i2.wp.com/${host2}/${pathOnly}`,
       // 2. DuckDuckGo Proxy
-      `https://external-content.duckduckgo.com/iu/?u=${encodeURIComponent(`https://${host}/${pathOnly}`)}`,
+      `https://external-content.duckduckgo.com/iu/?u=${encodeURIComponent(`https://${host2}/${pathOnly}`)}`,
       // 3. Direct original URL
       uri,
     ];

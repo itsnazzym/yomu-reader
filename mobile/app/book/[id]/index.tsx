@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   StyleSheet,
   View,
@@ -7,6 +7,8 @@ import {
   Pressable,
   ActivityIndicator,
   Share,
+  Animated,
+  Easing,
   useWindowDimensions,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
@@ -38,6 +40,19 @@ export default function BookDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isShareOpen, setIsShareOpen] = useState(false);
+
+  // Fermeture animée avant navigation (même pattern que le panneau des
+  // recommandations) : fondu de l'écran, puis navigation au callback de fin.
+  const fadeOut = useRef(new Animated.Value(0)).current;
+  const navigatingRef = useRef(false);
+
+  // Si l'écran est démonté pendant l'animation (back), on stoppe le fondu :
+  // le callback de fin reçoit finished=false et la navigation n'est pas lancée.
+  useEffect(() => {
+    return () => {
+      fadeOut.stopAnimation();
+    };
+  }, [fadeOut]);
 
   const fav = gallery ? isFavorite(gallery.id) : false;
 
@@ -89,10 +104,21 @@ export default function BookDetailScreen() {
 
   const openTagSearch = (name: string) => {
     lightTap();
+    if (navigatingRef.current) return;
+    navigatingRef.current = true;
 
-    router.push({
-      pathname: "/",
-      params: { tag: name },
+    Animated.timing(fadeOut, {
+      toValue: 1,
+      duration: 180,
+      easing: Easing.in(Easing.cubic),
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) {
+        router.push({
+          pathname: "/",
+          params: { tag: name },
+        });
+      }
     });
   };
 
@@ -267,9 +293,14 @@ export default function BookDetailScreen() {
                 {tagCategoryLabels[type] || type}
               </Text>
               <View style={styles.tagChipsWrap}>
+                {/* Même animation d'échelle que les chips : CardPressable
+                    (Animated.spring) avec le variant chip. */}
                 {tags.map((t) => (
-                  <Pressable
+                  <CardPressable
                     key={t.id}
+                    radius={8}
+                    variant="chip"
+                    activeOpacity={0.85}
                     onPress={() => openTagSearch(t.name)}
                     style={[styles.tagChip, { backgroundColor: colors.tagBg }]}
                   >
@@ -279,7 +310,7 @@ export default function BookDetailScreen() {
                     <Text style={[styles.tagChipCount, { color: colors.sub }]}>
                       {t.count > 999 ? `${(t.count / 1000).toFixed(0)}k` : t.count}
                     </Text>
-                  </Pressable>
+                  </CardPressable>
                 ))}
               </View>
             </View>
@@ -294,12 +325,13 @@ export default function BookDetailScreen() {
                 Commentaires ({comments.length})
               </Text>
               <Pressable
-                onPress={() =>
+                onPress={() => {
+                  lightTap();
                   router.push({
                     pathname: "/book/[id]/comments",
                     params: { id: String(gallery.id) },
-                  })
-                }
+                  });
+                }}
               >
                 <Text style={[styles.seeAllText, { color: colors.accent }]}>
                   Voir tout
@@ -371,6 +403,12 @@ export default function BookDetailScreen() {
               }
             : null
         }
+      />
+
+      {/* Voile de fermeture : fondu de l'écran avant la navigation par tag */}
+      <Animated.View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFillObject, styles.navFadeOverlay, { opacity: fadeOut }]}
       />
     </View>
   );
@@ -479,4 +517,5 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   thumbPageText: { color: "#fff", fontSize: 10, fontWeight: "700" },
+  navFadeOverlay: { backgroundColor: "#000" },
 });

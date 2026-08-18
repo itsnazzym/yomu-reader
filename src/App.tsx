@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Header } from "./components/layout/Header";
+import { Sidebar } from "./components/layout/Sidebar";
 import { GalleryGrid } from "./components/gallery/GalleryGrid";
 import { GalleryDetailModal } from "./components/gallery/GalleryDetailModal";
 import { ReaderModal } from "./components/reader/ReaderModal";
@@ -8,8 +9,12 @@ import { DownloaderView } from "./components/downloader/DownloaderView";
 import { SettingsView } from "./components/settings/SettingsView";
 import { LibraryView } from "./components/library/LibraryView";
 import { TaxonomyBrowserView } from "./components/taxonomy/TaxonomyBrowserView";
+import { FavoritesView } from "./components/favorites/FavoritesView";
+import { HistoryView } from "./components/history/HistoryView";
+import { CloudflareGateModal } from "./components/common/CloudflareGateModal";
+import { QuickShareHubModal } from "./components/share/QuickShareHubModal";
 import { TabType, SortOption, Gallery, Tag } from "./types";
-import { searchGalleries, getGallery, getRandomGallery } from "./utils/ipc";
+import { searchGalleries, getGallery, getRandomGallery, onCloudflareChallengeNeeded } from "./utils/ipc";
 import { useDownloadStore } from "./stores/downloadStore";
 import { useSettingsStore } from "./stores/settingsStore";
 
@@ -28,6 +33,11 @@ export function App() {
   const [selectedGallery, setSelectedGallery] = useState<Gallery | null>(null);
   const [readingGallery, setReadingGallery] = useState<Gallery | null>(null);
   const [initialReadingPage, setInitialReadingPage] = useState(0);
+  const [isCloudflareModalOpen, setIsCloudflareModalOpen] = useState(false);
+  const [isQuickShareModalOpen, setIsQuickShareModalOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    return localStorage.getItem("nhentai_sidebar_collapsed") === "true";
+  });
 
   const { queue, addToQueue, initListener } = useDownloadStore();
   const { settings, loadSettings } = useSettingsStore();
@@ -42,7 +52,13 @@ export function App() {
   useEffect(() => {
     loadSettings();
     const unlisten = initListener();
-    return () => unlisten();
+    const unlistenCf = onCloudflareChallengeNeeded(() => {
+      setIsCloudflareModalOpen(true);
+    });
+    return () => {
+      unlisten();
+      unlistenCf();
+    };
   }, []);
 
   // Fetch galleries when query, sort, page, or language changes
@@ -75,7 +91,11 @@ export function App() {
       setIsLoading(false);
     } catch (err: any) {
       console.error("Error fetching galleries:", err);
-      setError(err.message || "Impossible de charger les galeries nHentai.");
+      const errMsg = err.message || "Impossible de charger les galeries nHentai.";
+      setError(errMsg);
+      if (errMsg.includes("403") || errMsg.toLowerCase().includes("cloudflare") || errMsg.toLowerCase().includes("captcha")) {
+        setIsCloudflareModalOpen(true);
+      }
       setIsLoading(false);
     }
   };
@@ -171,41 +191,89 @@ export function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#121214] text-gray-100 overflow-hidden font-sans">
-      {/* Full-width 3hentai 2-Tier Header Bar */}
-      <Header
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        onSearchSubmit={handleSearchSubmit}
+    <div className="flex h-screen w-screen bg-[#101018] text-gray-100 overflow-hidden font-sans select-none">
+      {/* Left Collapsible Navigation Drawer */}
+      <Sidebar
         currentTab={currentTab}
-        onTabChange={(tab) => setCurrentTab(tab)}
-        sort={sort}
-        onSortChange={handleSortChange}
+        onTabChange={(tab) => {
+          setCurrentTab(tab);
+          if (tab === "explorer" && !activeQuery) {
+            setPage(1);
+          }
+        }}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => {
+          const next = !isSidebarCollapsed;
+          setIsSidebarCollapsed(next);
+          localStorage.setItem("nhentai_sidebar_collapsed", String(next));
+        }}
         onRandomClick={handleRandomClick}
         isRandomLoading={isRandomLoading}
-        selectedLanguage={selectedLanguage}
-        onLanguageChange={handleLanguageChange}
+        onOpenCloudflareModal={() => setIsCloudflareModalOpen(true)}
+        onOpenQuickShareModal={() => setIsQuickShareModalOpen(true)}
       />
 
-      {/* Main Tab Content Area */}
-      <main className="flex-1 overflow-y-auto bg-[#121214] relative">
-        {currentTab === "explorer" && (
-          <GalleryGrid
-            galleries={galleries}
-            isLoading={isLoading}
-            error={error}
-            page={page}
-            totalPages={totalPages}
-            onPageChange={setPage}
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden bg-[#101018]">
+        {/* Top Header Bar */}
+        <Header
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onSearchSubmit={handleSearchSubmit}
+          onTabChange={setCurrentTab}
+          onRandomClick={handleRandomClick}
+          isRandomLoading={isRandomLoading}
+          selectedLanguage={selectedLanguage}
+          onLanguageChange={handleLanguageChange}
+          onToggleSidebar={() => {
+            const next = !isSidebarCollapsed;
+            setIsSidebarCollapsed(next);
+            localStorage.setItem("nhentai_sidebar_collapsed", String(next));
+          }}
+          onOpenCloudflareModal={() => setIsCloudflareModalOpen(true)}
+        />
+
+        {/* Scrollable View Content */}
+        <main className="flex-1 overflow-y-auto bg-[#101018] relative">
+          {currentTab === "explorer" && (
+            <GalleryGrid
+              galleries={galleries}
+              isLoading={isLoading}
+              error={error}
+              page={page}
+              totalPages={totalPages}
+              onPageChange={setPage}
+              onSelectGallery={handleSelectGallery}
+              onReadGallery={(g, p) => handleOpenReader(g, p || 0)}
+              onQuickDownload={(g) => addToQueue(g)}
+              onTagClick={handleTagClick}
+              queuedIds={queuedIds}
+              onRetry={() => fetchGalleriesData(activeQuery, sort, page, selectedLanguage)}
+              sort={sort}
+              onSortChange={handleSortChange}
+              currentSearchQuery={activeQuery}
+              selectedLanguage={selectedLanguage}
+            />
+          )}
+
+        {currentTab === "favorites" && (
+          <FavoritesView
             onSelectGallery={handleSelectGallery}
-            onReadGallery={(g) => handleOpenReader(g, 0)}
+            onReadGallery={(g, initialPage) => handleOpenReader(g, initialPage || 0)}
             onQuickDownload={(g) => addToQueue(g)}
-            queuedIds={queuedIds}
-            onRetry={() => fetchGalleriesData(activeQuery, sort, page, selectedLanguage)}
-            sort={sort}
-            onSortChange={handleSortChange}
-            currentSearchQuery={activeQuery}
-            selectedLanguage={selectedLanguage}
+          />
+        )}
+
+        {currentTab === "history" && (
+          <HistoryView
+            onOpenOnlineReader={async (galleryId, initialPage) => {
+              try {
+                const g = await getGallery(galleryId, settings.cookies, settings.api_key);
+                handleOpenReader(g, initialPage);
+              } catch (e) {
+                console.error("Failed to load gallery from history:", e);
+              }
+            }}
           />
         )}
 
@@ -233,6 +301,16 @@ export function App() {
 
         {currentTab === "settings" && <SettingsView />}
       </main>
+    </div>
+
+      {/* Cloudflare Captcha Gate Modal */}
+      <CloudflareGateModal
+        isOpen={isCloudflareModalOpen}
+        onClose={() => setIsCloudflareModalOpen(false)}
+        onSuccess={() => {
+          fetchGalleriesData(activeQuery, sort, page, selectedLanguage);
+        }}
+      />
 
       {/* Gallery Detail Modal (Screenshot 5 layout) */}
       <GalleryDetailModal
@@ -248,6 +326,14 @@ export function App() {
         initialPage={initialReadingPage}
         onClose={() => setReadingGallery(null)}
       />
+
+      {/* Global Quick Share Wi-Fi Gigabit Modal */}
+      {isQuickShareModalOpen && (
+        <QuickShareHubModal
+          onClose={() => setIsQuickShareModalOpen(false)}
+          initialDirectory={settings.download_directory}
+        />
+      )}
     </div>
   );
 }

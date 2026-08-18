@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Platform,
   ToastAndroid,
+  Alert,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { Feather } from "@expo/vector-icons";
@@ -29,11 +30,16 @@ import {
   clearCompletedQueue,
   pauseAllQueue,
   resumeAllQueue,
+  requeueItem,
   setMaxConcurrent,
   QueueItem,
 } from "@/lib/downloadQueueStore";
 import { searchGalleries, getGallery } from "@/lib/api/nhentai";
 import { Gallery } from "@/lib/api/types";
+import {
+  resolveLocalByGalleryId,
+  verifyLocalGallery,
+} from "@/lib/localLibrary";
 
 export default function BatchScreen() {
   const { colors } = useTheme();
@@ -60,6 +66,10 @@ export default function BatchScreen() {
 
   const [isFetchingBatch, setIsFetchingBatch] = useState(false);
   const [fetchStatusText, setFetchStatusText] = useState("");
+
+  // Intégrité locale : résultat de vérification par id d'item (undefined = pas
+  // encore vérifié, "checking" = en cours, sinon { ok, found, expected }).
+  const [verifyResults, setVerifyResults] = useState<Record<number, undefined | "checking" | { ok: boolean; found: number; expected: number }>>({});
 
   const filteredItems = useMemo(() => {
     if (activeTab === "active") {
@@ -136,6 +146,79 @@ export default function BatchScreen() {
     }
   };
 
+  // Ouvre le lecteur local d'un item terminé. Les items nouveaux portent le
+  // localId ; les anciens (file persistée avant cette version) sont résolus
+  // par leur ID via la bibliothèque locale. Si rien n'est trouvé, propose une
+  // réparation : re-télécharger la galerie.
+  const openCompleted = async (item: QueueItem) => {
+    if (item.localId) {
+      router.push({ pathname: "/read", params: { localId: item.localId } });
+      return;
+    }
+    let resolved: string | null = null;
+    try {
+      resolved = await resolveLocalByGalleryId(item.id);
+    } catch (err) {
+      console.warn("[BatchScreen] resolve local failed:", err);
+    }
+    if (resolved) {
+      router.push({ pathname: "/read", params: { localId: resolved } });
+      return;
+    }
+
+    // Réparation : le dossier local a disparu (supprimé à la main, résolution
+    // impossible). Propose un re-téléchargement au lieu d'un simple toast.
+    Alert.alert(
+      "Galerie introuvable",
+      "Les fichiers locaux de cette galerie sont introuvables. Re-télécharger ?",
+      [
+        { text: "Annuler", style: "cancel" },
+        {
+          text: "Re-télécharger",
+          onPress: () => requeueItem(item.id),
+        },
+      ]
+    );
+  };
+
+  // Vérifie l'intégrité des fichiers locaux d'un item terminé : compte les
+  // pages présentes sur disque et les compare aux métadonnées. Affiche le
+  // résultat en ligne (coche / alerte) + toast.
+  const handleVerify = async (item: QueueItem) => {
+    if (verifyResults[item.id] === "checking") return;
+    setVerifyResults((prev) => ({ ...prev, [item.id]: "checking" }));
+    try {
+      const localId =
+        item.localId ?? (await resolveLocalByGalleryId(item.id)) ?? undefined;
+      if (!localId) {
+        setVerifyResults((prev) => ({ ...prev, [item.id]: undefined }));
+        if (Platform.OS === "android") {
+          ToastAndroid.show("Dossier de la galerie introuvable", ToastAndroid.SHORT);
+        }
+        return;
+      }
+      const res = await verifyLocalGallery(localId);
+      setVerifyResults((prev) => ({
+        ...prev,
+        [item.id]: { ok: res.ok, found: res.found, expected: res.expected },
+      }));
+      if (Platform.OS === "android") {
+        ToastAndroid.show(
+          res.ok
+            ? `Intégrité OK (${res.found}/${res.expected} pages)`
+            : `Intégrité incomplète (${res.found}/${res.expected} pages)`,
+          ToastAndroid.SHORT
+        );
+      }
+    } catch (err) {
+      console.warn("[BatchScreen] verify failed:", err);
+      setVerifyResults((prev) => ({ ...prev, [item.id]: undefined }));
+      if (Platform.OS === "android") {
+        ToastAndroid.show("Vérification impossible", ToastAndroid.SHORT);
+      }
+    }
+  };
+
   const handleStartBatchFromIds = async () => {
     const raw = idsInput.trim();
     if (!raw) return;
@@ -187,6 +270,11 @@ export default function BatchScreen() {
     const isCompleted = item.status === "completed";
     const isError = item.status === "error";
 
+    const verify = verifyResults[item.id];
+    const verifyChecking = verify === "checking";
+    const verifyOk = typeof verify === "object" && verify.ok;
+    const verifyBad = typeof verify === "object" && !verify.ok;
+
     const statusColor = isCompleted
       ? "#2ed573"
       : isError
@@ -224,11 +312,40 @@ export default function BatchScreen() {
 
           <View style={styles.cardMetaRow}>
             <Text style={[styles.statusBadge, { color: statusColor }]}>{statusLabel}</Text>
-            {item.totalPages > 0 && (
-              <Text style={[styles.cardPagesText, { color: colors.sub }]}>
-                {item.downloadedPages}/{item.totalPages} p.
-              </Text>
-            )}
+            {item.totalPages > 0 &&
+              (isCompleted ? (
+                <Pressable
+                  onPress={() => handleVerify(item)}
+                  disabled={verifyChecking}
+                  style={({ pressed }) => [styles.verifyButton, { opacity: pressed ? 0.6 : 1 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    verifyChecking ? "Vérification en cours" : "Vérifier l'intégrité des fichiers"
+                  }
+                >
+                  {verifyChecking ? (
+                    <ActivityIndicator size={12} color={colors.accent} />
+                  ) : verifyBad ? (
+                    <Feather name="alert-triangle" size={13} color="#ff4757" />
+                  ) : verifyOk ? (
+                    <Feather name="check-circle" size={13} color="#2ed573" />
+                  ) : null}
+                  <Text
+                    style={[
+                      styles.cardPagesText,
+                      {
+                        color: verifyOk ? "#2ed573" : verifyBad ? "#ff4757" : colors.sub,
+                      },
+                    ]}
+                  >
+                    {item.downloadedPages}/{item.totalPages} p.
+                  </Text>
+                </Pressable>
+              ) : (
+                <Text style={[styles.cardPagesText, { color: colors.sub }]}>
+                  {item.downloadedPages}/{item.totalPages} p.
+                </Text>
+              ))}
           </View>
 
           <View style={[styles.progressBarTrack, { backgroundColor: colors.tagBg }]}>
@@ -263,12 +380,7 @@ export default function BatchScreen() {
           )}
           {isCompleted && (
             <Pressable
-              onPress={() =>
-                router.push({
-                  pathname: "/read",
-                  params: { id: String(item.id) },
-                })
-              }
+              onPress={() => openCompleted(item)}
               style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.6 : 1 }]}
             >
               <Feather name="book-open" size={18} color="#2ed573" />
@@ -390,6 +502,7 @@ export default function BatchScreen() {
         <FlashList
           data={filteredItems}
           renderItem={renderItem}
+          extraData={verifyResults}
           estimatedItemSize={90}
           contentContainerStyle={{
             padding: 12,
@@ -615,6 +728,7 @@ const styles = StyleSheet.create({
   cardMetaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 },
   statusBadge: { fontSize: 11, fontWeight: "700" },
   cardPagesText: { fontSize: 11 },
+  verifyButton: { flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 2 },
   progressBarTrack: { width: "100%", height: 4, borderRadius: 2, overflow: "hidden" },
   progressBarFill: { height: "100%", borderRadius: 2 },
   cardActions: { flexDirection: "row", alignItems: "center", gap: 8 },

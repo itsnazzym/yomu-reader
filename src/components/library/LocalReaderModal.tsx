@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { LocalBookItem, LocalBookContent } from "../../types";
 import { readLocalBook, openFolder } from "../../utils/ipc";
+import { useHistoryStore } from "../../stores/historyStore";
 import { Icon } from "../common/Icon";
+import { FastScrollRail } from "../reader/FastScrollRail";
 
 interface LocalReaderModalProps {
   book: LocalBookItem | null;
@@ -63,6 +65,21 @@ export const LocalReaderModal: React.FC<LocalReaderModalProps> = ({ book, onClos
 
   const totalPages = bookContent?.totalPages || bookContent?.pages?.length || 0;
 
+  // Save reading progress to History
+  useEffect(() => {
+    if (book && totalPages > 0) {
+      useHistoryStore.getState().saveProgress({
+        id: book.galleryId || Math.abs(book.filePath.split("").reduce((a, b) => ((a << 5) - a + b.charCodeAt(0)) | 0, 0)),
+        title: book.title || book.filename,
+        coverUrl: book.coverDataUrl,
+        lastReadPage: currentPage,
+        totalPages: totalPages,
+        isLocal: true,
+        filePath: book.filePath,
+      });
+    }
+  }, [currentPage, book, totalPages]);
+
   // Navigation handlers
   const nextPage = useCallback(() => {
     if (readingMode === "webtoon") return;
@@ -91,6 +108,35 @@ export const LocalReaderModal: React.FC<LocalReaderModalProps> = ({ book, onClos
       document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
     }
   }, []);
+
+  const handleWebtoonScroll = () => {
+    if (readingMode !== "webtoon" || !webtoonScrollRef.current) return;
+    const container = webtoonScrollRef.current;
+    const scrollTop = container.scrollTop;
+    const centerY = scrollTop + container.clientHeight / 3;
+
+    for (let i = 0; i < totalPages; i++) {
+      const el = document.getElementById(`local-webtoon-page-${i}`);
+      if (el) {
+        const elTop = el.offsetTop;
+        const elBottom = elTop + el.offsetHeight;
+        if (centerY >= elTop && centerY <= elBottom) {
+          if (currentPage !== i) {
+            setCurrentPage(i);
+          }
+          break;
+        }
+      }
+    }
+  };
+
+  const scrollToWebtoonPage = (pageIdx: number) => {
+    const el = document.getElementById(`local-webtoon-page-${pageIdx}`);
+    if (el) {
+      el.scrollIntoView({ block: "start", behavior: "smooth" });
+      setCurrentPage(pageIdx);
+    }
+  };
 
   // Keyboard navigation
   useEffect(() => {
@@ -344,12 +390,13 @@ export const LocalReaderModal: React.FC<LocalReaderModalProps> = ({ book, onClos
           /* Webtoon Continuous Scroll */
           <div
             ref={webtoonScrollRef}
+            onScroll={handleWebtoonScroll}
             onClick={() => setShowControls((prev) => !prev)}
             className="w-full h-full overflow-y-auto overflow-x-hidden bg-[#0a0a0f]"
           >
             <div className="max-w-3xl mx-auto pt-16 pb-20 px-2 flex flex-col items-center space-y-2">
               {(bookContent?.pages || []).map((page, idx) => (
-                <div key={idx} className="w-full flex flex-col items-center">
+                <div key={idx} id={`local-webtoon-page-${idx}`} className="w-full flex flex-col items-center">
                   <img
                     src={page.dataUrl}
                     alt={`Page ${page.number}`}
@@ -362,6 +409,13 @@ export const LocalReaderModal: React.FC<LocalReaderModalProps> = ({ book, onClos
                 </div>
               ))}
             </div>
+
+            <FastScrollRail
+              totalPages={totalPages}
+              currentPage={currentPage}
+              onPageSelect={scrollToWebtoonPage}
+              containerRef={webtoonScrollRef}
+            />
           </div>
         ) : (
           /* Single Page / Double Page Manga View */

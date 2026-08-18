@@ -1,5 +1,5 @@
 import React from "react";
-import { StyleSheet, Text, View, TouchableOpacity } from "react-native";
+import { StyleSheet, Text, View, TouchableOpacity, Pressable } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { Gallery, Tag } from "@/lib/api/types";
@@ -7,6 +7,7 @@ import { useTheme } from "@/lib/ThemeContext";
 import { CardPressable } from "@/components/ui/CardPressable";
 import SmartImage from "@/components/SmartImage";
 import { useFavorites } from "@/lib/favoritesStore";
+import { lightTap } from "@/lib/haptics";
 
 export interface BookCardProps {
   gallery: Gallery;
@@ -78,6 +79,17 @@ export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
   const handleFavoritePress = (e: any) => {
     e?.stopPropagation?.();
     toggleFavorite(gallery);
+  };
+
+  // Tag d'aperçu cliquable : recherche par tag + retour haptique léger,
+  // sans déclencher l'ouverture de la carte (stopPropagation).
+  const handleTagPress = (e: any, name: string) => {
+    e?.stopPropagation?.();
+    lightTap();
+    router.push({
+      pathname: "/",
+      params: { tag: name },
+    });
   };
 
   // Filter preview tags (artist, group, parody, or popular tag)
@@ -163,8 +175,9 @@ export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
             {tagChips.map((t) => {
               const themeStyle = TAG_TYPE_COLORS[t.type] || TAG_TYPE_COLORS.tag;
               return (
-                <View
+                <Pressable
                   key={t.name}
+                  onPress={(e) => handleTagPress(e, t.name)}
                   style={[
                     styles.tagChip,
                     { backgroundColor: themeStyle.bg, borderColor: themeStyle.border },
@@ -176,7 +189,7 @@ export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
                   >
                     {t.name}
                   </Text>
-                </View>
+                </Pressable>
               );
             })}
             {extraTagsCount > 0 && (

@@ -4,11 +4,13 @@ import { scanLocalLibrary, openFolder } from "../../utils/ipc";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { Icon } from "../common/Icon";
 import { LocalReaderModal } from "./LocalReaderModal";
+import { QuickShareHubModal } from "../share/QuickShareHubModal";
 
 export const LibraryView: React.FC = () => {
   const { settings } = useSettingsStore();
   const [books, setBooks] = useState<LocalBookItem[]>([]);
   const [selectedBookForReading, setSelectedBookForReading] = useState<LocalBookItem | null>(null);
+  const [isQuickShareOpen, setIsQuickShareOpen] = useState(false);
   const [filterQuery, setFilterQuery] = useState("");
   const [formatFilter, setFormatFilter] = useState<"all" | "cbz" | "zip" | "folder">("all");
   const [sortBy, setSortBy] = useState<"recent" | "name" | "size">("recent");
@@ -128,6 +130,15 @@ export const LibraryView: React.FC = () => {
         {/* Header Action Buttons */}
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setIsQuickShareOpen(true)}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-md bg-linear-to-r from-[#ed2553] to-[#e11d48] hover:from-[#f43f5e] hover:to-[#ed2553] text-white text-xs font-bold transition-all shadow-md shadow-[#ed2553]/20 cursor-pointer"
+            title="Transférer votre collection CBZ vers votre smartphone en Wi-Fi direct"
+          >
+            <Icon name="wifi_tethering" size={16} />
+            <span>⚡ Quick Share Wi-Fi (Android)</span>
+          </button>
+
+          <button
             onClick={() => openFolder(settings.download_directory)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#25252e] hover:bg-[#30303c] text-gray-200 text-xs font-semibold border border-[#353545] transition-colors cursor-pointer"
             title="Ouvrir le dossier dans l'Explorateur Windows"
@@ -139,7 +150,7 @@ export const LibraryView: React.FC = () => {
           <button
             onClick={fetchLibrary}
             disabled={isLoading}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-md bg-[#ed2553] hover:bg-[#f43f5e] text-white text-xs font-bold transition-colors shadow-sm cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-md bg-[#25252e] hover:bg-[#30303c] text-gray-200 text-xs font-semibold border border-[#353545] transition-colors shadow-sm cursor-pointer disabled:opacity-50"
             title="Actualiser le scan du dossier"
           >
             <Icon
@@ -461,6 +472,14 @@ export const LibraryView: React.FC = () => {
         <LocalReaderModal
           book={selectedBookForReading}
           onClose={() => setSelectedBookForReading(null)}
+        />
+      )}
+
+      {/* Quick Share Wi-Fi Gigabit Transfer Modal */}
+      {isQuickShareOpen && (
+        <QuickShareHubModal
+          onClose={() => setIsQuickShareOpen(false)}
+          initialDirectory={settings.download_directory}
         />
       )}
     </div>

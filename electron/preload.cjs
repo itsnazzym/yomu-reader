@@ -18,6 +18,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getImageData: (params) => ipcRenderer.invoke("get-image-data", params),
   preloadGalleryImages: (params) => ipcRenderer.invoke("preload-gallery-images", params),
   saveDownloadedArchive: (params) => ipcRenderer.invoke("save-downloaded-archive", params),
+  getCdnConfig: () => ipcRenderer.invoke("get-cdn-config"),
+  getGalleryComments: (params) => ipcRenderer.invoke("get-gallery-comments", params),
+  updateDnsSettings: (params) => ipcRenderer.invoke("update-dns-settings", params),
+  startQuickShareServer: (params) => ipcRenderer.invoke("start-quick-share-server", params),
+  stopQuickShareServer: () => ipcRenderer.invoke("stop-quick-share-server"),
+  getQuickShareStatus: () => ipcRenderer.invoke("get-quick-share-status"),
+  getLocalDownloadedFiles: (params) => ipcRenderer.invoke("get-local-downloaded-files", params),
   logTerminal: (text) => ipcRenderer.invoke("log-terminal", { text }),
   onDownloadProgress: (callback) => {
     const handler = (_event, payload) => callback(payload);
@@ -28,5 +35,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     const handler = (_event, cookies) => callback(cookies);
     ipcRenderer.on("cookies-captured", handler);
     return () => ipcRenderer.removeListener("cookies-captured", handler);
+  },
+  onCloudflareChallengeNeeded: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("cloudflare-challenge-needed", handler);
+    return () => ipcRenderer.removeListener("cloudflare-challenge-needed", handler);
   },
 });

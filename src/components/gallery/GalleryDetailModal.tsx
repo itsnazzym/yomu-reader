@@ -1,8 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Gallery, Tag, ImageInfo } from "../../types";
-import { getCoverUrl, getGalleryDisplayTitle, cleanCdnPath } from "../../utils/ipc";
+import { getGalleryDisplayTitle, getCoverUrl, cleanCdnPath, buildImageFallbacks, getGallery } from "../../utils/ipc";
 import { useDownloadStore } from "../../stores/downloadStore";
+import { useFavoriteStore } from "../../stores/favoriteStore";
 import { Icon } from "../common/Icon";
+import { CommentSection } from "./CommentSection";
+import { SmartImage } from "../common/SmartImage";
+import { QuickShareModal } from "../common/QuickShareModal";
 
 interface GalleryDetailModalProps {
   gallery: Gallery | null;
@@ -15,49 +19,27 @@ interface GalleryDetailModalProps {
 const ThumbnailImage: React.FC<{
   mediaId: string;
   pageIndex: number;
-  pageInfo: ImageInfo;
+  pageInfo?: ImageInfo;
   onClick?: () => void;
 }> = ({ mediaId, pageIndex, pageInfo, onClick }) => {
-  const pageNum = pageInfo.number || pageIndex + 1;
-  const thumbPath = cleanCdnPath(pageInfo.thumbnail);
+  const pageNum = pageInfo?.number || pageIndex + 1;
+  const thumbPath = pageInfo?.thumbnail || pageInfo?.path || "";
 
-  const candidateUrls: string[] = [];
-  if (thumbPath) candidateUrls.push(`https://t.nhentai.net/${thumbPath}`);
-  if (pageInfo.path) candidateUrls.push(`https://i.nhentai.net/${cleanCdnPath(pageInfo.path)}`);
-  if (mediaId) {
-    candidateUrls.push(`https://t.nhentai.net/galleries/${mediaId}/${pageNum}t.webp`);
-    candidateUrls.push(`https://t.nhentai.net/galleries/${mediaId}/${pageNum}t.jpg`);
-    candidateUrls.push(`https://i.nhentai.net/galleries/${mediaId}/${pageNum}.webp`);
-    candidateUrls.push(`https://i.nhentai.net/galleries/${mediaId}/${pageNum}.jpg`);
-    candidateUrls.push(`https://t.nhentai.net/galleries/${mediaId}/${pageNum}t.png`);
-    candidateUrls.push(`https://i.nhentai.net/galleries/${mediaId}/${pageNum}.png`);
-  }
-
-  const [srcIndex, setSrcIndex] = useState(0);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const candidateUrls = React.useMemo(() => {
+    return buildImageFallbacks(thumbPath, "thumb", mediaId, pageNum);
+  }, [thumbPath, mediaId, pageNum]);
 
   return (
     <div
       onClick={onClick}
       className="group relative aspect-[3/4.2] bg-[#22222c] border border-[#2d2d3a] hover:border-[#ed2553] rounded overflow-hidden cursor-pointer transition-all shadow-xs flex items-center justify-center"
     >
-      <img
-        src={candidateUrls[srcIndex] || candidateUrls[0]}
+      <SmartImage
+        candidates={candidateUrls}
         alt={`Page ${pageNum}`}
-        loading="lazy"
-        onLoad={() => setIsLoaded(true)}
-        onError={() => {
-          if (srcIndex < candidateUrls.length - 1) {
-            setSrcIndex((prev) => prev + 1);
-          }
-        }}
-        className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-200 ${
-          isLoaded ? "opacity-100" : "opacity-0"
-        }`}
+        className="w-full h-full"
+        imgClassName="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
       />
-      {!isLoaded && (
-        <div className="absolute inset-0 bg-[#22222c] animate-pulse" />
-      )}
       <div className="absolute bottom-0 inset-x-0 bg-black/70 text-center text-[10px] font-mono text-gray-300 py-0.5 z-10">
         {pageNum}
       </div>
@@ -71,24 +53,43 @@ export const GalleryDetailModal: React.FC<GalleryDetailModalProps> = ({
   onTagClick,
   onRead,
 }) => {
-  if (!gallery) return null;
+  const [currentGallery, setCurrentGallery] = useState<Gallery | null>(gallery);
+
+  useEffect(() => {
+    if (gallery) {
+      setCurrentGallery(gallery);
+      if (!gallery.images?.pages || gallery.images.pages.length === 0) {
+        getGallery(gallery.id)
+          .then((full) => {
+            if (full) setCurrentGallery(full);
+          })
+          .catch(() => {});
+      }
+    }
+  }, [gallery]);
+
+  if (!currentGallery) return null;
 
   const { queue, addToQueue } = useDownloadStore();
-  const [isFavorite, setIsFavorite] = useState(false);
+  const { isFavorite, toggleFavorite } = useFavoriteStore();
+  const favorited = isFavorite(currentGallery.id);
+  const [isShareOpen, setIsShareOpen] = useState(false);
 
-  const title = getGalleryDisplayTitle(gallery);
-  const coverUrl = getCoverUrl(gallery);
+  const title = getGalleryDisplayTitle(currentGallery);
+  const coverUrl = getCoverUrl(currentGallery) || (currentGallery.images?.cover?.path ? cleanCdnPath(currentGallery.images.cover.path) : "");
+  const [activeBottomTab, setActiveBottomTab] = useState<"pages" | "comments">("pages");
   const isQueued = queue.some(
-    (i) => i.id === gallery.id && (i.status === "downloading" || i.status === "queued" || i.status === "completed")
+    (i) => i.id === currentGallery.id && (i.status === "downloading" || i.status === "queued" || i.status === "completed")
   );
 
-  const artistTags = gallery.tags.filter((t) => t.type === "artist");
-  const groupTags = gallery.tags.filter((t) => t.type === "group");
-  const parodyTags = gallery.tags.filter((t) => t.type === "parody");
-  const characterTags = gallery.tags.filter((t) => t.type === "character");
-  const regularTags = gallery.tags.filter((t) => t.type === "tag");
-  const langTags = gallery.tags.filter((t) => t.type === "language");
-  const catTags = gallery.tags.filter((t) => t.type === "category");
+  const allTags = Array.isArray(currentGallery.tags) ? currentGallery.tags : [];
+  const artistTags = allTags.filter((t) => t && t.type === "artist");
+  const groupTags = allTags.filter((t) => t && t.type === "group");
+  const parodyTags = allTags.filter((t) => t && t.type === "parody");
+  const characterTags = allTags.filter((t) => t && t.type === "character");
+  const regularTags = allTags.filter((t) => t && t.type === "tag");
+  const langTags = allTags.filter((t) => t && t.type === "language");
+  const catTags = allTags.filter((t) => t && t.type === "category");
 
   const formatCount = (count: number) => {
     if (!count) return "";
@@ -96,8 +97,10 @@ export const GalleryDetailModal: React.FC<GalleryDetailModalProps> = ({
     return String(count);
   };
 
-  const timeAgo = (timestamp: number) => {
+  const timeAgo = (timestamp?: number) => {
+    if (!timestamp || isNaN(timestamp)) return "Récemment";
     const diff = Math.floor(Date.now() / 1000) - timestamp;
+    if (diff < 0) return "Récemment";
     const hours = Math.floor(diff / 3600);
     if (hours < 24) return `il y a ${Math.max(1, hours)} heures`;
     const days = Math.floor(hours / 24);
@@ -105,6 +108,11 @@ export const GalleryDetailModal: React.FC<GalleryDetailModalProps> = ({
     const months = Math.floor(days / 30);
     return `il y a ${months} mois`;
   };
+
+  const mid = currentGallery.media_id || String(currentGallery.id);
+  const coverCandidates = React.useMemo(() => {
+    return buildImageFallbacks(coverUrl, "thumb", mid);
+  }, [coverUrl, mid]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs select-none overflow-y-auto">
@@ -125,14 +133,15 @@ export const GalleryDetailModal: React.FC<GalleryDetailModalProps> = ({
             {/* Left Column: Big Cover */}
             <div className="w-full md:w-80 shrink-0">
               <div className="aspect-[3/4.4] w-full rounded-lg overflow-hidden bg-[#202028] border border-[#2d2d3c] shadow-xl relative group">
-                <img
-                  src={coverUrl}
+                <SmartImage
+                  candidates={coverCandidates}
                   alt={title}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full"
+                  imgClassName="w-full h-full object-cover"
                 />
                 {onRead && (
                   <button
-                    onClick={() => onRead(gallery, 0)}
+                    onClick={() => onRead(currentGallery, 0)}
                     className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white font-bold bg-[#ed2553]/80 backdrop-blur-xs cursor-pointer"
                   >
                     <Icon name="auto_stories" size={24} />
@@ -150,7 +159,7 @@ export const GalleryDetailModal: React.FC<GalleryDetailModalProps> = ({
                   {title}
                 </h1>
                 <div className="text-xs font-mono font-bold text-[#ed2553] mt-1">
-                  #d{gallery.id}
+                  #d{currentGallery.id}
                 </div>
               </div>
 
@@ -292,13 +301,13 @@ export const GalleryDetailModal: React.FC<GalleryDetailModalProps> = ({
                 {/* Page Count */}
                 <div className="flex items-center gap-2">
                   <span className="font-bold text-gray-400 min-w-[100px]">Nombre de pages :</span>
-                  <span className="font-mono font-bold text-white">{gallery.num_pages}</span>
+                  <span className="font-mono font-bold text-white">{currentGallery.num_pages}</span>
                 </div>
 
                 {/* Upload date */}
                 <div className="flex items-center gap-2">
                   <span className="font-bold text-gray-400 min-w-[100px]">Mise en ligne :</span>
-                  <span className="text-gray-300">{timeAgo(gallery.upload_date)}</span>
+                  <span className="text-gray-300">{timeAgo(currentGallery.upload_date)}</span>
                 </div>
               </div>
 
@@ -307,7 +316,7 @@ export const GalleryDetailModal: React.FC<GalleryDetailModalProps> = ({
                 {/* Big Magenta Button: Read / Favorites */}
                 {onRead && (
                   <button
-                    onClick={() => onRead(gallery, 0)}
+                    onClick={() => onRead(currentGallery, 0)}
                     className="flex items-center gap-2 px-5 py-2.5 rounded-md bg-[#ed2553] hover:bg-[#f43f5e] text-white text-xs font-bold transition-all shadow-md cursor-pointer"
                   >
                     <Icon name="auto_stories" size={18} />
@@ -316,9 +325,9 @@ export const GalleryDetailModal: React.FC<GalleryDetailModalProps> = ({
                 )}
 
                 <button
-                  onClick={() => setIsFavorite(!isFavorite)}
+                  onClick={() => toggleFavorite(currentGallery)}
                   className={`flex items-center gap-2 px-4 py-2.5 rounded-md text-xs font-bold transition-all border cursor-pointer ${
-                    isFavorite
+                    favorited
                       ? "bg-[#ed2553] text-white border-[#f43f5e]"
                       : "bg-[#242430] hover:bg-[#303040] text-gray-200 border-[#323242]"
                   }`}
@@ -326,15 +335,15 @@ export const GalleryDetailModal: React.FC<GalleryDetailModalProps> = ({
                   <Icon
                     name="favorite"
                     size={18}
-                    filled={isFavorite}
-                    className={isFavorite ? "text-white" : "text-rose-400"}
+                    filled={favorited}
+                    className={favorited ? "text-white" : "text-rose-400"}
                   />
-                  <span>{isFavorite ? "Dans mes favoris" : "Ajouter à mes favoris"}</span>
+                  <span>{favorited ? "Dans mes favoris" : "Ajouter à mes favoris"}</span>
                 </button>
 
                 {/* Download CBZ / ZIP */}
                 <button
-                  onClick={() => addToQueue(gallery, "cbz")}
+                  onClick={() => addToQueue(currentGallery, "cbz")}
                   disabled={isQueued}
                   className="flex items-center gap-2 px-4 py-2.5 rounded-md bg-[#242430] hover:bg-[#303040] text-gray-200 border border-[#323242] text-xs font-bold transition-colors disabled:opacity-50 cursor-pointer"
                   title="Télécharger au format CBZ avec ComicInfo.xml"
@@ -351,30 +360,76 @@ export const GalleryDetailModal: React.FC<GalleryDetailModalProps> = ({
                     </>
                   )}
                 </button>
+
+                {/* Quick Share & AirDrop */}
+                <button
+                  onClick={() => setIsShareOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-md bg-[#242430] hover:bg-[#303040] text-gray-200 border border-[#323242] text-xs font-bold transition-colors cursor-pointer"
+                  title="Partager via QR Code, AirDrop ou Liens"
+                >
+                  <Icon name="share" size={18} className="text-cyan-400" />
+                  <span>Partager</span>
+                </button>
               </div>
             </div>
           </div>
 
-          {/* Bottom Section: Grid of Page Thumbnails */}
-          <div className="space-y-3 pt-4 border-t border-[#252532]">
-            <h3 className="text-sm font-bold text-gray-200 flex items-center gap-2">
-              <Icon name="grid_view" size={18} className="text-rose-400" />
-              <span>Aperçu des Pages ({gallery.images?.pages?.length || gallery.num_pages}) :</span>
-            </h3>
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2.5 max-h-72 overflow-y-auto pr-1">
-              {(gallery.images?.pages || []).map((p, idx) => (
-                <ThumbnailImage
-                  key={idx}
-                  mediaId={gallery.media_id || String(gallery.id)}
-                  pageIndex={idx}
-                  pageInfo={p}
-                  onClick={() => onRead?.(gallery, idx)}
-                />
-              ))}
+          {/* Bottom Section: Tabs for Page Thumbnails & Community Comments */}
+          <div className="space-y-4 pt-4 border-t border-[#252532]">
+            <div className="flex items-center gap-3 border-b border-[#292938] pb-2">
+              <button
+                onClick={() => setActiveBottomTab("pages")}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                  activeBottomTab === "pages"
+                    ? "bg-[#ed2553] text-white shadow-sm"
+                    : "text-gray-400 hover:text-gray-200 hover:bg-[#252530]"
+                }`}
+              >
+                <Icon name="grid_view" size={16} />
+                <span>Planches ({currentGallery.images?.pages?.length || currentGallery.num_pages})</span>
+              </button>
+
+              <button
+                onClick={() => setActiveBottomTab("comments")}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                  activeBottomTab === "comments"
+                    ? "bg-[#ed2553] text-white shadow-sm"
+                    : "text-gray-400 hover:text-gray-200 hover:bg-[#252530]"
+                }`}
+              >
+                <Icon name="chat_bubble" size={16} />
+                <span>Commentaires</span>
+              </button>
             </div>
+
+            {activeBottomTab === "pages" ? (
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2.5 max-h-72 overflow-y-auto pr-1">
+                {Array.from({ length: currentGallery.images?.pages?.length || currentGallery.num_pages || 1 }).map((_, idx) => {
+                  const p = currentGallery.images?.pages?.[idx];
+                  return (
+                    <ThumbnailImage
+                      key={idx}
+                      mediaId={currentGallery.media_id || String(currentGallery.id)}
+                      pageIndex={idx}
+                      pageInfo={p}
+                      onClick={() => onRead?.(currentGallery, idx)}
+                    />
+                  );
+                })}
+              </div>
+            ) : (
+              <CommentSection galleryId={currentGallery.id} />
+            )}
           </div>
         </div>
       </div>
+
+      {isShareOpen && (
+        <QuickShareModal
+          gallery={currentGallery}
+          onClose={() => setIsShareOpen(false)}
+        />
+      )}
     </div>
   );
 };

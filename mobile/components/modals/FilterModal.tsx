@@ -13,7 +13,7 @@ import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/lib/ThemeContext";
 
 export interface FilterOptions {
-  sort: "recent" | "popular-today" | "popular-week" | "popular-month" | "popular";
+  sort: "recent" | "popular-today" | "popular-week" | "popular";
   language: string;
   pageRange: string;
   dateFilter: string;
@@ -84,13 +84,15 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
     }).start();
   };
 
-  const sortOptions = [
-    { key: "recent", label: "New", icon: "clock" as const },
-    { key: "popular-today", label: "Hot Today", icon: "sun" as const },
-    { key: "popular-week", label: "Hot Week", icon: "calendar" as const },
-    { key: "popular-month", label: "Hot Month", icon: "calendar" as const },
-    { key: "popular", label: "Hot", icon: "trending-up" as const },
-  ];
+  // Tri façon nhentai.net : un mode « Recent | Popular », et une période
+  // (Today / Week / All time) visible seulement en mode Popular.
+  const popularPeriods = [
+    { key: "popular-today", label: "Today" },
+    { key: "popular-week", label: "Week" },
+    { key: "popular", label: "All time" },
+  ] as const;
+  const sortMode: "recent" | "popular" =
+    currentSort === "recent" ? "recent" : "popular";
 
   const languages = [
     { key: "all", label: "All languages" },
@@ -122,6 +124,17 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
   const handleApply = () => {
     onChange({
       sort: currentSort,
+      language: currentLang,
+      pageRange: currentPageRange,
+      dateFilter: currentDateFilter,
+    });
+    onClose();
+  };
+
+  const selectSort = (key: FilterOptions["sort"]) => {
+    setCurrentSort(key);
+    onChange({
+      sort: key,
       language: currentLang,
       pageRange: currentPageRange,
       dateFilter: currentDateFilter,
@@ -207,56 +220,73 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
               <View style={styles.sortSection}>
                 <Text style={styles.sortHeader}>SORT</Text>
 
-                {sortOptions.map((item) => {
-                  const isSelected = currentSort === item.key;
-                  return (
-                    <TouchableOpacity
-                      key={item.key}
-                      activeOpacity={0.7}
-                      onPress={() => {
-                        setCurrentSort(item.key as any);
-                        onChange({
-                          sort: item.key as any,
-                          language: currentLang,
-                          pageRange: currentPageRange,
-                          dateFilter: currentDateFilter,
-                        });
-                        onClose();
-                      }}
-                      style={[
-                        styles.sortRow,
-                        isSelected && { backgroundColor: "rgba(197, 135, 141, 0.15)" },
-                      ]}
-                    >
-                      <View style={styles.optionLeft}>
-                        <Feather
-                          name={item.icon}
-                          size={16}
-                          color={isSelected ? "#c5878d" : "#9ca3af"}
-                          style={styles.optionIcon}
-                        />
-                        <Text
-                          style={[
-                            styles.sortLabel,
-                            isSelected && { color: "#c5878d", fontWeight: "800" },
-                          ]}
-                        >
-                          {item.label}
-                        </Text>
-                      </View>
-
-                      {/* Radio Circle */}
-                      <View
+                {/* Mode : Recent | Popular (comme nhentai.net) */}
+                <View style={styles.sortModeRow}>
+                  {(["recent", "popular"] as const).map((mode) => {
+                    const isActive = sortMode === mode;
+                    return (
+                      <TouchableOpacity
+                        key={mode}
+                        activeOpacity={0.7}
+                        onPress={() =>
+                          selectSort(
+                            mode === "recent"
+                              ? "recent"
+                              : popularPeriods[0].key // Popular → Today par défaut
+                          )
+                        }
                         style={[
-                          styles.radioOuter,
-                          isSelected && { borderColor: "#c5878d" },
+                          styles.sortModePill,
+                          isActive && {
+                            backgroundColor: "rgba(197, 135, 141, 0.15)",
+                            borderColor: "#c5878d",
+                          },
                         ]}
                       >
-                        {isSelected && <View style={styles.radioInner} />}
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
+                        <Text
+                          style={[
+                            styles.sortModeText,
+                            isActive && { color: "#c5878d", fontWeight: "800" },
+                          ]}
+                        >
+                          {mode === "recent" ? "Recent" : "Popular"}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Période — visible seulement en mode Popular */}
+                {sortMode === "popular" && (
+                  <View style={styles.periodRow}>
+                    {popularPeriods.map((period) => {
+                      const isSelected = currentSort === period.key;
+                      return (
+                        <TouchableOpacity
+                          key={period.key}
+                          activeOpacity={0.7}
+                          onPress={() => selectSort(period.key)}
+                          style={[
+                            styles.periodPill,
+                            isSelected && {
+                              backgroundColor: "rgba(197, 135, 141, 0.15)",
+                              borderColor: "#c5878d",
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.periodText,
+                              isSelected && { color: "#c5878d", fontWeight: "800" },
+                            ]}
+                          >
+                            {period.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
               </View>
             </View>
           )}
@@ -467,32 +497,43 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 6,
   },
-  sortRow: {
+  sortModeRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 10,
+    gap: 8,
     paddingHorizontal: 14,
+    paddingBottom: 10,
   },
-  sortLabel: {
-    fontSize: 13,
-    color: "#d1d5db",
-    fontWeight: "500",
-  },
-  radioOuter: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 1.5,
-    borderColor: "#4b5563",
+  sortModePill: {
+    flex: 1,
+    paddingVertical: 9,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#2a2a3a",
     alignItems: "center",
-    justifyContent: "center",
   },
-  radioInner: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#c5878d",
+  sortModeText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#d1d5db",
+  },
+  periodRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingBottom: 12,
+  },
+  periodPill: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#2a2a3a",
+    alignItems: "center",
+  },
+  periodText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#d1d5db",
   },
   submenuHeader: {
     flexDirection: "row",

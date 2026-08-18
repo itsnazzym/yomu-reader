@@ -16,7 +16,7 @@ import { useTheme } from "@/lib/ThemeContext";
 import { BookCard } from "@/components/BookCard";
 import { CardPressable } from "@/components/ui/CardPressable";
 import { useFavorites } from "@/lib/favoritesStore";
-import { useAccount } from "@/lib/accountStore";
+import { useAccount, useSyncProgress } from "@/lib/accountStore";
 import { Gallery } from "@/lib/api/types";
 import { SignInModal } from "@/components/modals/SignInModal";
 
@@ -26,11 +26,12 @@ export default function FavoritesScreen() {
   const { width } = useWindowDimensions();
   const { favorites } = useFavorites();
   const { session, isLoggedIn, syncFavorites } = useAccount();
+  const syncProg = useSyncProgress();
 
   const [filterQuery, setFilterQuery] = useState("");
+  const [favTab, setFavTab] = useState<"all" | "cloud" | "local">("all");
   const [isSignInOpen, setIsSignInOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
   const numColumns = width >= 600 ? 3 : 2;
   const cardGap = 10;
@@ -39,16 +40,33 @@ export default function FavoritesScreen() {
     (width - horizontalPadding * 2 - cardGap * (numColumns - 1)) / numColumns
   );
 
+  // Comptes par provenance (cloud nhentai.net vs signets locaux de l'app).
+  const tabCounts = useMemo(() => {
+    const local = favorites.filter((f) => f.source === "local").length;
+    return { all: favorites.length, cloud: favorites.length - local, local };
+  }, [favorites]);
+
+  // Filtre par onglet (source), puis par texte : titre, ID ou n'importe quel
+  // tag/artiste/parodie (avant, les favoris cloud « Gallery #id » sans tags ne
+  // matchaient jamais → liste vide).
   const filtered = useMemo(() => {
-    if (!filterQuery.trim()) return favorites;
-    const q = filterQuery.toLowerCase();
-    return favorites.filter(
+    const tabFiltered =
+      favTab === "all"
+        ? favorites
+        : favorites.filter((g) =>
+            favTab === "local" ? g.source === "local" : g.source !== "local"
+          );
+    const q = filterQuery.trim().toLowerCase();
+    if (!q) return tabFiltered;
+    return tabFiltered.filter(
       (g) =>
         g.title?.pretty?.toLowerCase().includes(q) ||
         g.title?.english?.toLowerCase().includes(q) ||
-        String(g.id).includes(q)
+        g.title?.japanese?.toLowerCase().includes(q) ||
+        String(g.id).includes(q) ||
+        (g.tags || []).some((t) => t.name.toLowerCase().includes(q))
     );
-  }, [favorites, filterQuery]);
+  }, [favorites, favTab, filterQuery]);
 
   const handleSyncPress = async () => {
     if (!isLoggedIn) {
@@ -57,9 +75,8 @@ export default function FavoritesScreen() {
     }
 
     setSyncing(true);
-    setSyncMsg("Connexion Cloud...");
     try {
-      const res = await syncFavorites((msg) => setSyncMsg(msg));
+      const res = await syncFavorites();
       if (res.success) {
         Alert.alert("Cloud Synchronisé", `${res.count} favoris mis à jour avec le compte officiel.`);
       } else {
@@ -69,7 +86,6 @@ export default function FavoritesScreen() {
       Alert.alert("Erreur", e?.message || "Échec de synchronisation.");
     } finally {
       setSyncing(false);
-      setSyncMsg(null);
     }
   };
 
@@ -125,10 +141,45 @@ export default function FavoritesScreen() {
                   { color: isLoggedIn ? colors.accent : "#fff" },
                 ]}
               >
-                {syncing ? (syncMsg || "Sync...") : isLoggedIn ? "Sync Cloud" : "Lier Compte"}
+                {syncing ? "Synchronisation..." : isLoggedIn ? "Sync Cloud" : "Lier Compte"}
               </Text>
             </View>
           </CardPressable>
+        </View>
+
+        {/* Sélecteur de provenance : Tous / nHentai.net / Signets locaux */}
+        <View style={styles.tabRow}>
+          {(
+            [
+              { key: "all", label: `Tous (${tabCounts.all})` },
+              { key: "cloud", label: `nHentai.net (${tabCounts.cloud})` },
+              { key: "local", label: `Signets (${tabCounts.local})` },
+            ] as const
+          ).map((tab) => {
+            const active = favTab === tab.key;
+            return (
+              <Pressable
+                key={tab.key}
+                onPress={() => setFavTab(tab.key)}
+                style={[
+                  styles.tabPill,
+                  active && {
+                    backgroundColor: "rgba(197, 135, 141, 0.18)",
+                    borderColor: colors.accent,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.tabPillText,
+                    active && { color: colors.accent, fontWeight: "800" },
+                  ]}
+                >
+                  {tab.label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
 
         {/* Sync Status Banner */}
@@ -139,6 +190,34 @@ export default function FavoritesScreen() {
               Compte : <Text style={{ color: "#fff", fontWeight: "700" }}>{session.username || "nHentai"}</Text>
               {session.lastSync ? ` · Synchro à ${session.lastSync}` : ""}
             </Text>
+          </View>
+        )}
+
+        {/* Jauge de progression pendant une synchro longue (manuelle ou auto) */}
+        {syncProg.active && syncProg.total > 0 && (
+          <View style={styles.progressWrap}>
+            <View style={styles.progressTextRow}>
+              <Text style={styles.progressText} numberOfLines={1}>
+                {syncProg.msg}
+              </Text>
+              <Text style={styles.progressPct}>
+                {Math.min(100, Math.round((syncProg.current / syncProg.total) * 100))}%
+              </Text>
+            </View>
+            <View style={styles.progressTrack}>
+              <View
+                style={[
+                  styles.progressFill,
+                  {
+                    width: `${Math.max(
+                      2,
+                      Math.min(100, Math.round((syncProg.current / syncProg.total) * 100))
+                    )}%`,
+                    backgroundColor: colors.accent,
+                  },
+                ]}
+              />
+            </View>
           </View>
         )}
 
@@ -218,6 +297,25 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     fontWeight: "800",
   },
+  tabRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 10,
+  },
+  tabPill: {
+    flex: 1,
+    paddingVertical: 7,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#28283a",
+    backgroundColor: "#161622",
+    alignItems: "center",
+  },
+  tabPillText: {
+    fontSize: 11.5,
+    fontWeight: "600",
+    color: "#9ca3af",
+  },
   cloudBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -231,6 +329,36 @@ const styles = StyleSheet.create({
   cloudBannerText: {
     fontSize: 11.5,
     color: "#9ca3af",
+  },
+  progressWrap: {
+    marginTop: 10,
+    gap: 6,
+  },
+  progressTextRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  progressText: {
+    flex: 1,
+    fontSize: 11.5,
+    color: "#9ca3af",
+  },
+  progressPct: {
+    fontSize: 11.5,
+    fontWeight: "800",
+    color: "#f3f4f6",
+  },
+  progressTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#28283a",
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 3,
   },
   filterBar: {
     flexDirection: "row",

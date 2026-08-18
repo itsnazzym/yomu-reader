@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { DownloadFormat, Gallery, SortOption } from "../../types";
-import { searchGalleries, getCoverUrl, getGalleryDisplayTitle, getGalleryLanguage, getDownloadedGalleryIds } from "../../utils/ipc";
+import { searchGalleries, getCoverUrl, getGalleryDisplayTitle, getGalleryLanguage, getDownloadedGalleryIds, onDownloadProgress, buildImageFallbacks } from "../../utils/ipc";
 import { useDownloadStore } from "../../stores/downloadStore";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { Icon } from "../common/Icon";
+import { SmartImage } from "../common/SmartImage";
 
 interface BatchDownloaderViewProps {
   onSuccessNavigateToDownloads: () => void;
@@ -53,6 +54,29 @@ const PRESET_TAGS: MatrixTag[] = [
   { name: "parody:touhou project", category: "parody" },
 ];
 
+const BatchCoverImage: React.FC<{ gallery: Gallery; title: string; isSelected: boolean }> = ({
+  gallery,
+  title,
+  isSelected,
+}) => {
+  const mid = gallery.media_id || String(gallery.id);
+  const primaryCover = getCoverUrl(gallery);
+  const candidateUrls = React.useMemo(() => {
+    return buildImageFallbacks(primaryCover, "thumb", mid);
+  }, [primaryCover, mid]);
+
+  return (
+    <SmartImage
+      candidates={candidateUrls}
+      alt={title}
+      className="w-full h-full"
+      imgClassName={`w-full h-full object-cover transform transition-transform duration-300 ${
+        isSelected ? "scale-102" : "group-hover:scale-105"
+      }`}
+    />
+  );
+};
+
 export const BatchDownloaderView: React.FC<BatchDownloaderViewProps> = ({
   onSuccessNavigateToDownloads,
   onSelectGallery,
@@ -95,6 +119,18 @@ export const BatchDownloaderView: React.FC<BatchDownloaderViewProps> = ({
 
   useEffect(() => {
     refreshDownloadedDiskIds();
+  }, [refreshDownloadedDiskIds]);
+
+  // Dynamically refresh disk IDs as soon as any download completes
+  useEffect(() => {
+    const unsubscribe = onDownloadProgress((payload) => {
+      if (payload.status === "completed") {
+        refreshDownloadedDiskIds();
+      }
+    });
+    return () => {
+      unsubscribe();
+    };
   }, [refreshDownloadedDiskIds]);
 
   // Toggle selection for a single gallery
@@ -239,6 +275,8 @@ export const BatchDownloaderView: React.FC<BatchDownloaderViewProps> = ({
             hasMore = false;
           } else {
             page += 1;
+            // Anti-flood delay to prevent rate limit (429) on high-speed crawling
+            await new Promise((r) => setTimeout(r, 120));
           }
         }
 
@@ -296,6 +334,7 @@ export const BatchDownloaderView: React.FC<BatchDownloaderViewProps> = ({
           hasMore = false;
         } else {
           page += 1;
+          await new Promise((r) => setTimeout(r, 120));
         }
       }
 
@@ -698,7 +737,6 @@ export const BatchDownloaderView: React.FC<BatchDownloaderViewProps> = ({
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {previewGalleries.map((gallery) => {
               const title = getGalleryDisplayTitle(gallery);
-              const coverUrl = getCoverUrl(gallery);
               const lang = getGalleryLanguage(gallery);
               const isSelected = selectedIds.has(gallery.id);
 
@@ -715,25 +753,7 @@ export const BatchDownloaderView: React.FC<BatchDownloaderViewProps> = ({
                         : "border border-[#2b2b36] group-hover:border-[#ed2553]/70"
                     }`}
                   >
-                    <img
-                      src={coverUrl}
-                      alt={title}
-                      loading="lazy"
-                      className={`w-full h-full object-cover transform transition-transform duration-300 ${
-                        isSelected ? "scale-102" : "group-hover:scale-105"
-                      }`}
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        const mid = gallery.media_id || String(gallery.id);
-                        if (target.src.endsWith(".webp")) {
-                          target.src = `https://t.nhentai.net/galleries/${mid}/thumb.jpg`;
-                        } else if (target.src.endsWith(".jpg") || target.src.endsWith(".jpeg")) {
-                          target.src = `https://t.nhentai.net/galleries/${mid}/thumb.png`;
-                        } else {
-                          target.src = `https://t.nhentai.net/galleries/${mid}/thumb.webp`;
-                        }
-                      }}
-                    />
+                    <BatchCoverImage gallery={gallery} title={title} isSelected={isSelected} />
 
                     {/* Checkbox Overlay (Top Left) */}
                     <button

@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Gallery, ImageInfo } from "../../types";
-import { getGalleryDisplayTitle, fetchImageData, preloadGalleryImages, cleanCdnPath, isElectron } from "../../utils/ipc";
+import { getGalleryDisplayTitle, getCoverUrl, buildImageFallbacks, getGallery } from "../../utils/ipc";
+import { useHistoryStore } from "../../stores/historyStore";
 import { Icon } from "../common/Icon";
+import { FastScrollRail } from "./FastScrollRail";
+import { SmartImage } from "../common/SmartImage";
+import { QuickShareModal } from "../common/QuickShareModal";
 
 interface ReaderModalProps {
   gallery: Gallery | null;
@@ -18,135 +22,28 @@ const ReaderImage: React.FC<{
   galleryId: number;
   mediaId: string;
   pageIndex: number;
-  pageInfo: ImageInfo;
+  pageInfo?: ImageInfo;
   className?: string;
   alt?: string;
   priority?: boolean;
 }> = ({ galleryId, mediaId, pageIndex, pageInfo, className = "", alt = "", priority = false }) => {
-  const pageNum = pageInfo.number || pageIndex + 1;
-  const ext = pageInfo.t === "j" ? "jpg" : pageInfo.t === "p" ? "png" : pageInfo.t === "g" ? "gif" : "webp";
-  const rawPath = cleanCdnPath(pageInfo.path);
-  const mid = mediaId || String(galleryId);
+  const pageNum = pageInfo?.number || pageIndex + 1;
+  const pagePath = pageInfo?.path || "";
 
-  // Build candidate URLs with exact extension prioritized first
-  const candidateUrls: string[] = [];
-  if (rawPath) {
-    candidateUrls.push(`https://i.nhentai.net/${rawPath}`);
-  }
-  if (mid) {
-    candidateUrls.push(`https://i.nhentai.net/galleries/${mid}/${pageNum}.${ext}`);
-    if (ext !== "webp") candidateUrls.push(`https://i.nhentai.net/galleries/${mid}/${pageNum}.webp`);
-    if (ext !== "jpg") candidateUrls.push(`https://i.nhentai.net/galleries/${mid}/${pageNum}.jpg`);
-    if (ext !== "png") candidateUrls.push(`https://i.nhentai.net/galleries/${mid}/${pageNum}.png`);
-    candidateUrls.push(`https://i1.nhentai.net/galleries/${mid}/${pageNum}.${ext}`);
-    candidateUrls.push(`https://i2.nhentai.net/galleries/${mid}/${pageNum}.${ext}`);
-    candidateUrls.push(`https://i3.nhentai.net/galleries/${mid}/${pageNum}.${ext}`);
-    candidateUrls.push(`https://t.nhentai.net/galleries/${mid}/${pageNum}t.${ext}`);
-    candidateUrls.push(`https://t.nhentai.net/galleries/${mid}/${pageNum}t.webp`);
-  }
-
-  const [candidateIndex, setCandidateIndex] = useState(0);
-  const [dataUrl, setDataUrl] = useState<string | null>(null);
-  const [hasError, setHasError] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const referer = `https://nhentai.net/g/${galleryId}/`;
-  const primaryUrl = candidateUrls[candidateIndex] || candidateUrls[0];
-
-  useEffect(() => {
-    let isCancelled = false;
-    setCandidateIndex(0);
-    setHasError(false);
-    setIsLoading(true);
-
-    if (isElectron() && primaryUrl) {
-      fetchImageData(primaryUrl, referer)
-        .then((res) => {
-          if (!isCancelled && res) {
-            setDataUrl(res);
-            setIsLoading(false);
-          }
-        })
-        .catch(() => {});
-    }
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [galleryId, mediaId, pageNum, rawPath, primaryUrl, referer]);
-
-  const handleImageError = () => {
-    if (candidateIndex < candidateUrls.length - 1) {
-      const nextIndex = candidateIndex + 1;
-      setCandidateIndex(nextIndex);
-      const nextUrl = candidateUrls[nextIndex];
-      if (isElectron() && nextUrl) {
-        fetchImageData(nextUrl, referer)
-          .then((res) => {
-            if (res) {
-              setDataUrl(res);
-              setIsLoading(false);
-            }
-          })
-          .catch(() => {});
-      }
-    } else {
-      setHasError(true);
-      setIsLoading(false);
-    }
-  };
-
-  const handleRetry = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setCandidateIndex(0);
-    setHasError(false);
-    setIsLoading(true);
-    if (primaryUrl) {
-      fetchImageData(primaryUrl, referer)
-        .then((res) => {
-          if (res) {
-            setDataUrl(res);
-            setIsLoading(false);
-          }
-        })
-        .catch(() => {});
-    }
-  };
-
-  const finalSrc = dataUrl || primaryUrl;
+  const candidateUrls = React.useMemo(() => {
+    return buildImageFallbacks(pagePath, "page", mediaId, pageNum);
+  }, [pagePath, mediaId, pageNum]);
 
   return (
-    <div className="relative flex items-center justify-center min-h-[200px] bg-[#14141c] rounded overflow-hidden">
-      {isLoading && !dataUrl && (
-        <div className="absolute inset-0 flex items-center justify-center bg-[#14141c]/80 z-10">
-          <div className="w-8 h-8 border-2 border-[#ed2553] border-t-transparent rounded-full animate-spin" />
-        </div>
-      )}
-
-      {hasError ? (
-        <div className="flex flex-col items-center justify-center p-8 space-y-3 text-center my-6">
-          <Icon name="error" size={32} className="text-rose-400" />
-          <div className="text-xs text-gray-300 font-semibold">
-            Impossible de charger la page {pageNum}
-          </div>
-          <button
-            onClick={handleRetry}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-[#ed2553] hover:bg-[#f43f5e] text-white text-xs font-bold transition-colors cursor-pointer"
-          >
-            <Icon name="refresh" size={16} />
-            <span>Recharger la page</span>
-          </button>
-        </div>
-      ) : (
-        <img
-          src={finalSrc}
-          alt={alt || `Page ${pageNum}`}
-          loading={priority ? "eager" : "lazy"}
-          onLoad={() => setIsLoading(false)}
-          onError={handleImageError}
-          className={`${className} ${isLoading && !dataUrl ? "opacity-0" : "opacity-100"} transition-opacity duration-150`}
-        />
-      )}
+    <div className="relative flex items-center justify-center max-w-full max-h-full bg-[#14141c]/50 rounded overflow-hidden">
+      <SmartImage
+        candidates={candidateUrls}
+        alt={alt || `Page ${pageNum}`}
+        priority={priority}
+        className="max-w-full max-h-full flex items-center justify-center"
+        imgClassName={className}
+        referer={`https://nhentai.net/g/${galleryId}/${pageNum}/`}
+      />
     </div>
   );
 };
@@ -158,6 +55,19 @@ export const ReaderModal: React.FC<ReaderModalProps> = ({
 }) => {
   if (!gallery) return null;
 
+  const [currentGallery, setCurrentGallery] = useState<Gallery>(gallery);
+
+  useEffect(() => {
+    setCurrentGallery(gallery);
+    if (!gallery.images?.pages || gallery.images.pages.length === 0) {
+      getGallery(gallery.id)
+        .then((full) => {
+          if (full) setCurrentGallery(full);
+        })
+        .catch(() => {});
+    }
+  }, [gallery]);
+
   const [currentPage, setCurrentPage] = useState(initialPage);
   const [readingMode, setReadingMode] = useState<ReadingMode>("manga-rtl");
   const [zoomMode, setZoomMode] = useState<ZoomMode>("fit-height");
@@ -167,6 +77,7 @@ export const ReaderModal: React.FC<ReaderModalProps> = ({
   const [webtoonGap, setWebtoonGap] = useState<number>(8);
   const [doublePage, setDoublePage] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isShareOpen, setIsShareOpen] = useState(false);
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
@@ -175,49 +86,66 @@ export const ReaderModal: React.FC<ReaderModalProps> = ({
   const webtoonScrollRef = useRef<HTMLDivElement>(null);
   const lastWheelTimeRef = useRef<number>(0);
 
-  const totalPages = gallery.images?.pages?.length || gallery.num_pages || 1;
-  const title = getGalleryDisplayTitle(gallery);
+  const totalPages = currentGallery.images?.pages?.length || currentGallery.num_pages || 1;
+  const title = getGalleryDisplayTitle(currentGallery);
 
   // Synchronize initial page
   useEffect(() => {
     setCurrentPage(initialPage);
   }, [initialPage]);
 
-  // High-Speed Background RAM Preloading Engine
+  // Save reading progress to History
   useEffect(() => {
-    if (!gallery.images?.pages || gallery.images.pages.length === 0) return;
-    const pages = gallery.images.pages;
-    const mediaId = gallery.media_id;
-    const referer = `https://nhentai.net/g/${gallery.id}/`;
+    if (currentGallery && totalPages > 0) {
+      useHistoryStore.getState().saveProgress({
+        id: currentGallery.id,
+        mediaId: currentGallery.media_id,
+        title: getGalleryDisplayTitle(currentGallery),
+        coverUrl: getCoverUrl(currentGallery),
+        lastReadPage: currentPage,
+        totalPages: totalPages,
+      });
+    }
+  }, [currentPage, currentGallery, totalPages]);
 
-    const startIdx = readingMode === "webtoon" ? 0 : currentPage;
-    const count = preloadCount === "all" ? pages.length : preloadCount;
-    const endIdx = preloadCount === "all" ? pages.length : Math.min(pages.length, startIdx + count + 1);
+  // High-Speed Browser Cache Preloading Engine (NHApp pattern)
+  useEffect(() => {
+    if (!currentGallery.images?.pages || currentGallery.images.pages.length === 0) return;
+    const pages = currentGallery.images.pages;
+    const mediaId = currentGallery.media_id;
 
-    const urlsToPreload: string[] = [];
+    const startIdx = readingMode === "webtoon" ? 0 : Math.max(0, currentPage - 1);
+    const count = preloadCount === "all" ? pages.length : (typeof preloadCount === "number" ? preloadCount + 2 : 3);
+    const endIdx = preloadCount === "all" ? pages.length : Math.min(pages.length, startIdx + count);
+
+    setPreloadStatus("loading");
+    let loadedCount = 0;
+    const totalToLoad = endIdx - startIdx;
+
     for (let i = startIdx; i < endIdx; i++) {
       const pageInfo = pages[i];
       if (!pageInfo) continue;
       const pageNum = pageInfo.number || i + 1;
-      const ext = pageInfo.t === "j" ? "jpg" : pageInfo.t === "p" ? "png" : pageInfo.t === "g" ? "gif" : "webp";
-      const rawPath = pageInfo.path;
-      const imgUrl = rawPath
-        ? `https://i.nhentai.net/${rawPath.replace(/^\//, "")}`
-        : `https://i.nhentai.net/galleries/${mediaId}/${pageNum}.${ext}`;
-      urlsToPreload.push(imgUrl);
+      const pagePath = pageInfo.path || "";
+      const candidates = buildImageFallbacks(pagePath, "page", mediaId, pageNum);
+      if (candidates[0]) {
+        const img = new Image();
+        img.onload = () => {
+          loadedCount++;
+          if (loadedCount >= Math.min(3, totalToLoad)) {
+            setPreloadStatus("ready");
+          }
+        };
+        img.onerror = () => {
+          loadedCount++;
+          if (loadedCount >= totalToLoad) {
+            setPreloadStatus("ready");
+          }
+        };
+        img.src = candidates[0];
+      }
     }
-
-    if (urlsToPreload.length > 0) {
-      setPreloadStatus("loading");
-      preloadGalleryImages(urlsToPreload, referer)
-        .then(() => {
-          setPreloadStatus("ready");
-        })
-        .catch(() => {
-          setPreloadStatus("idle");
-        });
-    }
-  }, [currentPage, preloadCount, gallery, readingMode]);
+  }, [currentPage, preloadCount, currentGallery, readingMode]);
 
   const nextPage = useCallback(() => {
     const step = doublePage && readingMode !== "webtoon" ? 2 : 1;
@@ -266,6 +194,14 @@ export const ReaderModal: React.FC<ReaderModalProps> = ({
           break;
         }
       }
+    }
+  };
+
+  const scrollToWebtoonPage = (pageIdx: number) => {
+    const el = document.getElementById(`webtoon-page-${pageIdx}`);
+    if (el) {
+      el.scrollIntoView({ block: "start", behavior: "smooth" });
+      setCurrentPage(pageIdx);
     }
   };
 
@@ -392,15 +328,10 @@ export const ReaderModal: React.FC<ReaderModalProps> = ({
     }
   };
 
-  const currentPageInfo = gallery.images?.pages?.[currentPage] || {
-    t: "w",
-    w: 1280,
-    h: 1800,
-    number: currentPage + 1,
-  };
+  const currentPageInfo = currentGallery.images?.pages?.[currentPage];
 
   const nextPageInfo = doublePage && currentPage + 1 < totalPages
-    ? gallery.images?.pages?.[currentPage + 1] || { t: "w", w: 1280, h: 1800, number: currentPage + 2 }
+    ? currentGallery.images?.pages?.[currentPage + 1]
     : null;
 
   return (
@@ -430,7 +361,7 @@ export const ReaderModal: React.FC<ReaderModalProps> = ({
             <div className="text-[11px] text-gray-400 font-mono flex items-center gap-2">
               <span>Page {currentPage + 1} sur {totalPages}</span>
               <span>•</span>
-              <span className="text-[#ed2553]">#d{gallery.id}</span>
+              <span className="text-[#ed2553]">#d{currentGallery.id}</span>
               {preloadStatus === "loading" && (
                 <span className="flex items-center gap-1 text-amber-400 text-[10px]">
                   <Icon name="sync" size={12} className="animate-spin" />
@@ -652,6 +583,15 @@ export const ReaderModal: React.FC<ReaderModalProps> = ({
             )}
           </div>
 
+          {/* Quick Share & AirDrop */}
+          <button
+            onClick={() => setIsShareOpen(true)}
+            className="p-2 rounded-lg bg-[#20202e]/80 hover:bg-[#2e2e42] text-gray-300 hover:text-white transition-colors cursor-pointer"
+            title="Partager le manga (AirDrop, QR Code, Liens)"
+          >
+            <Icon name="share" size={20} className="text-cyan-400" />
+          </button>
+
           {/* Fullscreen Toggle */}
           <button
             onClick={toggleFullscreen}
@@ -680,27 +620,37 @@ export const ReaderModal: React.FC<ReaderModalProps> = ({
               className="max-w-3xl mx-auto pt-16 pb-20 px-2 flex flex-col items-center"
               style={{ gap: `${webtoonGap}px` }}
             >
-              {(gallery.images?.pages || []).map((p, idx) => (
-                <div
-                  key={idx}
-                  id={`webtoon-page-${idx}`}
-                  className="w-full relative bg-[#14141c] rounded shadow-lg overflow-hidden flex flex-col items-center"
-                >
-                  <ReaderImage
-                    galleryId={gallery.id}
-                    mediaId={gallery.media_id || String(gallery.id)}
-                    pageIndex={idx}
-                    pageInfo={p}
-                    className="w-full h-auto block"
-                    alt={`Page ${idx + 1}`}
-                    priority={idx < 4}
-                  />
-                  <div className="w-full text-center text-[10px] text-gray-500 py-1 bg-black/60 font-mono">
-                    Page {idx + 1} / {totalPages}
+              {Array.from({ length: totalPages }).map((_, idx) => {
+                const p = currentGallery.images?.pages?.[idx];
+                return (
+                  <div
+                    key={idx}
+                    id={`webtoon-page-${idx}`}
+                    className="w-full relative bg-[#14141c] rounded shadow-lg overflow-hidden flex flex-col items-center"
+                  >
+                    <ReaderImage
+                      galleryId={currentGallery.id}
+                      mediaId={currentGallery.media_id || String(currentGallery.id)}
+                      pageIndex={idx}
+                      pageInfo={p}
+                      className="w-full h-auto block"
+                      alt={`Page ${idx + 1}`}
+                      priority={idx < 4}
+                    />
+                    <div className="w-full text-center text-[10px] text-gray-500 py-1 bg-black/60 font-mono">
+                      Page {idx + 1} / {totalPages}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
+
+            <FastScrollRail
+              totalPages={totalPages}
+              currentPage={currentPage}
+              onPageSelect={scrollToWebtoonPage}
+              containerRef={webtoonScrollRef}
+            />
           </div>
         ) : (
           /* Single Page / Double Page Manga View */
@@ -713,8 +663,8 @@ export const ReaderModal: React.FC<ReaderModalProps> = ({
               {doublePage && nextPageInfo && (
                 <ReaderImage
                   key={`page-${currentPage + 1}`}
-                  galleryId={gallery.id}
-                  mediaId={gallery.media_id || String(gallery.id)}
+                  galleryId={currentGallery.id}
+                  mediaId={currentGallery.media_id || String(currentGallery.id)}
                   pageIndex={currentPage + 1}
                   pageInfo={nextPageInfo}
                   priority={true}
@@ -729,8 +679,8 @@ export const ReaderModal: React.FC<ReaderModalProps> = ({
               {/* Main Page */}
               <ReaderImage
                 key={`page-${currentPage}`}
-                galleryId={gallery.id}
-                mediaId={gallery.media_id || String(gallery.id)}
+                galleryId={currentGallery.id}
+                mediaId={currentGallery.media_id || String(currentGallery.id)}
                 pageIndex={currentPage}
                 pageInfo={currentPageInfo}
                 priority={true}
@@ -811,6 +761,13 @@ export const ReaderModal: React.FC<ReaderModalProps> = ({
             </button>
           </div>
         </div>
+      )}
+
+      {isShareOpen && (
+        <QuickShareModal
+          gallery={currentGallery}
+          onClose={() => setIsShareOpen(false)}
+        />
       )}
     </div>
   );

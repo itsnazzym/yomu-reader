@@ -6,11 +6,19 @@ import {
   Animated,
 } from "react-native";
 
+/**
+ * Échelle au press pour les petites puces cliquables (chips, tags, lignes).
+ * Centralisée ici pour que les appels n'aient pas à répéter le réglage.
+ */
+export const CHIP_PRESSED_SCALE = 0.93;
+
 export interface CardPressableProps {
   children?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   radius?: number;
   activeOpacity?: number;
+  /** "card" (défaut) : échelle douce ; "chip" : échelle 0.93 (puce/tag). */
+  variant?: "card" | "chip";
   pressedScale?: number;
   onPress?: (e?: any) => void;
   disabled?: boolean;
@@ -22,7 +30,8 @@ export function CardPressable({
   style,
   radius = 12,
   activeOpacity = 0.85,
-  pressedScale = 0.97,
+  variant = "card",
+  pressedScale = variant === "chip" ? CHIP_PRESSED_SCALE : 0.97,
   onPress,
   disabled,
   ...rest

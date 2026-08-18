@@ -184,6 +184,140 @@ test("un opérateur artist: ne crée pas de tag parasite", async () => {
   assert.ok(!r.profile.tags.some((t) => t.name === "alice"), "pas de tag 'alice' parasite");
 });
 
+test("un nom d'artiste multi-mots non quoté ne fuit pas en tag libre", async () => {
+  seedEmpty();
+  __setSearchHandler(() => []);
+  __mockSet(SEARCH_KEY, ["artist:siina tai"]);
+
+  const r = await generateRecommendations();
+
+  assert.ok(
+    r.profile.artists.some((a) => a.name === "siina tai"),
+    "nom complet conservé"
+  );
+  assert.ok(
+    !r.profile.artists.some((a) => a.name === "siina"),
+    "artiste non tronqué au premier mot"
+  );
+  assert.ok(!r.profile.tags.some((t) => t.name === "tai"), "pas de tag 'tai' parasite");
+});
+
+test("une parodie multi-mots non quotée garde son nom complet sans tag parasite", async () => {
+  seedEmpty();
+  __setSearchHandler(() => []);
+  __mockSet(SEARCH_KEY, ["parody:blue archive"]);
+
+  const r = await generateRecommendations();
+
+  assert.ok(
+    r.profile.parodies.some((p) => p.name === "blue archive"),
+    "parodie complète détectée"
+  );
+  assert.ok(
+    !r.profile.parodies.some((p) => p.name === "blue"),
+    "parodie non tronquée au premier mot"
+  );
+  assert.ok(!r.profile.tags.some((t) => t.name === "archive"), "pas de tag 'archive' parasite");
+});
+
+test("un opérateur technique mono-mot n'avale pas le tag libre suivant", async () => {
+  seedEmpty();
+  __setSearchHandler(() => []);
+  __mockSet(SEARCH_KEY, ["sort:popular anal"]);
+
+  const r = await generateRecommendations();
+
+  assert.ok(r.profile.tags.some((t) => t.name === "anal"), "le tag libre 'anal' survit");
+  assert.equal(r.profile.parodies.length, 0, "aucune parodie inventée");
+  assert.equal(r.profile.artists.length, 0, "aucun artiste inventé");
+});
+
+test("un mélange parodie quotée + tag libre préserve les deux signaux", async () => {
+  seedEmpty();
+  __setSearchHandler(() => []);
+  __mockSet(SEARCH_KEY, ['parody:"blue archive" femdom']);
+
+  const r = await generateRecommendations();
+
+  assert.ok(
+    r.profile.parodies.some((p) => p.name === "blue archive"),
+    "parodie quotée détectée"
+  );
+  assert.ok(r.profile.tags.some((t) => t.name === "femdom"), "tag libre conservé");
+});
+
+test("les opérateurs techniques nHentai ne fuient pas en tag libre", async () => {
+  seedEmpty();
+  __setSearchHandler(() => []);
+  __mockSet(SEARCH_KEY, [
+    "category:doujinshi",
+    "order:popular",
+    "comments:>50",
+    "favorites:1000",
+  ]);
+
+  const r = await generateRecommendations();
+
+  for (const leaked of ["category:doujinshi", "doujinshi", "popular", "comments:>50", "favorites:1000"]) {
+    assert.ok(!r.profile.tags.some((t) => t.name === leaked), `pas de tag '${leaked}' parasite`);
+  }
+});
+
+test("les valeurs de character/date/pages sont strippées sans fuite", async () => {
+  seedEmpty();
+  __setSearchHandler(() => []);
+  __mockSet(SEARCH_KEY, ["character:rem", "date:2023-05", "pages:10-20"]);
+
+  const r = await generateRecommendations();
+
+  for (const leaked of ["rem", "2023-05", "10-20", "date:2023-05", "pages:10-20"]) {
+    assert.ok(!r.profile.tags.some((t) => t.name === leaked), `pas de tag '${leaked}' parasite`);
+  }
+  assert.equal(r.profile.artists.length, 0, "aucun artiste inventé");
+  assert.equal(r.profile.parodies.length, 0, "aucune parodie inventée");
+});
+
+test("une recherche ne surpondère pas un tag déjà signalé par favori", async () => {
+  seedEmpty();
+  __setSearchHandler(() => []);
+  __mockSet(FAVORITES_KEY, [makeGallery(401, [tag("stockings")])]);
+  __mockSet(SEARCH_KEY, ["stockings"]);
+
+  const r = await generateRecommendations();
+
+  const stockings = r.profile.tags.find((t) => t.name === "stockings");
+  assert.ok(stockings, "tag favori détecté");
+  assert.equal(stockings.score, 3, "score du favori seul (pas de cumul recherche)");
+  assert.ok(stockings.sources.includes("fav"), "source favori conservée");
+  assert.ok(!stockings.sources.includes("search"), "source recherche non dupliquée");
+});
+
+test("une recherche ne surpondère pas un artiste déjà en favori", async () => {
+  seedEmpty();
+  __setSearchHandler(() => []);
+  __mockSet(FAVORITES_KEY, [makeGallery(402, [tag("alice", "artist")])]);
+  __mockSet(SEARCH_KEY, ["artist:alice"]);
+
+  const r = await generateRecommendations();
+
+  const alice = r.profile.artists.find((a) => a.name === "alice");
+  assert.ok(alice, "artiste favori détecté");
+  assert.equal(alice.score, 4.5, "score artiste favori seul (3 × 1.5, pas de cumul)");
+});
+
+test("une recherche seule garde son poids quand le terme n'a pas de signal fort", async () => {
+  seedEmpty();
+  __setSearchHandler(() => []);
+  __mockSet(SEARCH_KEY, ["stockings"]);
+
+  const r = await generateRecommendations();
+
+  const stockings = r.profile.tags.find((t) => t.name === "stockings");
+  assert.ok(stockings, "tag de recherche détecté");
+  assert.equal(stockings.score, 0.75, "poids recherche conservé sans favori");
+  assert.ok(stockings.sources.includes("search"), "source recherche conservée");
+});
+
 test("l'historique de recherche se déduplique et ignore les entrées courtes", async () => {
   seedEmpty();
   await addToSearchHistory("Milf");

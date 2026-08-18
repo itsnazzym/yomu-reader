@@ -50,6 +50,7 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
     { label: "Characters", icon: "box", route: "/tags", hasArrow: true },
     { label: "Recommendations", icon: "star", route: "/recommendations", hasArrow: true },
     { label: "Batch Downloader", icon: "download-cloud", route: "/batch", hasArrow: true },
+    { label: "Clés API", icon: "key", route: "/api-keys", hasArrow: true },
     { label: "Settings", icon: "settings", route: "/settings", hasArrow: true },
   ];
 

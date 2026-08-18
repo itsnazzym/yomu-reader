@@ -10,18 +10,20 @@ import {
 import { FlashList } from "@shopify/flash-list";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as FileSystem from "expo-file-system";
+import { useRouter } from "expo-router";
 import { useTheme } from "@/lib/ThemeContext";
 import { IconBtn } from "@/components/ui/IconBtn";
 import { BookCard } from "@/components/BookCard";
 import { Gallery } from "@/lib/api/types";
+import { listLocalLibrary, LocalLibraryEntry } from "@/lib/localLibrary";
 
 export default function DownloadedScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
+  const router = useRouter();
 
-  const [downloadedGalleries, setDownloadedGalleries] = useState<Gallery[]>([]);
+  const [downloadedGalleries, setDownloadedGalleries] = useState<LocalLibraryEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
   const numColumns = width >= 600 ? 3 : 2;
@@ -34,32 +36,11 @@ export default function DownloadedScreen() {
   const loadDownloaded = useCallback(async () => {
     setLoading(true);
     try {
-      const nhDir = `${FileSystem.documentDirectory}NHAppAndroid/`;
-      const info = await FileSystem.getInfoAsync(nhDir);
-      if (!info.exists) {
-        setDownloadedGalleries([]);
-        setLoading(false);
-        return;
-      }
-
-      const folders = await FileSystem.readDirectoryAsync(nhDir);
-      const list: Gallery[] = [];
-
-      for (const folder of folders) {
-        const metaUri = `${nhDir}${folder}/metadata.json`;
-        const metaInfo = await FileSystem.getInfoAsync(metaUri);
-        if (metaInfo.exists) {
-          try {
-            const raw = await FileSystem.readAsStringAsync(metaUri);
-            const g: Gallery = JSON.parse(raw);
-            list.push(g);
-          } catch {}
-        }
-      }
-
+      const list = await listLocalLibrary();
       setDownloadedGalleries(list);
     } catch (e) {
-      console.warn("Failed to read downloaded folder:", e);
+      console.warn("Failed to read local library:", e);
+      setDownloadedGalleries([]);
     } finally {
       setLoading(false);
     }
@@ -69,11 +50,36 @@ export default function DownloadedScreen() {
     loadDownloaded();
   }, [loadDownloaded]);
 
-  const renderItem = ({ item }: { item: Gallery }) => (
-    <View style={{ width: cardWidth }}>
-      <BookCard gallery={item} cardWidth={cardWidth} />
-    </View>
-  );
+  const openLocalReader = (localId: string) => {
+    router.push({
+      pathname: "/read",
+      params: { localId },
+    });
+  };
+
+  const renderItem = ({ item }: { item: LocalLibraryEntry }) => {
+    // La couverture d'une galerie téléchargée pointe vers un URL réseau (proxy)
+    // qui échouera hors-ligne : on utilise la page 1 locale comme couverture.
+    const firstPage = item.gallery.images?.pages?.[0];
+    const localCover = firstPage?.url || item.gallery.images?.cover?.url || "";
+    const offlineGallery: Gallery = {
+      ...item.gallery,
+      images: {
+        ...item.gallery.images,
+        cover: { t: firstPage?.t || "j", w: firstPage?.w || 0, h: firstPage?.h || 0, url: localCover },
+        thumbnail: { t: firstPage?.t || "j", w: firstPage?.w || 0, h: firstPage?.h || 0, url: localCover },
+      },
+    };
+    return (
+      <View style={{ width: cardWidth }}>
+        <BookCard
+          gallery={offlineGallery}
+          cardWidth={cardWidth}
+          onPress={() => openLocalReader(item.localId)}
+        />
+      </View>
+    );
+  };
 
   return (
     <View
@@ -123,7 +129,7 @@ export default function DownloadedScreen() {
             paddingTop: 12,
             paddingBottom: insets.bottom + 24,
           }}
-          keyExtractor={(item) => String(item.id)}
+          keyExtractor={(item) => item.localId}
         />
       )}
     </View>

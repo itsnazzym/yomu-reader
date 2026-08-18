@@ -41,6 +41,13 @@ export interface Gallery {
   tags: Tag[];
   num_pages: number;
   num_favorites: number;
+  /**
+   * Provenance d'un favori : "cloud" = importé depuis nhentai.net,
+   * "local" = ajouté via l'app. Permet de séparer les deux listes.
+   */
+  source?: "cloud" | "local";
+  /** IDs bruts des tags (favoris v2) — résolus en tags nommés côté app. */
+  tag_ids?: number[];
 }
 
 export interface Comment {

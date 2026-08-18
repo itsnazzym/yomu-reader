@@ -102,6 +102,9 @@ export interface AppSettings {
   cookies?: string;
   api_key?: string;
   language_filter?: string;
+  dns_provider?: "adguard" | "cloudflare" | "google" | "quad9" | "system";
+  enable_custom_dns?: boolean;
+  enable_doh?: boolean;
 }
 
 export interface DownloadProgressPayload {
@@ -117,6 +120,8 @@ export interface DownloadProgressPayload {
 
 export type TabType =
   | "explorer"
+  | "favorites"
+  | "history"
   | "series"
   | "tags"
   | "characters"
@@ -128,3 +133,26 @@ export type TabType =
   | "settings";
 
 export type SortOption = "date" | "popular-today" | "popular-week" | "popular";
+
+export interface CdnConfig {
+  image_servers: string[];
+  thumb_servers: string[];
+}
+
+export interface GalleryCommentPoster {
+  id: number;
+  username: string;
+  slug?: string;
+  avatar_url?: string;
+  is_superuser?: boolean;
+  is_staff?: boolean;
+}
+
+export interface GalleryComment {
+  id: number;
+  gallery_id: number;
+  poster: GalleryCommentPoster;
+  post_date: number;
+  body: string;
+  votes?: number;
+}

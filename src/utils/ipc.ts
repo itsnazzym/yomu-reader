@@ -21,9 +21,17 @@ declare global {
       getImageData: (params: { url: string; referer?: string; cookies?: string; apiKey?: string }) => Promise<string | null>;
       preloadGalleryImages: (params: { urls: string[]; referer?: string; cookies?: string; apiKey?: string }) => Promise<{ preloaded: number }>;
       saveDownloadedArchive: (params: { gallery: Gallery; formatType: DownloadFormat; pattern: string; destDir: string; pagesData: Array<{ pageNum: number; ext: string; bufferBase64: string }> }) => Promise<string>;
+      getCdnConfig?: () => Promise<import("../types").CdnConfig>;
+      getGalleryComments?: (params: { galleryId: number; cookies?: string; apiKey?: string }) => Promise<import("../types").GalleryComment[]>;
+      updateDnsSettings?: (params: { dns_provider: string; enable_custom_dns: boolean; enable_doh: boolean }) => Promise<{ success: boolean; error?: string }>;
+      startQuickShareServer?: (params?: { port?: number }) => Promise<{ active: boolean; port: number; ip: string; url: string }>;
+      stopQuickShareServer?: () => Promise<{ active: boolean }>;
+      getQuickShareStatus?: () => Promise<{ active: boolean; port: number; ip: string; url: string; filesCount: number; activeTransfers: number; uptime: number }>;
+      getLocalDownloadedFiles?: (params?: { directoryPath?: string }) => Promise<Array<{ id?: number; filename: string; title: string; artist?: string; size: number; sizeFormatted: string; pagesCount: number; format: string; mtime: number }>>;
       logTerminal?: (text: string) => Promise<boolean>;
       onDownloadProgress: (callback: (payload: DownloadProgressPayload) => void) => () => void;
       onCookiesCaptured: (callback: (cookies: string) => void) => () => void;
+      onCloudflareChallengeNeeded?: (callback: () => void) => () => void;
     };
   }
 }
@@ -59,15 +67,34 @@ export async function searchGalleries(
   return mockSearchResponse(query, page);
 }
 
+const galleryCache = new Map<number, { gallery: Gallery; timestamp: number }>();
+const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes TTL
+
 export async function getGallery(id: number, cookies?: string, apiKey?: string): Promise<Gallery> {
+  const cached = galleryCache.get(id);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.gallery;
+  }
+
+  let gallery: Gallery;
   if (isElectron() && window.electronAPI) {
-    return await window.electronAPI.getGallery({ id, cookies, apiKey });
-  }
-  if (isTauri()) {
+    gallery = await window.electronAPI.getGallery({ id, cookies, apiKey });
+  } else if (isTauri()) {
     const { invoke } = await import("@tauri-apps/api/core");
-    return await invoke<Gallery>("get_gallery", { id, cookies: cookies || null });
+    gallery = await invoke<Gallery>("get_gallery", { id, cookies: cookies || null });
+  } else {
+    gallery = mockGallery(id);
   }
-  return mockGallery(id);
+
+  if (gallery && gallery.id) {
+    galleryCache.set(id, { gallery, timestamp: Date.now() });
+    if (galleryCache.size > 200) {
+      const oldestKey = galleryCache.keys().next().value;
+      if (oldestKey !== undefined) galleryCache.delete(oldestKey);
+    }
+  }
+
+  return gallery;
 }
 
 export async function getRandomGallery(cookies?: string, apiKey?: string): Promise<Gallery> {
@@ -127,14 +154,14 @@ export async function formatFilenamePreview(
     const { invoke } = await import("@tauri-apps/api/core");
     return await invoke<string>("format_filename_preview", { pattern, gallery });
   }
-  const artist = gallery.tags.find((t) => t.type === "artist")?.name || "Unknown";
-  const lang = gallery.tags.find((t) => t.type === "language" && t.name !== "translated")?.name || "japanese";
+  const artist = (gallery?.tags || []).find((t) => t.type === "artist")?.name || "Unknown";
+  const lang = (gallery?.tags || []).find((t) => t.type === "language" && t.name !== "translated")?.name || "japanese";
   return pattern
-    .replace("{id}", gallery.id.toString())
-    .replace("{title}", gallery.title.pretty || gallery.title.english || "Title")
+    .replace("{id}", (gallery?.id || "").toString())
+    .replace("{title}", gallery?.title?.pretty || gallery?.title?.english || "Title")
     .replace("{artist}", artist)
     .replace("{language}", lang)
-    .replace("{pages}", gallery.num_pages.toString());
+    .replace("{pages}", (gallery?.num_pages || "").toString());
 }
 
 export async function startDownload(
@@ -256,15 +283,56 @@ export function onCookiesCaptured(
   return () => {};
 }
 
-// Helpers for image URL generation
+export function onCloudflareChallengeNeeded(
+  callback: () => void
+): () => void {
+  if (isElectron() && window.electronAPI?.onCloudflareChallengeNeeded) {
+    return window.electronAPI.onCloudflareChallengeNeeded(callback);
+  }
+  return () => {};
+}
+
+// Normalization helper from NHApp: collapses duplicate chained extensions (e.g. cover.webp.webp -> cover.webp)
+export function normalizeV2MediaPath(path?: string): string {
+  if (!path) return "";
+  let p = path.trim();
+  if (/^https?:\/\//i.test(p)) {
+    try {
+      const u = new URL(p);
+      let pathname = u.pathname;
+      while (/\.webp\.webp$/i.test(pathname)) {
+        pathname = pathname.replace(/\.webp\.webp$/i, ".webp");
+      }
+      while (/\.jpg\.jpg$/i.test(pathname)) {
+        pathname = pathname.replace(/\.jpg\.jpg$/i, ".jpg");
+      }
+      while (/\.png\.png$/i.test(pathname)) {
+        pathname = pathname.replace(/\.png\.png$/i, ".png");
+      }
+      u.pathname = pathname;
+      return u.toString();
+    } catch {
+      let s = p;
+      while (/\.webp\.webp$/i.test(s)) {
+        s = s.replace(/\.webp\.webp$/i, ".webp");
+      }
+      return s;
+    }
+  }
+  while (/\.webp\.webp$/i.test(p)) {
+    p = p.replace(/\.webp\.webp$/i, ".webp");
+  }
+  while (/\.jpg\.jpg$/i.test(p)) {
+    p = p.replace(/\.jpg\.jpg$/i, ".jpg");
+  }
+  while (/\.png\.png$/i.test(p)) {
+    p = p.replace(/\.png\.png$/i, ".png");
+  }
+  return p.replace(/^\//, "");
+}
+
 export function cleanCdnPath(rawPath?: string): string {
-  if (!rawPath) return "";
-  let clean = rawPath.replace(/^\//, "");
-  // Fix double extensions returned by nHentai API v2 like .jpg.webp -> .webp or .webp.webp -> .webp
-  clean = clean.replace(/\.(jpg|jpeg|png|webp)\.webp$/i, ".webp");
-  clean = clean.replace(/\.(jpg|jpeg|png|webp)\.jpg$/i, ".jpg");
-  clean = clean.replace(/\.(jpg|jpeg|png|webp)\.png$/i, ".png");
-  return clean;
+  return normalizeV2MediaPath(rawPath);
 }
 
 export function getExtension(t: string): string {
@@ -279,25 +347,25 @@ export function getExtension(t: string): string {
 
 export function getCoverUrl(gallery: Gallery): string {
   if (gallery.images?.cover?.path) {
-    return `https://t.nhentai.net/${cleanCdnPath(gallery.images.cover.path)}`;
+    return `https://t3.nhentai.net/${cleanCdnPath(gallery.images.cover.path)}`;
   }
   const mid = gallery.media_id || String(gallery.id);
   const ext = getExtension(gallery.images?.cover?.t || "w");
-  return `https://t.nhentai.net/galleries/${mid}/thumb.${ext}`;
+  return `https://t3.nhentai.net/galleries/${mid}/thumb.${ext}`;
 }
 
 export function getThumbnailUrl(gallery: Gallery): string {
   if (gallery.images?.thumbnail?.path) {
-    return `https://t.nhentai.net/${cleanCdnPath(gallery.images.thumbnail.path)}`;
+    return `https://t3.nhentai.net/${cleanCdnPath(gallery.images.thumbnail.path)}`;
   }
   const mid = gallery.media_id || String(gallery.id);
   const ext = getExtension(gallery.images?.thumbnail?.t || "w");
-  return `https://t.nhentai.net/galleries/${mid}/thumb.${ext}`;
+  return `https://t3.nhentai.net/galleries/${mid}/thumb.${ext}`;
 }
 
 export function getPageThumbnailUrl(mediaId: string, pageIndex: number, extType: string): string {
   const ext = getExtension(extType || "w");
-  return `https://t.nhentai.net/galleries/${mediaId}/${pageIndex + 1}t.${ext}`;
+  return `https://t3.nhentai.net/galleries/${mediaId}/${pageIndex + 1}t.${ext}`;
 }
 
 export function getPageFullUrl(
@@ -307,10 +375,10 @@ export function getPageFullUrl(
   path?: string
 ): string {
   if (path) {
-    return `https://i.nhentai.net/${cleanCdnPath(path)}`;
+    return `https://i3.nhentai.net/${cleanCdnPath(path)}`;
   }
   const ext = getExtension(extType || "w");
-  return `https://i.nhentai.net/galleries/${mediaId}/${pageIndex + 1}.${ext}`;
+  return `https://i3.nhentai.net/galleries/${mediaId}/${pageIndex + 1}.${ext}`;
 }
 
 export function extractArtistFromTitle(title: string): string | null {
@@ -319,12 +387,14 @@ export function extractArtistFromTitle(title: string): string | null {
   return match ? match[1].trim() : null;
 }
 
-export function getGalleryDisplayTitle(gallery: Gallery): string {
-  return gallery.title?.pretty || gallery.title?.english || gallery.title?.japanese || `Gallery #${gallery.id}`;
+export function getGalleryDisplayTitle(gallery?: Gallery | null): string {
+  if (!gallery) return "Gallery";
+  return gallery.title?.pretty || gallery.title?.english || gallery.title?.japanese || `Gallery #${gallery.id || ""}`;
 }
 
-export function getGalleryLanguage(gallery: Gallery): string {
-  const langTag = gallery.tags?.find((t) => t.type === "language" && t.name !== "translated");
+export function getGalleryLanguage(gallery?: Gallery | null): string {
+  if (!gallery) return "japanese";
+  const langTag = (gallery.tags || []).find((t) => t.type === "language" && t.name !== "translated");
   if (langTag && langTag.name) return langTag.name;
   const raw = (gallery.title?.english || gallery.title?.pretty || "").toLowerCase();
   if (raw.includes("[english]") || raw.includes("(english)")) return "english";
@@ -334,8 +404,9 @@ export function getGalleryLanguage(gallery: Gallery): string {
   return "japanese";
 }
 
-export function getGalleryArtist(gallery: Gallery): string {
-  const artistTag = gallery.tags?.find((t) => t.type === "artist");
+export function getGalleryArtist(gallery?: Gallery | null): string {
+  if (!gallery) return "Unknown Artist";
+  const artistTag = (gallery.tags || []).find((t) => t.type === "artist");
   if (artistTag && artistTag.name) return artistTag.name;
   const fromTitle = extractArtistFromTitle(gallery.title?.english || gallery.title?.pretty || "");
   return fromTitle || "Unknown Artist";
@@ -414,6 +485,144 @@ export async function saveDownloadedArchive(params: {
   return "";
 }
 
+export async function getCdnConfig(): Promise<import("../types").CdnConfig> {
+  if (isElectron() && window.electronAPI?.getCdnConfig) {
+    return await window.electronAPI.getCdnConfig();
+  }
+  return {
+    image_servers: ["https://i1.nhentai.net", "https://i2.nhentai.net", "https://i3.nhentai.net", "https://i4.nhentai.net"],
+    thumb_servers: ["https://t1.nhentai.net", "https://t2.nhentai.net", "https://t3.nhentai.net", "https://t4.nhentai.net"],
+  };
+}
+
+export async function getGalleryComments(
+  galleryId: number,
+  cookies?: string,
+  apiKey?: string
+): Promise<import("../types").GalleryComment[]> {
+  if (isElectron() && window.electronAPI?.getGalleryComments) {
+    return await window.electronAPI.getGalleryComments({ galleryId, cookies, apiKey });
+  }
+  return [];
+}
+
+export async function updateDnsSettings(params: {
+  dns_provider: string;
+  enable_custom_dns: boolean;
+  enable_doh: boolean;
+}): Promise<void> {
+  if (isElectron() && window.electronAPI?.updateDnsSettings) {
+    await window.electronAPI.updateDnsSettings(params);
+  }
+}
+
+/**
+ * Universal Multi-Server & Edge CDN Matrix Fallback Resolver (inspired by NHApp's buildImageFallbacks)
+ * Generates valid candidate URLs prioritizing ultra-fast Photon Edge mirrors (0-100ms) that bypass ISP blocks,
+ * followed by DuckDuckGo edge proxy and direct numbered CDN mirrors.
+ */
+export function buildImageFallbacks(
+  rawPathOrUrl: string,
+  kind: "thumb" | "page" = "thumb",
+  mediaId?: string,
+  pageNum?: number
+): string[] {
+  if (!rawPathOrUrl) {
+    if (!mediaId) return [];
+  }
+
+  // Handle local books, data URLs, blobs directly
+  if (
+    rawPathOrUrl &&
+    (rawPathOrUrl.startsWith("data:") ||
+      rawPathOrUrl.startsWith("blob:") ||
+      rawPathOrUrl.startsWith("file:") ||
+      rawPathOrUrl.startsWith("local:"))
+  ) {
+    return [rawPathOrUrl];
+  }
+
+  const list: string[] = [];
+  const seen = new Set<string>();
+  const add = (u: string) => {
+    const trimmed = (u || "").trim();
+    if (!trimmed || seen.has(trimmed)) return;
+    seen.add(trimmed);
+    list.push(trimmed);
+  };
+
+  // Clean and normalize the path
+  let path = cleanCdnPath(rawPathOrUrl);
+  if (/^https?:\/\//i.test(path)) {
+    try {
+      const u = new URL(path);
+      path = u.pathname.replace(/^\//, "");
+    } catch {}
+  }
+  path = normalizeV2MediaPath(path);
+
+  if (!path && mediaId) {
+    const baseName = kind === "thumb" ? (pageNum ? `${pageNum}t` : "thumb") : `${pageNum || 1}`;
+    path = `galleries/${mediaId}/${baseName}.webp`;
+  }
+
+  const thumbNumHosts = ["t3.nhentai.net", "t2.nhentai.net", "t1.nhentai.net", "t4.nhentai.net"];
+  const pageNumHosts = ["i3.nhentai.net", "i2.nhentai.net", "i1.nhentai.net", "i4.nhentai.net"];
+  const directHosts = kind === "thumb" ? thumbNumHosts : pageNumHosts;
+
+  // 1. High-Speed WordPress Jetpack Photon CDN Edge Mirrors (Unblocked worldwide, HTTP 200, <100ms response time)
+  if (path) {
+    add(`https://i0.wp.com/${directHosts[0]}/${path}`);
+    add(`https://i1.wp.com/${directHosts[1]}/${path}`);
+    add(`https://i2.wp.com/${directHosts[2]}/${path}`);
+    add(`https://i3.wp.com/${directHosts[3]}/${path}`);
+    if (kind === "thumb") {
+      add(`https://i0.wp.com/t.nhentai.net/${path}`);
+      add(`https://i1.wp.com/t.nhentai.net/${path}`);
+    } else {
+      add(`https://i0.wp.com/i.nhentai.net/${path}`);
+      add(`https://i1.wp.com/i.nhentai.net/${path}`);
+    }
+  }
+
+  // 2. Direct Numbered CDN Hosts (when Custom DNS or VPN is active)
+  if (path) {
+    for (const h of directHosts) {
+      add(`https://${h}/${path}`);
+    }
+    if (kind === "thumb") {
+      add(`https://t.nhentai.net/${path}`);
+    } else {
+      add(`https://i.nhentai.net/${path}`);
+    }
+  }
+
+  // 3. Extension Variant Fallbacks (.jpg, .png, .webp, .jpg.webp, .png.webp)
+  if (path) {
+    const extMatch = path.match(/\.([a-z0-9]+)$/i);
+    const currentExt = extMatch ? extMatch[1].toLowerCase() : "webp";
+    const alternateExts = ["webp", "jpg", "png", "jpg.webp", "png.webp"].filter((e) => e !== currentExt);
+
+    for (const ext of alternateExts) {
+      const altPath = path.replace(/\.([a-z0-9.]+)$/i, `.${ext}`);
+      add(`https://i0.wp.com/${directHosts[0]}/${altPath}`);
+      add(`https://i1.wp.com/${directHosts[1]}/${altPath}`);
+      add(`https://${directHosts[0]}/${altPath}`);
+    }
+  }
+
+  // 4. If mediaId is provided, generate thumb/cover matrix
+  if (mediaId && kind === "thumb" && !pageNum) {
+    add(`https://i0.wp.com/t3.nhentai.net/galleries/${mediaId}/thumb.webp`);
+    add(`https://i1.wp.com/t2.nhentai.net/galleries/${mediaId}/thumb.jpg`);
+    add(`https://i2.wp.com/t3.nhentai.net/galleries/${mediaId}/cover.webp`);
+    add(`https://i3.wp.com/t3.nhentai.net/galleries/${mediaId}/cover.jpg`);
+    add(`https://i0.wp.com/i3.nhentai.net/galleries/${mediaId}/1.webp`);
+  }
+
+  return list;
+}
+
 export async function logToTerminal(text: string): Promise<void> {
   if (isElectron() && window.electronAPI?.logTerminal) {
     await window.electronAPI.logTerminal(text);
@@ -421,4 +630,33 @@ export async function logToTerminal(text: string): Promise<void> {
     console.log(text);
   }
 }
+
+export async function startQuickShareServer(port?: number): Promise<{ active: boolean; port: number; ip: string; url: string }> {
+  if (isElectron() && window.electronAPI?.startQuickShareServer) {
+    return await window.electronAPI.startQuickShareServer({ port });
+  }
+  return { active: true, port: 45678, ip: "127.0.0.1", url: "http://127.0.0.1:45678/" };
+}
+
+export async function stopQuickShareServer(): Promise<{ active: boolean }> {
+  if (isElectron() && window.electronAPI?.stopQuickShareServer) {
+    return await window.electronAPI.stopQuickShareServer();
+  }
+  return { active: false };
+}
+
+export async function getQuickShareStatus(): Promise<{ active: boolean; port: number; ip: string; url: string; filesCount: number; activeTransfers: number; uptime: number }> {
+  if (isElectron() && window.electronAPI?.getQuickShareStatus) {
+    return await window.electronAPI.getQuickShareStatus();
+  }
+  return { active: false, port: 45678, ip: "127.0.0.1", url: "http://127.0.0.1:45678/", filesCount: 0, activeTransfers: 0, uptime: 0 };
+}
+
+export async function getLocalDownloadedFiles(directoryPath?: string): Promise<Array<{ id?: number; filename: string; title: string; artist?: string; size: number; sizeFormatted: string; pagesCount: number; format: string; mtime: number }>> {
+  if (isElectron() && window.electronAPI?.getLocalDownloadedFiles) {
+    return await window.electronAPI.getLocalDownloadedFiles({ directoryPath });
+  }
+  return [];
+}
+
 

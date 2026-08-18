@@ -2,6 +2,8 @@
   "name": "nhentai-launcher",
   "private": true,
   "version": "1.0.0",
+  "description": "nHentai Launcher application",
+  "author": "Your Name",
   "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
@@ -10,6 +12,7 @@
     "preview": "vite preview",
     "start": "concurrently -k \"vite\" \"wait-on http://localhost:1420 && electron .\"",
     "electron": "electron .",
+    "proxy": "node proxy/nhentai-mirror.mjs",
     "dist:win": "tsc && vite build && electron-builder --win",
     "tauri": "tauri"
   },
@@ -46,8 +49,8 @@
     "adm-zip": "^0.6.0",
     "archiver": "^8.0.0",
     "axios": "^1.19.0",
+    "cheerio": "^1.2.0",
     "clsx": "^2.1.1",
-    "electron": "^43.4.0",
     "lucide-react": "^1.31.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -64,9 +67,14 @@
     "@types/xml2js": "^0.4.14",
     "@vitejs/plugin-react": "^4.6.0",
     "concurrently": "^10.0.5",
+    "electron": "^43.4.0",
     "electron-builder": "^26.15.3",
     "typescript": "~5.8.3",
     "vite": "^7.0.4",
     "wait-on": "^9.1.0"
+  },
+  "allowScripts": {
+    "electron-winstaller@5.4.0": true,
+    "esbuild@0.28.2": true
   }
 }

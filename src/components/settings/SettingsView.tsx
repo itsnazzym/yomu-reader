@@ -361,7 +361,7 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
 
-        {/* Section 6: API Key & Custom Authentication */}
+        {/* Section 6: Clé API & Token d'Accès */}
         <div className="bg-[#15151e] border border-[#262636] rounded-2xl p-6 space-y-4 shadow-lg">
           <div className="flex items-center justify-between">
             <label className="text-xs font-bold uppercase tracking-wider text-gray-300 flex items-center gap-2">
@@ -371,7 +371,7 @@ export const SettingsView: React.FC = () => {
           </div>
 
           <p className="text-xs text-gray-400">
-            Si vous possédez une clé API, un token personnel ou une clé de proxy/miroir nHentai, collez-le ici. Il sera injecté automatiquement dans les en-têtes d'autorisation (<code>Authorization: Bearer</code> et <code>X-API-Key</code>).
+            Si vous possédez une clé API ou un token personnel nHentai, collez-le ici pour l'injecter dans les requêtes.
           </p>
 
           <input
@@ -382,9 +382,162 @@ export const SettingsView: React.FC = () => {
               updateSettings({ api_key: e.target.value });
               triggerSaved();
             }}
-            placeholder="Ex: nh_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            placeholder="Ex: nhk_xxxxxxxxxxxxxxxxxxxxxxxx"
             className="w-full bg-[#0d0d12] border border-[#2b2b3b] focus:border-cyan-500 text-xs text-cyan-300 px-3.5 py-2.5 rounded-xl outline-none font-mono"
           />
+        </div>
+
+        {/* Section 7: Résolution DNS & DoH Personnalisée (Bypass FAI & Anti-Traqueurs) */}
+        <div className="bg-[#15151e] border border-[#262636] rounded-2xl p-6 space-y-5 shadow-lg">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <label className="text-xs font-bold uppercase tracking-wider text-gray-300 flex items-center gap-2">
+              <Icon name="dns" size={18} className="text-emerald-400" />
+              <span>Résolution DNS & DoH (Contournement FAI)</span>
+            </label>
+            {settings.enable_custom_dns !== false && settings.dns_provider !== "system" ? (
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 font-mono w-fit">
+                {settings.enable_doh !== false ? "DoH & DNS Actif" : "DNS Actif (DoH Off)"}
+              </span>
+            ) : (
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-gray-800/80 border border-gray-600/40 text-gray-400 font-mono w-fit">
+                DNS Système / FAI (Désactivé)
+              </span>
+            )}
+          </div>
+
+          <p className="text-xs text-gray-400 leading-relaxed">
+            Certains Fournisseurs d'accès internet (Orange, SFR, Free, Bouygues...) bloquent les serveurs d'images nHentai. Vous pouvez activer ou désactiver à tout moment le résolveur DNS et le protocole <strong>DNS-over-HTTPS (DoH)</strong>.
+          </p>
+
+          {/* Toggle Switches */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            {/* Toggle 1: DNS Personnalisé */}
+            <div className="p-3.5 rounded-xl bg-[#0f0f16] border border-[#252535] flex items-center justify-between">
+              <div>
+                <div className="text-xs font-bold text-white">DNS Personnalisé</div>
+                <div className="text-[11px] text-gray-400">Bypass le serveur DNS de votre FAI</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const nextVal = !(settings.enable_custom_dns ?? true);
+                  updateSettings({ enable_custom_dns: nextVal });
+                  triggerSaved();
+                }}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                  settings.enable_custom_dns !== false ? "bg-emerald-500" : "bg-gray-700"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                    settings.enable_custom_dns !== false ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Toggle 2: DNS-over-HTTPS (DoH) */}
+            <div className="p-3.5 rounded-xl bg-[#0f0f16] border border-[#252535] flex items-center justify-between">
+              <div>
+                <div className="text-xs font-bold text-white">DNS-over-HTTPS (DoH)</div>
+                <div className="text-[11px] text-gray-400">Chiffre les requêtes DNS dans Chromium</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const nextVal = !(settings.enable_doh ?? true);
+                  updateSettings({ enable_doh: nextVal });
+                  triggerSaved();
+                }}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                  settings.enable_doh !== false ? "bg-cyan-500" : "bg-gray-700"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                    settings.enable_doh !== false ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
+          {/* Providers Grid */}
+          <div className="space-y-2 pt-1">
+            <label className="text-[11px] font-semibold text-gray-400">Fournisseur de Résolution DNS :</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {[
+                {
+                  id: "adguard",
+                  name: "AdGuard DNS (Recommandé)",
+                  ips: "94.140.14.14 • 94.140.15.15",
+                  desc: "Bypass FAI + Blocage des pubs et traqueurs",
+                },
+                {
+                  id: "cloudflare",
+                  name: "Cloudflare 1.1.1.1",
+                  ips: "1.1.1.1 • 1.0.0.1",
+                  desc: "Résolution ultra-rapide et sécurisée",
+                },
+                {
+                  id: "google",
+                  name: "Google Public DNS",
+                  ips: "8.8.8.8 • 8.8.4.4",
+                  desc: "Haute disponibilité mondiale",
+                },
+                {
+                  id: "quad9",
+                  name: "Quad9 Security",
+                  ips: "9.9.9.9 • 149.112.112.112",
+                  desc: "Protection contre les domaines malveillants",
+                },
+                {
+                  id: "system",
+                  name: "Système / Par défaut (FAI)",
+                  ips: "Configuration réseau de l'OS",
+                  desc: "Désactive tout DNS custom (utilise votre box/FAI)",
+                },
+              ].map((prov) => {
+                const isSelected =
+                  settings.enable_custom_dns === false
+                    ? prov.id === "system"
+                    : (settings.dns_provider || "adguard") === prov.id;
+
+                return (
+                  <button
+                    key={prov.id}
+                    disabled={settings.enable_custom_dns === false && prov.id !== "system"}
+                    onClick={() => {
+                      if (prov.id === "system") {
+                        updateSettings({ dns_provider: "system", enable_custom_dns: false, enable_doh: false });
+                      } else {
+                        updateSettings({ dns_provider: prov.id as any, enable_custom_dns: true });
+                      }
+                      triggerSaved();
+                    }}
+                    className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      isSelected
+                        ? "bg-emerald-950/40 border-emerald-500/50 shadow-md shadow-emerald-950/30"
+                        : "bg-[#0f0f16] border-[#252535] hover:border-[#38384a] hover:bg-[#161622]"
+                    } ${settings.enable_custom_dns === false && prov.id !== "system" ? "opacity-40 cursor-not-allowed" : ""}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <Icon
+                          name={isSelected ? "check_circle" : "radio_button_unchecked"}
+                          size={16}
+                          className={isSelected ? "text-emerald-400" : "text-gray-500"}
+                        />
+                        <span>{prov.name}</span>
+                      </span>
+                    </div>
+                    <div className="font-mono text-[10px] text-emerald-400 mt-1">{prov.ips}</div>
+                    <p className="text-[11px] text-gray-400 mt-1">{prov.desc}</p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
     </div>

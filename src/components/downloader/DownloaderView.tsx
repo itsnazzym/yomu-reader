@@ -1,13 +1,16 @@
-import React from "react";
+import React, { useState } from "react";
 import { useDownloadStore } from "../../stores/downloadStore";
 import { useSettingsStore } from "../../stores/settingsStore";
-import { openFolder, getThumbnailUrl, getGalleryDisplayTitle } from "../../utils/ipc";
+import { openFolder, getThumbnailUrl, getGalleryDisplayTitle, buildImageFallbacks } from "../../utils/ipc";
 import { Icon } from "../common/Icon";
+import { SmartImage } from "../common/SmartImage";
+import { QuickShareHubModal } from "../share/QuickShareHubModal";
 
 export const DownloaderView: React.FC = () => {
   const { queue, pauseDownload, resumeDownload, cancelItem, retryItem, clearCompleted } =
     useDownloadStore();
   const { settings } = useSettingsStore();
+  const [isQuickShareOpen, setIsQuickShareOpen] = useState(false);
 
   const totalCount = queue.length;
   const activeCount = queue.filter((i) => i.status === "downloading").length;
@@ -42,6 +45,15 @@ export const DownloaderView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsQuickShareOpen(true)}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-linear-to-r from-[#ed2553] to-[#e11d48] hover:from-[#f43f5e] hover:to-[#ed2553] text-white text-xs font-bold shadow-md shadow-[#ed2553]/25 transition-all cursor-pointer"
+            title="Transférer tous vos fichiers CBZ/ZIP vers Android / iOS en Wi-Fi direct"
+          >
+            <Icon name="wifi_tethering" size={18} />
+            <span>⚡ Quick Share Wi-Fi (Android)</span>
+          </button>
+
           <button
             onClick={() => handleOpenFolder()}
             className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#1a1a26] hover:bg-[#28283a] text-gray-200 text-xs font-semibold border border-[#2d2d40] transition-colors shadow-sm cursor-pointer"
@@ -125,6 +137,8 @@ export const DownloaderView: React.FC = () => {
           {queue.map((item) => {
             const title = getGalleryDisplayTitle(item.gallery);
             const thumbUrl = getThumbnailUrl(item.gallery);
+            const mid = item.gallery.media_id || String(item.gallery.id);
+            const candidateUrls = buildImageFallbacks(thumbUrl, "thumb", mid);
             const percent = Math.min(100, Math.round((item.progress || 0) * 100));
 
             return (
@@ -134,10 +148,11 @@ export const DownloaderView: React.FC = () => {
               >
                 {/* Thumbnail */}
                 <div className="w-12 h-16 rounded-lg bg-[#0d0d12] border border-[#262634] overflow-hidden shrink-0">
-                  <img
-                    src={thumbUrl}
+                  <SmartImage
+                    candidates={candidateUrls}
                     alt={title}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full"
+                    imgClassName="w-full h-full object-cover"
                   />
                 </div>
 
@@ -283,6 +298,13 @@ export const DownloaderView: React.FC = () => {
             );
           })}
         </div>
+      )}
+
+      {isQuickShareOpen && (
+        <QuickShareHubModal
+          onClose={() => setIsQuickShareOpen(false)}
+          initialDirectory={settings.download_directory}
+        />
       )}
     </div>
   );

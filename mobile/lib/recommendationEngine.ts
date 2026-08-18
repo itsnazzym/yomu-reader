@@ -75,6 +75,17 @@ function addScore(
   }
 }
 
+// Un signal de recherche ne doit pas re-pondérer un terme déjà signalé par un
+// favori ou une lecture : la recherche ne ferait que confirmer un intérêt déjà
+// fortement établi, sans apporter d'information nouvelle.
+function addSearchSignal(map: ScoreMap, rawName: string, score: number): void {
+  const key = rawName.trim().toLowerCase();
+  if (!key) return;
+  const entry = map.get(key);
+  if (entry && (entry.sources.has("fav") || entry.sources.has("history"))) return;
+  addScore(map, rawName, score, "search");
+}
+
 function mapToSorted(map: ScoreMap): ScoredTerm[] {
   return Array.from(map.entries())
     .map(([name, { score, sources, count }]) => ({
@@ -172,6 +183,21 @@ const SEARCH_STOP_WORDS = new Set([
   "translated",
 ]);
 
+// Operators whose values can be multi-word names (artist/group/parody/...).
+const SEARCH_MULTI_WORD_OPS = "(?:artist|group|parody|character|tag)";
+// Technical operators with a single-token value (language:english, sort:popular,
+// category:doujinshi, order:popular, comments:>50, favorites:1000, ...).
+const SEARCH_SINGLE_WORD_OPS =
+  "(?:language|category|pages|num_pages|date|uploaded|sort|order|comments|favorites|scores)";
+const SEARCH_ALL_OPS = `(?:${SEARCH_MULTI_WORD_OPS}|${SEARCH_SINGLE_WORD_OPS})`;
+
+// A multi-word value is either quoted ("blue archive") or a run of unquoted
+// words that stops before the next `op:` clause — so `artist:siina tai` keeps
+// the full name instead of leaking the trailing word as a free tag.
+function searchValueRegex(ops: string): string {
+  return `${ops}:\\s*(?:"([^"]+)"|([^\\s"]+(?:\\s+(?!${SEARCH_ALL_OPS}\\s*:)[^\\s"]+)*))`;
+}
+
 function extractSignalsFromSearch(
   query: string,
   tagMap: ScoreMap,
@@ -179,26 +205,34 @@ function extractSignalsFromSearch(
   parodyMap: ScoreMap
 ): void {
   const searchWeight = 0.75;
-  const typedTerms = /(?:artist|group):\s*"([^"]+)"|(?:artist|group):\s*([^\s]+)/gi;
-  const parodyTerms = /parody:\s*"([^"]+)"|parody:\s*([^\s]+)/gi;
+  const typedTerms = new RegExp(searchValueRegex("(?:artist|group)"), "gi");
+  const parodyTerms = new RegExp(searchValueRegex("parody"), "gi");
 
   for (const match of query.matchAll(typedTerms)) {
-    addScore(artistMap, match[1] || match[2], searchWeight, "search");
+    addSearchSignal(artistMap, match[1] || match[2], searchWeight);
   }
   for (const match of query.matchAll(parodyTerms)) {
-    addScore(parodyMap, match[1] || match[2], searchWeight, "search");
+    addSearchSignal(parodyMap, match[1] || match[2], searchWeight);
   }
 
-  // Free-text searches are light tag signals. Strip operator values entirely so
-  // `artist:alice` does not also create a bogus "alice" tag preference.
+  // Free-text searches are light tag signals. Strip every operator clause so a
+  // term searched via `artist:`/`parody:` is never also recorded as a free tag.
+  // Single-word clauses use their own pattern so `sort:popular anal` keeps
+  // `anal` as a tag instead of swallowing it into the operator value.
   const freeText = query
-    .replace(/(?:artist|group|parody|character|language|tag):\s*(?:"[^"]*"|\S+)/gi, " ")
+    .replace(
+      new RegExp(
+        `${searchValueRegex(SEARCH_MULTI_WORD_OPS)}|${SEARCH_SINGLE_WORD_OPS}:\\s*(?:"[^"]*"|\\S+)`,
+        "gi"
+      ),
+      " "
+    )
     .replace(/["()[\]{}]/g, " ");
 
   for (const token of freeText.split(/\s+/)) {
     const clean = token.trim().toLowerCase();
     if (clean.length < 3 || SEARCH_STOP_WORDS.has(clean) || /^\d+$/.test(clean)) continue;
-    addScore(tagMap, clean, searchWeight, "search");
+    addSearchSignal(tagMap, clean, searchWeight);
   }
 }
 

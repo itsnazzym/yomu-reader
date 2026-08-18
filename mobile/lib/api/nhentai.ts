@@ -1,8 +1,25 @@
 import { Gallery, GalleryImage, SearchResult, Comment, Tag } from "./types";
+import { Platform } from "react-native";
 
 const BASE_URL = "https://nhentai.net";
 const API_V2_URL = `${BASE_URL}/api/v2`;
 const API_V1_URL = `${BASE_URL}/api`;
+
+/**
+ * Passerelle miroir locale (proxy/nhentai-mirror.mjs à la racine du repo) :
+ * sert du JSON au format nhentai quand nhentai.net est bloqué.
+ * 10.0.2.2 = loopback de l'hôte depuis l'émulateur Android ;
+ * localhost convient pour le web / simulateur iOS.
+ */
+const FALLBACK_API_BASE =
+  Platform.OS === "android" ? "http://10.0.2.2:8787" : "http://localhost:8787";
+
+/** Base du proxy miroir local (partagée avec la synchro cloud). */
+export function getMirrorBase(): string {
+  return FALLBACK_API_BASE;
+}
+
+const REQUEST_TIMEOUT_MS = 8000;
 
 const EXT_MAP: Record<string, string> = {
   j: "jpg",
@@ -29,6 +46,23 @@ export function getExtension(t: string): string {
 }
 
 /**
+ * Fetch avec timeout : évite que le fallback miroir reste bloqué longtemps
+ * quand nhentai.net ne répond pas.
+ */
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {}
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Robust Native Fetch wrapper without Axios 403 overhead
  */
 async function nativeFetchJson<T>(url: string): Promise<T> {
@@ -38,7 +72,7 @@ async function nativeFetchJson<T>(url: string): Promise<T> {
 
   const reqPromise = (async () => {
     try {
-      const res = await fetch(url, {
+      const res = await fetchWithTimeout(url, {
         method: "GET",
         headers: COMMON_HEADERS,
       });
@@ -113,6 +147,7 @@ export function parseTitleMetadata(rawTitle: string): {
 
 export function resolveCoverUrl(media_id: string, imgOrCover?: any): string {
   if (typeof imgOrCover === "string" && imgOrCover.startsWith("http")) return imgOrCover;
+  if (imgOrCover?.url) return imgOrCover.url; // URL déjà résolue (miroir proxy)
   if (imgOrCover?.path) {
     const cleanPath = String(imgOrCover.path).replace(/^\//, "");
     return `https://t3.nhentai.net/${cleanPath}`;
@@ -124,6 +159,7 @@ export function resolveCoverUrl(media_id: string, imgOrCover?: any): string {
 
 export function resolveThumbnailUrl(media_id: string, imgOrThumb?: any): string {
   if (typeof imgOrThumb === "string" && imgOrThumb.startsWith("http")) return imgOrThumb;
+  if (imgOrThumb?.url) return imgOrThumb.url; // URL déjà résolue (miroir proxy)
   if (imgOrThumb?.path) {
     const cleanPath = String(imgOrThumb.path).replace(/^\//, "");
     return `https://t3.nhentai.net/${cleanPath}`;
@@ -139,6 +175,7 @@ export function resolveThumbnailUrl(media_id: string, imgOrThumb?: any): string 
 
 export function resolvePageUrl(media_id: string, index: number, imgOrPage?: any): string {
   if (typeof imgOrPage === "string" && imgOrPage.startsWith("http")) return imgOrPage;
+  if (imgOrPage?.url) return imgOrPage.url; // URL déjà résolue (miroir proxy)
   if (imgOrPage?.path) {
     const cleanPath = String(imgOrPage.path).replace(/^\//, "");
     return `https://i3.nhentai.net/${cleanPath}`;
@@ -150,6 +187,7 @@ export function resolvePageUrl(media_id: string, index: number, imgOrPage?: any)
 
 export function resolvePageThumbUrl(media_id: string, index: number, imgOrPage?: any): string {
   if (typeof imgOrPage === "string" && imgOrPage.startsWith("http")) return imgOrPage;
+  if (imgOrPage?.urlThumb) return imgOrPage.urlThumb; // URL déjà résolue (miroir proxy)
   if (imgOrPage?.thumbnail) {
     const cleanPath = String(imgOrPage.thumbnail).replace(/^\//, "");
     return `https://t3.nhentai.net/${cleanPath}`;
@@ -243,44 +281,56 @@ export function enrichGalleryImages(raw: any): Gallery {
   return gallery;
 }
 
+function toSearchResult(data: any): SearchResult {
+  const rawList = data.result || data.galleries || data.data || [];
+  const resultList: Gallery[] = rawList.map(enrichGalleryImages);
+  const numPages =
+    data.num_pages ||
+    data.total_pages ||
+    (data.total ? Math.ceil(data.total / 25) : 1);
+  return {
+    result: resultList,
+    num_pages: numPages,
+    per_page: data.per_page || 25,
+  };
+}
+
 export async function searchGalleries(
   query = "",
   page = 1,
   sort: "recent" | "popular" | "popular-today" | "popular-week" = "recent"
 ): Promise<SearchResult> {
   const sortParam = sort && sort !== "recent" ? `&sort=${sort}` : "";
+  const q = query.trim() ? encodeURIComponent(query.trim()) : "*";
   console.log(`[🔍 SEARCH] "${query || '*'}" (Page ${page}, Tri: ${sort})`);
 
+  const endpointV2 = `${API_V2_URL}/search?query=${q}&page=${page}${sortParam}`;
+  const endpointV1 = query.trim()
+    ? `${API_V1_URL}/galleries/search?query=${q}&page=${page}${sortParam}`
+    : `${API_V1_URL}/galleries/all?page=${page}${sortParam}`;
+  // Dernier recours : le proxy miroir local (nhentai.net bloqué)
+  const endpointMirror = query.trim()
+    ? `${FALLBACK_API_BASE}/api/galleries/search?query=${q}&page=${page}&sort=${sort}`
+    : `${FALLBACK_API_BASE}/api/galleries/all?page=${page}&sort=${sort}`;
+
+  let data: any;
   try {
-    const q = query.trim() ? encodeURIComponent(query.trim()) : "*";
-    const endpoint = `${API_V2_URL}/search?query=${q}&page=${page}${sortParam}`;
-
-    const data = await nativeFetchJson<any>(endpoint);
-    const rawList = data.result || data.galleries || data.data || [];
-    const resultList: Gallery[] = rawList.map(enrichGalleryImages);
-    const numPages = data.num_pages || data.total_pages || (data.total ? Math.ceil(data.total / 25) : 1);
-
-    console.log(`[✅ SEARCH SUCCESS] ${resultList.length} mangas trouvés (${numPages} pages)`);
-
-    return {
-      result: resultList,
-      num_pages: numPages,
-      per_page: data.per_page || 25,
-    };
+    data = await nativeFetchJson<any>(endpointV2);
   } catch (errV2: any) {
     console.warn(`[⚠️ FALLBACK V1] ${errV2?.message}`);
-    const endpointV1 = query.trim()
-      ? `${API_V1_URL}/galleries/search?query=${encodeURIComponent(query.trim())}&page=${page}${sortParam}`
-      : `${API_V1_URL}/galleries/all?page=${page}${sortParam}`;
-
-    const data = await nativeFetchJson<any>(endpointV1);
-    const list = (data.result || []).map(enrichGalleryImages);
-    return {
-      result: list,
-      num_pages: data.num_pages || 1,
-      per_page: data.per_page || 25,
-    };
+    try {
+      data = await nativeFetchJson<any>(endpointV1);
+    } catch (errV1: any) {
+      console.warn(`[🪞 MIRROR PROXY] ${errV1?.message}`);
+      data = await nativeFetchJson<any>(endpointMirror);
+    }
   }
+
+  const result = toSearchResult(data);
+  console.log(
+    `[✅ SEARCH SUCCESS] ${result.result.length} mangas trouvés (${result.num_pages} pages)`
+  );
+  return result;
 }
 
 export async function getGallery(id: number | string): Promise<Gallery> {
@@ -292,22 +342,25 @@ export async function getGallery(id: number | string): Promise<Gallery> {
     }
   }
 
+  let data: any;
   try {
-    const data = await nativeFetchJson<any>(`${API_V2_URL}/galleries/${id}`);
-    const enriched = enrichGalleryImages(data);
-    galleryCache.set(numId, enriched);
-    return enriched;
+    data = await nativeFetchJson<any>(`${API_V2_URL}/galleries/${id}`);
   } catch {
-    const data = await nativeFetchJson<any>(`${API_V1_URL}/gallery/${id}`);
-    const enriched = enrichGalleryImages(data);
-    galleryCache.set(numId, enriched);
-    return enriched;
+    try {
+      data = await nativeFetchJson<any>(`${API_V1_URL}/gallery/${id}`);
+    } catch {
+      console.warn(`[🪞 MIRROR PROXY] getGallery(${id})`);
+      data = await nativeFetchJson<any>(`${FALLBACK_API_BASE}/api/gallery/${id}`);
+    }
   }
+  const enriched = enrichGalleryImages(data);
+  galleryCache.set(numId, enriched);
+  return enriched;
 }
 
 export async function getRandomGallery(): Promise<Gallery> {
   try {
-    const res = await fetch(`${BASE_URL}/random/`, {
+    const res = await fetchWithTimeout(`${BASE_URL}/random/`, {
       method: "GET",
       headers: COMMON_HEADERS,
       redirect: "follow",
@@ -317,6 +370,10 @@ export async function getRandomGallery(): Promise<Gallery> {
     if (match && match[1]) {
       return getGallery(match[1]);
     }
+  } catch {}
+  try {
+    const data = await nativeFetchJson<any>(`${FALLBACK_API_BASE}/random/`);
+    if (data?.id) return getGallery(data.id);
   } catch {}
   return getGallery(Math.floor(Math.random() * 500000) + 1);
 }
@@ -330,7 +387,14 @@ export async function getComments(id: number | string): Promise<Comment[]> {
       const data = await nativeFetchJson<any>(`${API_V1_URL}/gallery/${id}/comments`);
       return data || [];
     } catch {
-      return [];
+      try {
+        const data = await nativeFetchJson<any>(
+          `${FALLBACK_API_BASE}/api/gallery/${id}/comments`
+        );
+        return data || [];
+      } catch {
+        return [];
+      }
     }
   }
 }

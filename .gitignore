@@ -1,5 +1,15 @@
-# Logs
-logs
+# ==============================================================================
+# nHentai Launcher - .gitignore
+# ==============================================================================
+
+# --- Node / Dependencies ---
+node_modules/
+.pnpm-store/
+.npm
+.yarn/
+
+# --- Logs & Runtime ---
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -7,18 +17,69 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+# --- Build & Distribution Outputs ---
+dist/
+dist-ssr/
+release/
+out/
+build/
 *.local
 
-# Editor directories and files
+# --- Tauri / Rust Artifacts ---
+src-tauri/target/
+**/target/
+**/*.rs.bk
+*.pdb
+
+# --- Environment & Secrets ---
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# --- Editor & IDE Files ---
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
+!.vscode/settings.json
+.idea/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+*.swp
+*.swo
+
+# --- OS Generated Files ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
+
+# --- Agent Tool State ---
+.freebuff/
+
+# --- Temporary, Scratch & Backup Files ---
+scratch/
+scratch_*
+*.scratch.*
+backup*
+*.bak
+*.backup
+*.tmp
+*.temp
+.agents/scratch/
+
+# --- Downloads, Local Cache & Archives ---
+downloads/
+temp_downloads/
+cache/
+*.cbz
+*.cbr
+*.zip

@@ -9,6 +9,7 @@ import {
   ScrollView,
   Modal,
   Animated,
+  Dimensions,
   Easing,
   RefreshControl,
 } from "react-native";
@@ -34,8 +35,9 @@ const sourceLabels: Record<string, string> = {
   search: "recherche",
 };
 
-// Durée approximative de l'animation de fermeture du panneau (slide down).
-const MODAL_CLOSE_DURATION = 300;
+// Distance de sortie du panneau : une translation d'une hauteur d'écran
+// garantit qu'il disparaît complètement pendant l'animation de fermeture.
+const SHEET_SLIDE_DISTANCE = Dimensions.get("window").height;
 
 function formatCount(value: number): string {
   if (value >= 1_000_000) {
@@ -63,7 +65,11 @@ export default function RecommendationsScreen() {
   const [modalVisible, setModalVisible] = useState(false);
 
   const spinAnim = useRef(new Animated.Value(0)).current;
-  const navigationTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Slide du panneau piloté par Animated : la navigation s'effectue dans le
+  // callback de fin d'animation (timing exact, plus de durée approximative).
+  const sheetY = useRef(new Animated.Value(SHEET_SLIDE_DISTANCE)).current;
+  // Fondu du fond (overlay), synchronisé avec le slide du panneau.
+  const overlayOpacity = useRef(new Animated.Value(0)).current;
 
   const numColumns = width >= 600 ? 3 : 2;
   const horizontalPadding = 12;
@@ -126,16 +132,54 @@ export default function RecommendationsScreen() {
     }
   }, [result, loadRecommendations]);
 
-  // Nettoie la navigation différée si l'écran est démonté avant la fin de
-  // l'animation de fermeture du panneau.
+  // Ouvre le panneau : slide de bas en haut + fondu du fond, en parallèle.
+  const openSheet = useCallback(() => {
+    sheetY.setValue(SHEET_SLIDE_DISTANCE);
+    overlayOpacity.setValue(0);
+    Animated.parallel([
+      Animated.timing(sheetY, {
+        toValue: 0,
+        duration: 220,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(overlayOpacity, {
+        toValue: 1,
+        duration: 220,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [sheetY, overlayOpacity]);
+
+  // Ferme le panneau : slide + fondu du fond en parallèle, puis exécute
+  // onAnimationEnd (callback de fin) — la navigation démarre exactement quand
+  // les deux animations sont terminées.
+  const closeSheet = useCallback((onAnimationEnd?: () => void) => {
+    sheetY.stopAnimation();
+    overlayOpacity.stopAnimation();
+    Animated.parallel([
+      Animated.timing(sheetY, {
+        toValue: SHEET_SLIDE_DISTANCE,
+        duration: 200,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(overlayOpacity, {
+        toValue: 0,
+        duration: 200,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start(({ finished }) => {
+      if (finished) onAnimationEnd?.();
+    });
+  }, [sheetY, overlayOpacity]);
+
+  // Animation d'entrée à chaque ouverture du panneau.
   useEffect(() => {
-    return () => {
-      if (navigationTimeout.current) {
-        clearTimeout(navigationTimeout.current);
-        navigationTimeout.current = null;
-      }
-    };
-  }, []);
+    if (modalVisible) openSheet();
+  }, [modalVisible, openSheet]);
 
   const spin = spinAnim.interpolate({
     inputRange: [0, 1],
@@ -158,16 +202,14 @@ export default function RecommendationsScreen() {
       });
     };
 
-    if (navigationTimeout.current) {
-      clearTimeout(navigationTimeout.current);
-      navigationTimeout.current = null;
-    }
-
-    // Depuis le panneau, laisse l'animation de fermeture se terminer avant de
-    // naviguer. Depuis les chips (panneau déjà fermé), navigue immédiatement.
+    // Depuis le panneau, navigue dans le callback de fin de l'animation de
+    // fermeture (timing exact). Depuis les chips (panneau déjà fermé),
+    // navigue immédiatement.
     if (modalVisible) {
-      setModalVisible(false);
-      navigationTimeout.current = setTimeout(navigate, MODAL_CLOSE_DURATION);
+      closeSheet(() => {
+        setModalVisible(false);
+        navigate();
+      });
     } else {
       navigate();
     }
@@ -242,8 +284,8 @@ export default function RecommendationsScreen() {
                 <CardPressable
                   key={tag.name}
                   radius={9}
+                  variant="chip"
                   activeOpacity={0.9}
-                  pressedScale={0.93}
                   onPress={() => openTermSearch(tag.name)}
                   accessibilityRole="button"
                   accessibilityLabel={`Rechercher ${tag.name}`}
@@ -474,23 +516,32 @@ export default function RecommendationsScreen() {
       <Modal
         visible={modalVisible}
         transparent
-        animationType="slide"
+        animationType="none"
         statusBarTranslucent
-        onRequestClose={() => setModalVisible(false)}
+        onRequestClose={() => closeSheet(() => setModalVisible(false))}
       >
         <View style={styles.modalOverlay}>
+          {/* Fond assombri en fondu, synchronisé avec le slide du panneau */}
+          <Animated.View
+            style={[
+              StyleSheet.absoluteFillObject,
+              styles.modalBackdrop,
+              { opacity: overlayOpacity },
+            ]}
+          />
           <TouchableOpacity
             activeOpacity={1}
-            onPress={() => setModalVisible(false)}
+            onPress={() => closeSheet(() => setModalVisible(false))}
             style={StyleSheet.absoluteFillObject}
           />
-          <View
+          <Animated.View
             style={[
               styles.modalSheet,
               {
                 backgroundColor: colors.page,
                 borderColor: colors.tagBg,
                 paddingBottom: insets.bottom + 18,
+                transform: [{ translateY: sheetY }],
               },
             ]}
           >
@@ -503,7 +554,10 @@ export default function RecommendationsScreen() {
                 <Text style={[styles.modalTitle, { color: colors.txt }]}>Votre moteur</Text>
                 <Text style={[styles.modalSubtitle, { color: colors.sub }]}>Transparent, local et personnalisable</Text>
               </View>
-              <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
+              <TouchableOpacity
+                onPress={() => closeSheet(() => setModalVisible(false))}
+                style={styles.closeButton}
+              >
                 <Feather name="x" size={19} color={colors.sub} />
               </TouchableOpacity>
             </View>
@@ -542,9 +596,10 @@ export default function RecommendationsScreen() {
                 <View style={styles.modalSection}>
                   <Text style={[styles.sectionLabel, { color: colors.sub }]}>PRÉFÉRENCES DÉTECTÉES</Text>
                   {topTags.map((tag) => (
-                    <TouchableOpacity
+                    <CardPressable
                       key={tag.name}
-                      activeOpacity={0.6}
+                      radius={8}
+                      variant="chip"
                       onPress={() => openTermSearch(tag.name)}
                       accessibilityRole="button"
                       accessibilityLabel={`Rechercher ${tag.name}`}
@@ -562,7 +617,7 @@ export default function RecommendationsScreen() {
                         <Text style={[styles.termScore, { color: colors.accent }]}>{Math.round(tag.score)}</Text>
                         <Feather name="chevron-right" size={12} color={colors.sub} />
                       </View>
-                    </TouchableOpacity>
+                    </CardPressable>
                   ))}
                 </View>
               )}
@@ -571,12 +626,15 @@ export default function RecommendationsScreen() {
                 <View style={styles.modalSection}>
                   <Text style={[styles.sectionLabel, { color: colors.sub }]}>ARTISTES SUIVIS</Text>
                   {profile.artists.slice(0, 5).map((artist) => (
-                    <TouchableOpacity
+                    <CardPressable
                       key={artist.name}
-                      activeOpacity={0.6}
+                      radius={8}
+                      variant="chip"
                       onPress={() => openTermSearch(artist.name, "artist")}
                       accessibilityRole="button"
-                      accessibilityLabel={`Rechercher ${artist.name}`}
+                      accessibilityLabel={`Rechercher ${artist.name}${
+                        artist.count > 0 ? ` (${formatCount(artist.count)} résultats)` : ""
+                      }`}
                       style={styles.termRow}
                     >
                       <Text style={[styles.termName, { color: colors.txt }]} numberOfLines={1}>{artist.name}</Text>
@@ -588,10 +646,45 @@ export default function RecommendationsScreen() {
                             </Text>
                           </View>
                         ))}
+                        {artist.count > 0 && (
+                          <Text style={[styles.termCount, { color: colors.sub }]}>
+                            {formatCount(artist.count)}
+                          </Text>
+                        )}
                         <Text style={[styles.termScore, { color: colors.accent }]}>{Math.round(artist.score)}</Text>
                         <Feather name="chevron-right" size={12} color={colors.sub} />
                       </View>
-                    </TouchableOpacity>
+                    </CardPressable>
+                  ))}
+                </View>
+              )}
+
+              {profile && profile.parodies.length > 0 && (
+                <View style={styles.modalSection}>
+                  <Text style={[styles.sectionLabel, { color: colors.sub }]}>PARODIES SUIVIES</Text>
+                  {profile.parodies.slice(0, 5).map((parody) => (
+                    <CardPressable
+                      key={parody.name}
+                      radius={8}
+                      variant="chip"
+                      onPress={() => openTermSearch(parody.name, "parody")}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Rechercher ${parody.name}`}
+                      style={styles.termRow}
+                    >
+                      <Text style={[styles.termName, { color: colors.txt }]} numberOfLines={1}>{parody.name}</Text>
+                      <View style={styles.termRight}>
+                        {parody.sources.map((source) => (
+                          <View key={source} style={[styles.sourceBadge, { backgroundColor: colors.accent + "22" }]}>
+                            <Text style={[styles.sourceBadgeText, { color: colors.accent }]}>
+                              {sourceLabels[source] || source}
+                            </Text>
+                          </View>
+                        ))}
+                        <Text style={[styles.termScore, { color: colors.accent }]}>{Math.round(parody.score)}</Text>
+                        <Feather name="chevron-right" size={12} color={colors.sub} />
+                      </View>
+                    </CardPressable>
                   ))}
                 </View>
               )}
@@ -616,7 +709,7 @@ export default function RecommendationsScreen() {
                 </Text>
               </View>
             </ScrollView>
-          </View>
+          </Animated.View>
         </View>
       </Modal>
     </View>
@@ -698,7 +791,8 @@ const styles = StyleSheet.create({
   emptyAction: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 19, paddingHorizontal: 17, paddingVertical: 11, borderRadius: 12 },
   emptyActionText: { color: "#fff", fontSize: 12.5, fontWeight: "800" },
 
-  modalOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.62)" },
+  modalOverlay: { flex: 1, justifyContent: "flex-end" },
+  modalBackdrop: { backgroundColor: "rgba(0,0,0,0.62)" },
   modalSheet: { maxHeight: "88%", borderTopLeftRadius: 23, borderTopRightRadius: 23, borderWidth: 1 },
   handle: { width: 38, height: 4, borderRadius: 2, backgroundColor: "#4b4b5c", alignSelf: "center", marginTop: 10, marginBottom: 4 },
   modalHeader: { flexDirection: "row", alignItems: "center", paddingHorizontal: 19, paddingVertical: 14 },
@@ -722,6 +816,7 @@ const styles = StyleSheet.create({
   sourceBadge: { paddingHorizontal: 5, paddingVertical: 2, borderRadius: 5 },
   sourceBadgeText: { fontSize: 8.5, fontWeight: "800" },
   termScore: { minWidth: 24, fontSize: 11, fontWeight: "900", textAlign: "right" },
+  termCount: { fontSize: 10.5, fontWeight: "800" },
   queryBox: { borderRadius: 11, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8, gap: 5 },
   queryLine: { fontSize: 11, fontFamily: "monospace" },
   noteBox: { flexDirection: "row", alignItems: "flex-start", gap: 9, marginTop: 20, padding: 12, borderRadius: 11, borderWidth: 1 },

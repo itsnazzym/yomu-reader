@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { AppSettings } from "../types";
-import { getDefaultSettings } from "../utils/ipc";
+import { getDefaultSettings, updateDnsSettings } from "../utils/ipc";
 
 interface SettingsState {
   settings: AppSettings;
@@ -22,7 +22,12 @@ const defaultInitial: AppSettings = {
   concurrent_images_per_gallery: 4,
   blacklisted_tags: ["scat", "guro"],
   cookies: "",
-  api_key: "nhk_76brQ5mzs90y2OdCzOA920N9m8qP1tzFjuxGAE3TdmKf_k_4",
+  // La clé API n'est jamais codée en dur : elle se saisit dans les Réglages
+  // (ou via la variable d'environnement NHENTAI_API_KEY côté Electron).
+  api_key: "",
+  dns_provider: "adguard",
+  enable_custom_dns: true,
+  enable_doh: true,
 };
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -58,6 +63,17 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     } catch (e) {
       console.error("Failed to persist settings:", e);
+    }
+    if (
+      partial.dns_provider !== undefined ||
+      partial.enable_custom_dns !== undefined ||
+      partial.enable_doh !== undefined
+    ) {
+      updateDnsSettings({
+        dns_provider: updated.dns_provider || "adguard",
+        enable_custom_dns: updated.enable_custom_dns ?? true,
+        enable_doh: updated.enable_doh ?? true,
+      }).catch(() => {});
     }
   },
 

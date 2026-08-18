@@ -11,11 +11,11 @@ import {
 } from "react-native";
 import { BlurView } from "expo-blur";
 import * as Clipboard from "expo-clipboard";
-import * as Haptics from "expo-haptics";
 import * as Sharing from "expo-sharing";
 import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { QRCodeView } from "../ui/QRCodeView";
 import { useTheme } from "../../lib/ThemeContext";
+import { mediumImpact, successFeedback } from "../../lib/haptics";
 
 interface QuickShareModalProps {
   visible: boolean;
@@ -52,9 +52,7 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
   const handleCopy = async (text: string, key: string) => {
     try {
       await Clipboard.setStringAsync(text);
-      try {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      } catch {}
+      successFeedback();
       setCopiedKey(key);
       setTimeout(() => setCopiedKey(null), 2000);
     } catch {}
@@ -62,9 +60,7 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
 
   const handleNativeShare = async () => {
     try {
-      try {
-        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      } catch {}
+      mediumImpact();
 
       if (gallery.filePath && (await Sharing.isAvailableAsync())) {
         await Sharing.shareAsync(gallery.filePath, {

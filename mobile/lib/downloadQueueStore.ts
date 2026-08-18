@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system";
 import { getGallery, resolvePageUrl } from "./api/nhentai";
 import { Gallery } from "./api/types";
+import { makeLocalId, sanitizeTitle, writeLocalManifest } from "./localLibrary";
 
 const QUEUE_KEY = "@nhentai_download_queue";
 const CONCURRENCY_KEY = "@nhentai_download_concurrency";
@@ -17,6 +18,8 @@ export interface QueueItem {
   totalPages: number;
   downloadedPages: number;
   errorMessage?: string;
+  /** Identifiant local (dossier NHAppAndroid/<localId>/), défini à la complétion. */
+  localId?: string;
   addedAt: number;
 }
 
@@ -68,6 +71,9 @@ export async function initDownloadQueue() {
       }));
       notify();
     }
+    // Reprise automatique : les items en attente (queued, ou downloading
+    // ramenés à queued par le chargement) reprennent dès le démarrage.
+    processQueue();
   } catch (e) {
     console.warn("[downloadQueue] Error loading queue:", e);
   }
@@ -78,8 +84,20 @@ export function subscribeDownloadQueue(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
+// useSyncExternalStore compare les snapshots par référence (Object.is).
+// Comme `state` est muté en place, il faut renvoyer une NOUVELLE référence
+// à chaque changement, sinon les écrans abonnés ne se re-rendent jamais.
+let lastSnapshot: QueueState | null = null;
 export function getDownloadQueueSnapshot(): QueueState {
-  return state;
+  if (
+    !lastSnapshot ||
+    lastSnapshot.items !== state.items ||
+    lastSnapshot.maxConcurrent !== state.maxConcurrent ||
+    lastSnapshot.isProcessing !== state.isProcessing
+  ) {
+    lastSnapshot = { ...state, items: state.items };
+  }
+  return lastSnapshot;
 }
 
 export function setMaxConcurrent(val: number) {
@@ -146,6 +164,30 @@ export function removeQueueItem(id: number) {
   notify();
 }
 
+/**
+ * Re-télécharge un item terminé (réparation) : le remet en file en réinitialisant
+ * son état local. Le localId est effacé — il peut pointer vers un dossier perdu —
+ * et sera re-dérivé par le worker (makeLocalId est déterministe). Les fichiers
+ * encore présents sont sautés par le worker, donc seuls les manquants repartent.
+ */
+export function requeueItem(id: number) {
+  state.items = state.items.map((item) =>
+    item.id === id && item.status === "completed"
+      ? {
+          ...item,
+          status: "queued" as const,
+          localId: undefined,
+          progress: 0,
+          downloadedPages: 0,
+          totalPages: 0,
+        }
+      : item
+  );
+  persistQueue();
+  notify();
+  processQueue();
+}
+
 export function clearCompletedQueue() {
   state.items = state.items.filter((item) => item.status !== "completed");
   persistQueue();
@@ -175,16 +217,34 @@ export function resumeAllQueue() {
 
 const activeWorkers = new Set<number>();
 
-function sanitize(str: string): string {
-  return (str || "gallery").replace(/[\\/:*?"<>|]/g, "_").trim().slice(0, 80);
+/**
+ * Extension du fichier déduite de l'URL (y compris les URLs du proxy miroir,
+ * où l'extension réelle est dans le paramètre u=). Priorité à l'URL, sinon le
+ * type t de la page (j/p/w/g).
+ */
+function detectPageExt(pageUrl: string, t?: string): string {
+  const direct = pageUrl.match(/\.(jpg|jpeg|png|webp|gif)(?:[?#]|$)/i);
+  if (direct) return direct[1].toLowerCase() === "jpeg" ? "jpg" : direct[1].toLowerCase();
+  const um = pageUrl.match(/[?&]u=([^&]+)/);
+  if (um) {
+    try {
+      const decoded = decodeURIComponent(um[1]);
+      const m = decoded.match(/\.(jpg|jpeg|png|webp|gif)(?:[?#]|$)/i);
+      if (m) return m[1].toLowerCase() === "jpeg" ? "jpg" : m[1].toLowerCase();
+    } catch {}
+  }
+  if (t === "p") return "png";
+  if (t === "w") return "webp";
+  return "jpg";
 }
 
 async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
   try {
     const gallery: Gallery = await getGallery(item.id);
-    const title = sanitize(gallery.title.pretty || gallery.title.english);
+    const rawTitle = gallery.title.pretty || gallery.title.english;
+    const localId = makeLocalId(gallery.id, rawTitle); // identité stable = dossier
     const baseDir = `${FileSystem.documentDirectory}NHAppAndroid/`;
-    const targetDir = `${baseDir}${gallery.id}_${title}/`;
+    const targetDir = `${baseDir}${localId}/`;
 
     await FileSystem.makeDirectoryAsync(targetDir, { intermediates: true });
 
@@ -205,9 +265,10 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
 
       const p = pagesCopy[i];
       const pageNum = (i + 1).toString().padStart(3, "0");
-      const ext = p?.t === "p" ? "png" : p?.t === "w" ? "webp" : "jpg";
-      const fileUri = `${targetDir}Image${pageNum}.${ext}`;
       const pageUrl = p?.url || resolvePageUrl(gallery.media_id, i, p);
+      const ext = detectPageExt(pageUrl, p?.t);
+      const fileUri = `${targetDir}Image${pageNum}.${ext}`;
+
 
       const exists = (await FileSystem.getInfoAsync(fileUri)).exists;
       if (!exists && pageUrl) {
@@ -246,10 +307,24 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
       { encoding: FileSystem.EncodingType.UTF8 }
     );
 
+    // Manifeste versionné : identité stable + statut, sans dupliquer les pages
+    // (non bloquant — les anciennes galeries sont dérivées de metadata.json).
+    try {
+      await writeLocalManifest({
+        localId,
+        galleryId: gallery.id,
+        title: sanitizeTitle(rawTitle),
+        status: "complete",
+      });
+    } catch (err) {
+      console.warn("[downloadQueue] manifest write failed:", err);
+    }
+
     updateItem(item.id, {
       status: "completed",
       progress: 1,
       downloadedPages: total,
+      localId,
     });
   } catch (err: any) {
     if (err?.message === "__PAUSED__") {
