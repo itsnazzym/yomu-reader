@@ -1663,13 +1663,18 @@ ipcMain.handle("open-auth-window", async () => {
     },
   });
 
-  authWindow.loadURL("https://nhentai.net/");
+  authWindow.loadURL("https://nhentai.net/login/");
 
   const checkAndCaptureCookies = async () => {
     try {
       const cookies = await session.defaultSession.cookies.get({ domain: "nhentai.net" });
       const cookieStr = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
-      if (cookieStr.includes("cf_clearance") || cookieStr.includes("sessionid") || cookieStr.includes("csrftoken")) {
+      if (
+        cookieStr.includes("cf_clearance") ||
+        cookieStr.includes("sessionid") ||
+        cookieStr.includes("csrftoken") ||
+        cookieStr.includes("refresh_token")
+      ) {
         console.log("[🛡️ CLOUDFLARE COOKIES CAPTURED]", cookieStr);
         mainWindow?.webContents.send("cookies-captured", cookieStr);
       }

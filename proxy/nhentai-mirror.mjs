@@ -313,6 +313,71 @@ async function parseListPage(html) {
   return { result, num_pages: numPages, per_page: 25 };
 }
 
+function normalizeSearchSort(sort) {
+  if (!sort || sort === "recent" || sort === "date") return "date";
+  if (sort === "popular-all") return "popular";
+  return sort;
+}
+
+/**
+ * Recherche et navigation via l'API v2 officielle nHentai (avec toutes les taxonomies,
+ * tags, langues, et pagination exacte jusqu'à 25 000+ pages).
+ */
+async function handleOfficialSearch(query, page, sort) {
+  const q = (query || "").trim();
+  const normalizedSort = normalizeSearchSort(sort);
+
+  let endpoint;
+  if (!q) {
+    if (normalizedSort === "date") {
+      endpoint = `https://nhentai.net/api/v2/galleries?page=${page}`;
+    } else {
+      endpoint = `https://nhentai.net/api/v2/search?query=*&page=${page}&sort=${encodeURIComponent(normalizedSort)}`;
+    }
+  } else {
+    endpoint = `https://nhentai.net/api/v2/search?query=${encodeURIComponent(q)}&page=${page}&sort=${encodeURIComponent(normalizedSort)}`;
+  }
+
+  const cacheKey = `official-search:${q}:${page}:${normalizedSort}`;
+  const cached = cacheGet(cacheKey);
+  if (cached) return cached;
+
+  const data = await apiFetchJson(endpoint, { timeoutMs: 8000 });
+  const rawList = Array.isArray(data?.result) ? data.result : (Array.isArray(data?.galleries) ? data.galleries : []);
+  if (rawList.length === 0 && !q) {
+    throw new Error(`API officielle vide pour ${endpoint}`);
+  }
+
+  const result = rawList.map((g) => {
+    const coverUrl = g.images?.cover?.url || (g.media_id ? `https://t3.nhentai.net/galleries/${g.media_id}/cover.jpg` : "");
+    const thumbUrl = g.images?.thumbnail?.url || (g.media_id ? `https://t3.nhentai.net/galleries/${g.media_id}/thumb.jpg` : "");
+    return {
+      id: g.id,
+      media_id: String(g.media_id || ""),
+      title: g.title || { english: `Gallery #${g.id}`, japanese: "", pretty: `Gallery #${g.id}` },
+      cover: coverUrl,
+      images: {
+        cover: { t: "j", w: 350, h: 500, url: coverUrl },
+        thumbnail: { t: "j", w: 250, h: 350, url: thumbUrl },
+        pages: g.images?.pages || [],
+      },
+      tags: g.tags || [],
+      tag_ids: g.tag_ids || [],
+      num_pages: g.num_pages || g.images?.pages?.length || 0,
+      num_favorites: g.num_favorites || 0,
+      upload_date: g.upload_date || 0,
+    };
+  });
+
+  const parsed = {
+    result,
+    num_pages: Number(data?.num_pages || data?.total_pages || 1),
+    per_page: Number(data?.per_page || 25),
+  };
+  cacheSet(cacheKey, parsed, 60 * 1000);
+  return parsed;
+}
+
 /** Parse une page détail de galerie (structure commune aux deux miroirs). */
 async function parseGalleryPage(html, id, mirror) {
   const $ = cheerio.load(html);
@@ -418,6 +483,12 @@ async function parseGalleryPage(html, id, mirror) {
 // ---------------------------------------------------------------------------
 
 async function handleSearch(query, page, sort) {
+  try {
+    return await handleOfficialSearch(query, page, sort);
+  } catch (err) {
+    console.warn(`[proxy] API officielle indisponible pour "${query}" (tri: ${sort}) : ${err?.message}`);
+  }
+
   const q = (query || "").trim();
   const term = q ? encodeURIComponent(q) : "*";
   const isPopular = !!sort && sort.startsWith("popular");
@@ -677,20 +748,26 @@ function solvePow(challenge, difficulty) {
 async function resolveUserAuth(req) {
   const refreshToken = (req.headers["x-refresh-token"] || "").trim();
   const accessToken = (req.headers["x-access-token"] || "").trim();
+  const apiKey = (req.headers["x-api-key"] || "").trim();
+  const sessionid = (req.headers["x-sessionid"] || "").trim();
+
   if (refreshToken) {
     const tok = await exchangeRefreshToken(refreshToken);
     return `User ${tok}`;
   }
   if (accessToken) return `User ${accessToken}`;
-  const err = new Error("Jeton utilisateur manquant (header X-Refresh-Token ou X-Access-Token)");
+  if (apiKey) return `Key ${apiKey}`;
+  if (sessionid) return `User ${sessionid}`;
+
+  const err = new Error("Jeton utilisateur manquant (header X-Refresh-Token, X-Access-Token, X-Api-Key ou X-Sessionid)");
   err.status = 401;
   throw err;
 }
 
 /** Requête JSON vers l'API officielle avec timeout (auth optionnelle). */
-async function apiFetchJson(url, { method = "GET", auth, body } = {}) {
+async function apiFetchJson(url, { method = "GET", auth, body, timeoutMs = 20000 } = {}) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 20000);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const headers = {
       "User-Agent": UA,
@@ -746,6 +823,165 @@ async function deleteUserKey(auth, keyId) {
   return apiFetchJson(`https://nhentai.net/api/v2/user/keys/${encodeURIComponent(keyId)}`, {
     method: "DELETE",
     auth,
+  });
+}
+
+/** POST /api/v2/auth/login avec PoW résolu -> { success, refresh_token, access_token, username } */
+async function loginNativeUser(username, password) {
+  let pow;
+  try {
+    pow = await apiFetchJson("https://nhentai.net/api/v2/pow?action=login");
+  } catch (err) {
+    try {
+      pow = await apiFetchJson("https://nhentai.net/api/v2/pow");
+    } catch {}
+  }
+  const nonce = pow?.difficulty > 0 ? solvePow(pow.challenge, pow.difficulty) : "";
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20000);
+  try {
+    const res = await fetch("https://nhentai.net/api/v2/auth/login", {
+      method: "POST",
+      headers: {
+        "User-Agent": UA,
+        Accept: "application/json, text/plain, */*",
+        "Content-Type": "application/json",
+        Referer: "https://nhentai.net/login/",
+      },
+      body: JSON.stringify({
+        username,
+        password,
+        pow_challenge: pow?.challenge || "",
+        pow_nonce: nonce,
+        captcha_response: "",
+      }),
+      redirect: "follow",
+      signal: controller.signal,
+    });
+
+    const rawCookies = typeof res.headers.getSetCookie === "function"
+      ? res.headers.getSetCookie()
+      : [res.headers.get("set-cookie") || ""];
+    const allCookies = rawCookies.filter(Boolean).join("; ");
+    let refreshTokenFromCookie = "";
+    let sessionIdFromCookie = "";
+    const rtMatch = allCookies.match(/refresh_token=([^;]+)/);
+    if (rtMatch) refreshTokenFromCookie = decodeURIComponent(rtMatch[1]);
+    const sidMatch = allCookies.match(/sessionid=([^;]+)/);
+    if (sidMatch) sessionIdFromCookie = decodeURIComponent(sidMatch[1]);
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const errMsg = String(data?.error || data?.message || data?.details || "");
+      const isCaptcha =
+        res.status === 403 ||
+        Boolean(data?.captcha_required) ||
+        /captcha|turnstile|challenge|verification/i.test(errMsg);
+
+      if (isCaptcha) {
+        const err = new Error("Vérification de sécurité (Captcha) requise. Utilisez la fenêtre de sécurité.");
+        err.status = 403;
+        err.captchaRequired = true;
+        throw err;
+      }
+      const err = new Error(errMsg || `Identifiants invalides (HTTP ${res.status})`);
+      err.status = res.status || 401;
+      throw err;
+    }
+
+    const refreshToken = data.refresh_token || refreshTokenFromCookie || sessionIdFromCookie;
+    const accessToken = data.access_token || "";
+    const user = data.user?.username || username;
+
+    return {
+      success: true,
+      refresh_token: refreshToken,
+      access_token: accessToken,
+      username: user,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** GET /api/v2/user/me -> Profil complet (username, avatar, email...) */
+async function fetchUserProfileData(auth) {
+  try {
+    const data = await apiFetchJson("https://nhentai.net/api/v2/user/me", { auth });
+    if (data) {
+      return {
+        id: data.id || 0,
+        username: data.username || "",
+        email: data.email || "",
+        avatar_url: data.avatar_url || data.avatar || "",
+        num_favorites: Number(data.num_favorites || data.favorites_count || 0),
+        num_comments: Number(data.num_comments || 0),
+        joined_at: data.joined_at || data.created_at || "",
+      };
+    }
+  } catch (e) {
+    console.warn("[proxy] user/me v2 non joignable, fallback profil:", e?.message);
+  }
+  return {
+    id: 0,
+    username: "",
+    email: "",
+    avatar_url: "",
+    num_favorites: 0,
+    num_comments: 0,
+  };
+}
+
+/** GET /api/v2/user/comments -> Liste des commentaires de l'utilisateur */
+async function fetchUserCommentsList(auth) {
+  try {
+    const data = await apiFetchJson("https://nhentai.net/api/v2/user/comments", { auth });
+    const rawList = Array.isArray(data) ? data : Array.isArray(data?.result) ? data.result : Array.isArray(data?.comments) ? data.comments : [];
+    return rawList.map((c) => {
+      const gId = Number(c.gallery_id || c.gallery?.id || 0);
+      const mediaId = String(c.gallery?.media_id || c.media_id || "");
+      const thumbUrl = mediaId
+        ? `https://t3.nhentai.net/galleries/${mediaId}/thumb.webp`
+        : c.gallery?.cover || "";
+
+      return {
+        id: String(c.id || Math.random().toString(36).slice(2)),
+        gallery_id: gId,
+        gallery_title: c.gallery?.title?.pretty || c.gallery_title || (gId ? `Gallery #${gId}` : "Manga"),
+        gallery_cover: thumbUrl,
+        post_date: Number(c.post_date || c.created_at || Math.floor(Date.now() / 1000)),
+        body: String(c.body || c.comment || c.text || "").trim(),
+      };
+    });
+  } catch (e) {
+    console.warn("[proxy] user/comments non joignable:", e?.message);
+    return [];
+  }
+}
+
+/** POST /api/v2/user/password -> Changer le mot de passe utilisateur */
+async function changeUserPasswordApi(auth, currentPassword, newPassword) {
+  let pow;
+  try {
+    pow = await apiFetchJson("https://nhentai.net/api/v2/pow?action=change_password");
+  } catch {
+    try {
+      pow = await apiFetchJson("https://nhentai.net/api/v2/pow");
+    } catch {}
+  }
+  const nonce = pow?.difficulty > 0 ? solvePow(pow.challenge, pow.difficulty) : "";
+
+  return apiFetchJson("https://nhentai.net/api/v2/user/password", {
+    method: "POST",
+    auth,
+    body: {
+      current_password: currentPassword,
+      new_password: newPassword,
+      pow_challenge: pow?.challenge || "",
+      pow_nonce: nonce,
+      captcha_response: "",
+    },
   });
 }
 
@@ -1059,6 +1295,37 @@ const server = http.createServer(async (req, res) => {
       res.end(chunk);
       return;
     }
+    if (path === "/api/auth/login" && req.method === "POST") {
+      const body = await readJsonBody(req);
+      const username = String(body?.username || "").trim();
+      const password = String(body?.password || "").trim();
+      if (!username || !password) {
+        return sendJson(400, { error: "Identifiant et mot de passe requis" });
+      }
+      const result = await loginNativeUser(username, password);
+      return sendJson(200, result);
+    }
+    if (path === "/api/user/profile") {
+      const auth = await resolveUserAuth(req);
+      const profile = await fetchUserProfileData(auth);
+      return sendJson(200, profile);
+    }
+    if (path === "/api/user/comments") {
+      const auth = await resolveUserAuth(req);
+      const comments = await fetchUserCommentsList(auth);
+      return sendJson(200, comments);
+    }
+    if (path === "/api/user/change-password" && req.method === "POST") {
+      const auth = await resolveUserAuth(req);
+      const body = await readJsonBody(req);
+      const currentPassword = String(body?.current_password || "").trim();
+      const newPassword = String(body?.new_password || "").trim();
+      if (!currentPassword || !newPassword) {
+        return sendJson(400, { error: "Ancien et nouveau mot de passe requis" });
+      }
+      const result = await changeUserPasswordApi(auth, currentPassword, newPassword);
+      return sendJson(200, result || { success: true, message: "Mot de passe mis à jour" });
+    }
     if (path === "/api/keys" && req.method === "POST") {
       const auth = await resolveUserAuth(req);
       const body = await readJsonBody(req);
@@ -1126,7 +1393,10 @@ const server = http.createServer(async (req, res) => {
   } catch (err) {
     console.error(`[proxy] ${req.method} ${path} ->`, err?.message);
     const status = err?.status || (/404|introuvable|not found/i.test(String(err?.message)) ? 404 : 502);
-    const payload = { error: err?.message || "Erreur interne" };
+    const payload = {
+      error: err?.message || "Erreur interne",
+      captchaRequired: Boolean(err?.captchaRequired || err?.status === 403),
+    };
     if (err?.rateLimit) {
       payload.retryAfter = err.rateLimit.retryAfter || 60;
       payload.rateLimitRemaining = err.rateLimit.remaining;

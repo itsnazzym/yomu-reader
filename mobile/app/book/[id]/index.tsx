@@ -5,13 +5,30 @@ import {
   Text,
   ScrollView,
   Pressable,
+  TouchableOpacity,
   ActivityIndicator,
   Share,
   Animated,
   Easing,
   useWindowDimensions,
+  Modal,
 } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import {
+  IconAlertCircle,
+  IconArrowLeft,
+  IconBookmark,
+  IconShare,
+  IconFileText,
+  IconHeart,
+  IconCalendar,
+  IconBook2,
+  IconDownload,
+  IconX,
+  IconChevronLeft,
+  IconChevronRight,
+  IconPlayerPlay,
+  IconPlus,
+} from "@tabler/icons-react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { lightTap } from "@/lib/haptics";
@@ -23,6 +40,7 @@ import SmartImage from "@/components/SmartImage";
 import { CardPressable } from "@/components/ui/CardPressable";
 import { IconBtn } from "@/components/ui/IconBtn";
 import { useFavorites } from "@/lib/favoritesStore";
+import { useTagFavs } from "@/lib/tagFavoritesStore";
 import { enqueueGalleries } from "@/lib/downloadQueueStore";
 import { BookCard } from "@/components/BookCard";
 import { QuickShareModal } from "@/components/modals/QuickShareModal";
@@ -34,12 +52,14 @@ export default function BookDetailScreen() {
   const { width } = useWindowDimensions();
   const { colors } = useTheme();
   const { isFavorite, toggleFavorite } = useFavorites();
+  const { isFav: isTagFav, toggleFav: toggleTagFav } = useTagFavs();
 
   const [gallery, setGallery] = useState<Gallery | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isShareOpen, setIsShareOpen] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 
   // Fermeture animée avant navigation (même pattern que le panneau des
   // recommandations) : fondu de l'écran, puis navigation au callback de fin.
@@ -61,30 +81,38 @@ export default function BookDetailScreen() {
     setLoading(true);
     setError(null);
 
-    Promise.all([getGallery(id), getComments(id)])
+    Promise.all([
+      getGallery(id),
+      getComments(id).catch(() => []),
+    ])
       .then(([g, c]) => {
         setGallery(g);
         setComments(c);
-        setLoading(false);
       })
       .catch((err) => {
-        console.error("Gallery fetch failed:", err);
-        setError(err?.message || "Impossible de charger la galerie.");
+        setError(err?.message || "Impossible de charger la galerie");
+      })
+      .finally(() => {
         setLoading(false);
       });
   }, [id]);
 
-  const handleShare = () => {
+  const handleShare = async () => {
     if (!gallery) return;
     setIsShareOpen(true);
   };
 
   const handleDownload = () => {
     if (!gallery) return;
+    const bookTitle =
+      gallery.title?.pretty ||
+      gallery.title?.english ||
+      gallery.title?.japanese ||
+      (typeof gallery.title === "string" ? gallery.title : `Gallery #${gallery.id}`);
     enqueueGalleries([
       {
         id: gallery.id,
-        title: gallery.title.pretty || gallery.title.english,
+        title: bookTitle,
         cover: gallery.images?.cover?.url,
       },
     ]);
@@ -102,23 +130,19 @@ export default function BookDetailScreen() {
     });
   };
 
-  const openTagSearch = (name: string) => {
+  const openTagSearch = (name: string, type = "tag") => {
     lightTap();
-    if (navigatingRef.current) return;
-    navigatingRef.current = true;
+    router.push({
+      pathname: "/",
+      params: { tag: name, type },
+    });
+  };
 
-    Animated.timing(fadeOut, {
-      toValue: 1,
-      duration: 180,
-      easing: Easing.in(Easing.cubic),
-      useNativeDriver: true,
-    }).start(({ finished }) => {
-      if (finished) {
-        router.push({
-          pathname: "/",
-          params: { tag: name },
-        });
-      }
+  const appendTagSearch = (name: string, type = "tag") => {
+    lightTap();
+    router.push({
+      pathname: "/",
+      params: { appendTag: name, type },
     });
   };
 
@@ -136,7 +160,7 @@ export default function BookDetailScreen() {
   const tagCategoryLabels: Record<string, string> = {
     parody: "Séries / Parodies",
     character: "Personnages",
-    tag: "Balises",
+    tag: "Tags",
     artist: "Artistes",
     group: "Groupes",
     language: "Langues",
@@ -157,7 +181,7 @@ export default function BookDetailScreen() {
   if (error || !gallery) {
     return (
       <View style={[styles.centerContainer, { backgroundColor: colors.bg }]}>
-        <Feather name="alert-circle" size={48} color="#ff4757" />
+        <IconAlertCircle size={48} color="#ff4757" stroke={1.5} />
         <Text style={[styles.errorTitle, { color: colors.txt }]}>Erreur</Text>
         <Text style={[styles.errorSub, { color: colors.sub }]}>
           {error || "Galerie introuvable"}
@@ -176,6 +200,12 @@ export default function BookDetailScreen() {
   const thumbGap = 8;
   const thumbWidth = Math.floor((width - 32 - thumbGap * (thumbCols - 1)) / thumbCols);
 
+  const mainTitle =
+    gallery.title?.pretty ||
+    gallery.title?.english ||
+    gallery.title?.japanese ||
+    (typeof gallery.title === "string" ? gallery.title : `Gallery #${gallery.id}`);
+
   return (
     <View style={[styles.container, { backgroundColor: colors.bg }]}>
       {/* Top Floating App Bar */}
@@ -189,19 +219,19 @@ export default function BookDetailScreen() {
         ]}
       >
         <IconBtn onPress={() => router.back()} size={40}>
-          <Feather name="arrow-left" size={22} color={colors.txt} />
+          <IconArrowLeft size={22} color={colors.txt} stroke={2} />
         </IconBtn>
 
         <View style={styles.topBarActions}>
           <IconBtn onPress={() => toggleFavorite(gallery)} size={40}>
-            <Feather
-              name="bookmark"
+            <IconBookmark
               size={20}
               color={fav ? colors.accent : colors.txt}
+              stroke={fav ? 2.5 : 1.8}
             />
           </IconBtn>
           <IconBtn onPress={handleShare} size={40}>
-            <Feather name="share-2" size={20} color={colors.txt} />
+            <IconShare size={20} color={colors.txt} stroke={2} />
           </IconBtn>
         </View>
       </View>
@@ -222,9 +252,9 @@ export default function BookDetailScreen() {
 
           <View style={styles.heroMeta}>
             <Text style={[styles.titlePretty, { color: colors.txt }]}>
-              {gallery.title.pretty || gallery.title.english}
+              {mainTitle}
             </Text>
-            {gallery.title.japanese ? (
+            {gallery.title?.japanese ? (
               <Text style={[styles.titleJap, { color: colors.sub }]} numberOfLines={2}>
                 {gallery.title.japanese}
               </Text>
@@ -233,22 +263,22 @@ export default function BookDetailScreen() {
             {/* Stats Row */}
             <View style={styles.statsRow}>
               <View style={[styles.statChip, { backgroundColor: colors.tagBg }]}>
-                <Feather name="file-text" size={13} color={colors.accent} />
+                <IconFileText size={13} color={colors.accent} stroke={2} />
                 <Text style={[styles.statText, { color: colors.txt }]}>
-                  {gallery.num_pages || gallery.images?.pages?.length} pages
+                  {gallery.num_pages || gallery.images?.pages?.length || 0} pages
                 </Text>
               </View>
               <View style={[styles.statChip, { backgroundColor: colors.tagBg }]}>
-                <Feather name="heart" size={13} color="#ff4757" />
+                <IconHeart size={13} color="#ff4757" stroke={2} />
                 <Text style={[styles.statText, { color: colors.txt }]}>
                   {gallery.num_favorites || 0}
                 </Text>
               </View>
               {gallery.upload_date ? (
                 <View style={[styles.statChip, { backgroundColor: colors.tagBg }]}>
-                  <Feather name="calendar" size={13} color={colors.sub} />
+                  <IconCalendar size={13} color={colors.sub} stroke={2} />
                   <Text style={[styles.statText, { color: colors.sub }]}>
-                    {format(new Date(gallery.upload_date * 1000), "dd/MM/yyyy")}
+                    {format(new Date(Number(gallery.upload_date) * 1000), "dd/MM/yyyy")}
                   </Text>
                 </View>
               ) : null}
@@ -264,7 +294,7 @@ export default function BookDetailScreen() {
             style={[styles.primaryReadBtn, { backgroundColor: colors.accent }]}
           >
             <View style={styles.btnInner}>
-              <Feather name="book-open" size={20} color="#fff" />
+              <IconBook2 size={20} color="#fff" stroke={1.8} />
               <Text style={styles.primaryReadBtnText}>Lire Maintenant</Text>
             </View>
           </CardPressable>
@@ -275,7 +305,7 @@ export default function BookDetailScreen() {
             style={[styles.secondaryBtn, { backgroundColor: colors.page, borderColor: colors.tagBg }]}
           >
             <View style={styles.btnInner}>
-              <Feather name="download" size={18} color={colors.accent} />
+              <IconDownload size={18} color={colors.accent} stroke={2} />
               <Text style={[styles.secondaryBtnText, { color: colors.txt }]}>Télécharger</Text>
             </View>
           </CardPressable>
@@ -284,7 +314,7 @@ export default function BookDetailScreen() {
         {/* Tag Categories */}
         <View style={[styles.tagsSection, { backgroundColor: colors.page, borderColor: colors.tagBg }]}>
           <Text style={[styles.sectionTitle, { color: colors.title }]}>
-            Informations & Balises
+            Informations & Tags
           </Text>
 
           {Object.entries(tagGroups).map(([type, tags]) => (
@@ -293,25 +323,60 @@ export default function BookDetailScreen() {
                 {tagCategoryLabels[type] || type}
               </Text>
               <View style={styles.tagChipsWrap}>
-                {/* Même animation d'échelle que les chips : CardPressable
-                    (Animated.spring) avec le variant chip. */}
-                {tags.map((t) => (
-                  <CardPressable
-                    key={t.id}
-                    radius={8}
-                    variant="chip"
-                    activeOpacity={0.85}
-                    onPress={() => openTagSearch(t.name)}
-                    style={[styles.tagChip, { backgroundColor: colors.tagBg }]}
-                  >
-                    <Text style={[styles.tagChipText, { color: colors.tagText }]}>
-                      {t.name}
-                    </Text>
-                    <Text style={[styles.tagChipCount, { color: colors.sub }]}>
-                      {t.count > 999 ? `${(t.count / 1000).toFixed(0)}k` : t.count}
-                    </Text>
-                  </CardPressable>
-                ))}
+                {tags.map((t) => {
+                  const isFavorited = isTagFav(t.type, t.name);
+                  return (
+                    <View
+                      key={t.id}
+                      style={[
+                        styles.tagChipContainer,
+                        {
+                          backgroundColor: colors.tagBg,
+                          borderColor: isFavorited ? colors.accent : "rgba(255,255,255,0.06)",
+                        },
+                      ]}
+                    >
+                      {/* Clic direct pour chercher ce tag */}
+                      <Pressable
+                        onPress={() => openTagSearch(t.name, t.type)}
+                        style={styles.tagChipMainPress}
+                      >
+                        <Text style={[styles.tagChipText, { color: colors.tagText }]}>
+                          {t.name}
+                        </Text>
+                        <Text style={[styles.tagChipCount, { color: colors.sub }]}>
+                          {t.count > 999 ? `${(t.count / 1000).toFixed(0)}k` : t.count}
+                        </Text>
+                      </Pressable>
+
+                      {/* Bouton + pour ajouter à la recherche */}
+                      <Pressable
+                        hitSlop={6}
+                        onPress={() => appendTagSearch(t.name, t.type)}
+                        style={[styles.tagChipActionBtn, { borderLeftColor: "rgba(255,255,255,0.1)" }]}
+                      >
+                        <IconPlus size={13} color={colors.accent} stroke={2.5} />
+                      </Pressable>
+
+                      {/* Bouton cœur pour mettre en favoris */}
+                      <Pressable
+                        hitSlop={6}
+                        onPress={() => {
+                          lightTap();
+                          toggleTagFav({ type: t.type, name: t.name, count: t.count });
+                        }}
+                        style={styles.tagChipActionBtn}
+                      >
+                        <IconHeart
+                          size={13}
+                          color={isFavorited ? "#f43f5e" : colors.sub}
+                          fill={isFavorited ? "#f43f5e" : "transparent"}
+                          stroke={1.8}
+                        />
+                      </Pressable>
+                    </View>
+                  );
+                })}
               </View>
             </View>
           ))}
@@ -367,7 +432,7 @@ export default function BookDetailScreen() {
             {(gallery.images?.pages || []).map((p, idx) => (
               <Pressable
                 key={idx}
-                onPress={() => handleRead(idx)}
+                onPress={() => setPreviewIndex(idx)}
                 style={[
                   styles.thumbCard,
                   {
@@ -390,6 +455,94 @@ export default function BookDetailScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* Quick Page Preview Modal */}
+      <Modal
+        visible={previewIndex !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewIndex(null)}
+      >
+        <Pressable
+          style={styles.previewBackdrop}
+          onPress={() => setPreviewIndex(null)}
+        >
+          {previewIndex !== null && gallery && (
+            <Pressable
+              style={[styles.previewCard, { backgroundColor: "#12121a", borderColor: "#28283a" }]}
+              onPress={(e) => e.stopPropagation()}
+            >
+              {/* Modal Top Bar */}
+              <View style={styles.previewHeader}>
+                <Text style={styles.previewHeaderText}>
+                  Page {previewIndex + 1} sur {gallery.images?.pages?.length || gallery.num_pages || 0}
+                </Text>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => setPreviewIndex(null)}
+                  style={styles.previewCloseBtn}
+                >
+                  <IconX size={18} color="#9ca3af" stroke={2} />
+                </TouchableOpacity>
+              </View>
+
+              {/* High-res Image Preview */}
+              <View style={styles.previewImageContainer}>
+                <SmartImage
+                  uri={
+                    gallery.images?.pages?.[previewIndex]?.url ||
+                    gallery.images?.pages?.[previewIndex]?.urlThumb ||
+                    ""
+                  }
+                  style={styles.previewImage}
+                  contentFit="contain"
+                />
+
+                {/* Left/Right Quick Page Navigation */}
+                {previewIndex > 0 && (
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={() => setPreviewIndex((prev) => (prev !== null ? Math.max(0, prev - 1) : 0))}
+                    style={[styles.previewNavBtn, styles.previewNavLeft]}
+                  >
+                    <IconChevronLeft size={22} color="#fff" stroke={2.5} />
+                  </TouchableOpacity>
+                )}
+
+                {previewIndex < (gallery.images?.pages?.length || gallery.num_pages || 1) - 1 && (
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={() =>
+                      setPreviewIndex((prev) =>
+                        prev !== null
+                          ? Math.min((gallery.images?.pages?.length || gallery.num_pages || 1) - 1, prev + 1)
+                          : 0
+                      )
+                    }
+                    style={[styles.previewNavBtn, styles.previewNavRight]}
+                  >
+                    <IconChevronRight size={22} color="#fff" stroke={2.5} />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Action Button: Start Reading from this page */}
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => {
+                  const idx = previewIndex;
+                  setPreviewIndex(null);
+                  handleRead(idx);
+                }}
+                style={[styles.previewReadBtn, { backgroundColor: colors.accent }]}
+              >
+                <IconPlayerPlay size={18} color="#1c191a" fill="#1c191a" />
+                <Text style={styles.previewReadText}>Lire à partir de cette page</Text>
+              </TouchableOpacity>
+            </Pressable>
+          )}
+        </Pressable>
+      </Modal>
 
       <QuickShareModal
         visible={isShareOpen}
@@ -439,14 +592,17 @@ const styles = StyleSheet.create({
   },
   coverWrapper: {
     width: 130,
-    aspectRatio: 0.72,
-    borderRadius: 12,
+    aspectRatio: 0.707, // B6 Tankobon ratio
+    borderRadius: 14,
     overflow: "hidden",
+    backgroundColor: "#0d0d14",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
   },
   coverImage: { width: "100%", height: "100%" },
   heroMeta: { flex: 1, justifyContent: "space-between" },
-  titlePretty: { fontSize: 15, fontWeight: "800", lineHeight: 20 },
-  titleJap: { fontSize: 11, marginTop: 4, lineHeight: 15 },
+  titlePretty: { fontSize: 15, fontWeight: "900", lineHeight: 20, color: "#f3f4f6" },
+  titleJap: { fontSize: 11, marginTop: 4, lineHeight: 15, color: "#9ca3af" },
   statsRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 10 },
   statChip: {
     flexDirection: "row",
@@ -454,6 +610,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
+    borderWidth: 0.8,
+    borderColor: "#232332",
+    backgroundColor: "#161622",
     gap: 4,
   },
   statText: { fontSize: 11, fontWeight: "700" },
@@ -463,11 +622,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginTop: 16,
   },
-  primaryReadBtn: { flex: 1, paddingVertical: 13, borderRadius: 14 },
-  secondaryBtn: { flex: 1, paddingVertical: 13, borderRadius: 14, borderWidth: 1 },
+  primaryReadBtn: { flex: 1, paddingVertical: 13, borderRadius: 12 },
+  secondaryBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, borderWidth: 1 },
   btnInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
-  primaryReadBtnText: { color: "#fff", fontWeight: "800", fontSize: 14 },
-  secondaryBtnText: { fontWeight: "700", fontSize: 14 },
+  primaryReadBtnText: { color: "#fff", fontWeight: "800", fontSize: 13.5 },
+  secondaryBtnText: { fontWeight: "700", fontSize: 13.5 },
   tagsSection: {
     marginHorizontal: 16,
     marginTop: 20,
@@ -479,13 +638,27 @@ const styles = StyleSheet.create({
   tagCategoryRow: { marginBottom: 12 },
   tagCategoryName: { fontSize: 12, fontWeight: "700", marginBottom: 6 },
   tagChipsWrap: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  tagChip: {
+  tagChipContainer: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
     borderRadius: 8,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  tagChipMainPress: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
     gap: 6,
+  },
+  tagChipActionBtn: {
+    paddingHorizontal: 6,
+    paddingVertical: 5,
+    alignItems: "center",
+    justifyContent: "center",
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: "rgba(255,255,255,0.08)",
   },
   tagChipText: { fontSize: 12, fontWeight: "600" },
   tagChipCount: { fontSize: 10, fontWeight: "700" },
@@ -518,4 +691,81 @@ const styles = StyleSheet.create({
   },
   thumbPageText: { color: "#fff", fontSize: 10, fontWeight: "700" },
   navFadeOverlay: { backgroundColor: "#000" },
+  previewBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.85)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 16,
+  },
+  previewCard: {
+    width: "100%",
+    maxWidth: 380,
+    height: "82%",
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 14,
+    gap: 10,
+    elevation: 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.6,
+    shadowRadius: 20,
+  },
+  previewHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 4,
+  },
+  previewHeaderText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#f3f4f6",
+  },
+  previewCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#1f1f2e",
+  },
+  previewImageContainer: {
+    flex: 1,
+    borderRadius: 14,
+    overflow: "hidden",
+    backgroundColor: "#000",
+    position: "relative",
+  },
+  previewImage: {
+    width: "100%",
+    height: "100%",
+  },
+  previewNavBtn: {
+    position: "absolute",
+    top: "50%",
+    marginTop: -20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(0,0,0,0.65)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  previewNavLeft: { left: 8 },
+  previewNavRight: { right: 8 },
+  previewReadBtn: {
+    height: 46,
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  previewReadText: {
+    fontSize: 13.5,
+    fontWeight: "800",
+    color: "#1c191a",
+  },
 });

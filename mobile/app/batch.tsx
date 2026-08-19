@@ -13,7 +13,20 @@ import {
   Alert,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
-import { Feather } from "@expo/vector-icons";
+import {
+  IconPhoto,
+  IconAlertTriangle,
+  IconCircleCheck,
+  IconPlayerPause,
+  IconPlayerPlay,
+  IconBook2,
+  IconTrash,
+  IconArrowLeft,
+  IconPlus,
+  IconCloudDownload,
+  IconX,
+  IconDownload,
+} from "@tabler/icons-react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/lib/ThemeContext";
@@ -300,7 +313,7 @@ export default function BatchScreen() {
             <SmartImage uri={item.cover} style={styles.cardCover} contentFit="cover" />
           ) : (
             <View style={[styles.cardCoverPlaceholder, { backgroundColor: colors.tagBg }]}>
-              <Feather name="image" size={22} color={colors.sub} />
+              <IconPhoto size={22} color={colors.sub} stroke={1.8} />
             </View>
           )}
         </View>
@@ -326,9 +339,9 @@ export default function BatchScreen() {
                   {verifyChecking ? (
                     <ActivityIndicator size={12} color={colors.accent} />
                   ) : verifyBad ? (
-                    <Feather name="alert-triangle" size={13} color="#ff4757" />
+                    <IconAlertTriangle size={13} color="#ff4757" stroke={2} />
                   ) : verifyOk ? (
-                    <Feather name="check-circle" size={13} color="#2ed573" />
+                    <IconCircleCheck size={13} color="#2ed573" stroke={2.5} />
                   ) : null}
                   <Text
                     style={[
@@ -367,7 +380,7 @@ export default function BatchScreen() {
               onPress={() => pauseQueueItem(item.id)}
               style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.6 : 1 }]}
             >
-              <Feather name="pause" size={18} color={colors.accent} />
+              <IconPlayerPause size={18} color={colors.accent} stroke={2} />
             </Pressable>
           )}
           {(isPaused || isError) && (
@@ -375,7 +388,7 @@ export default function BatchScreen() {
               onPress={() => resumeQueueItem(item.id)}
               style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.6 : 1 }]}
             >
-              <Feather name="play" size={18} color={colors.accent} />
+              <IconPlayerPlay size={18} color={colors.accent} stroke={2} />
             </Pressable>
           )}
           {isCompleted && (
@@ -383,14 +396,14 @@ export default function BatchScreen() {
               onPress={() => openCompleted(item)}
               style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.6 : 1 }]}
             >
-              <Feather name="book-open" size={18} color="#2ed573" />
+              <IconBook2 size={18} color="#2ed573" stroke={1.8} />
             </Pressable>
           )}
           <Pressable
             onPress={() => removeQueueItem(item.id)}
             style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.6 : 1 }]}
           >
-            <Feather name="trash-2" size={16} color="#ff4757" />
+            <IconTrash size={16} color="#ff4757" stroke={1.8} />
           </Pressable>
         </View>
       </View>
@@ -411,7 +424,7 @@ export default function BatchScreen() {
       <View style={[styles.header, { borderBottomColor: colors.tagBg }]}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <IconBtn onPress={() => router.back()} size={36}>
-            <Feather name="arrow-left" size={20} color={colors.txt} />
+            <IconArrowLeft size={20} color={colors.txt} stroke={2} />
           </IconBtn>
           <View>
             <Text style={[styles.headerTitle, { color: colors.txt }]}>
@@ -431,7 +444,7 @@ export default function BatchScreen() {
             { backgroundColor: colors.accent, opacity: pressed ? 0.8 : 1 },
           ]}
         >
-          <Feather name="plus" size={16} color="#fff" />
+          <IconPlus size={16} color="#fff" stroke={2.5} />
           <Text style={styles.addBatchBtnText}>Nouveau lot</Text>
         </Pressable>
       </View>
@@ -472,19 +485,19 @@ export default function BatchScreen() {
             onPress={resumeAllQueue}
             style={({ pressed }) => [styles.toolbarBtn, { opacity: pressed ? 0.6 : 1 }]}
           >
-            <Feather name="play" size={16} color={colors.accent} />
+            <IconPlayerPlay size={16} color={colors.accent} stroke={2} />
           </Pressable>
           <Pressable
             onPress={pauseAllQueue}
             style={({ pressed }) => [styles.toolbarBtn, { opacity: pressed ? 0.6 : 1 }]}
           >
-            <Feather name="pause" size={16} color={colors.sub} />
+            <IconPlayerPause size={16} color={colors.sub} stroke={2} />
           </Pressable>
           <Pressable
             onPress={clearCompletedQueue}
             style={({ pressed }) => [styles.toolbarBtn, { opacity: pressed ? 0.6 : 1 }]}
           >
-            <Feather name="trash" size={16} color={colors.sub} />
+            <IconTrash size={16} color={colors.sub} stroke={1.8} />
           </Pressable>
         </View>
       </View>
@@ -492,7 +505,7 @@ export default function BatchScreen() {
       {/* Queue List */}
       {filteredItems.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Feather name="download-cloud" size={48} color={colors.sub} style={{ opacity: 0.4 }} />
+          <IconCloudDownload size={48} color={colors.sub} stroke={1.5} style={{ opacity: 0.4 }} />
           <Text style={[styles.emptyTitle, { color: colors.txt }]}>File de téléchargement vide</Text>
           <Text style={[styles.emptySub, { color: colors.sub }]}>
             Créez un nouveau lot pour télécharger plusieurs galeries en tâche de fond.
@@ -530,7 +543,7 @@ export default function BatchScreen() {
               <Text style={[styles.modalTitle, { color: colors.txt }]}>Ajouter un lot</Text>
               {!isFetchingBatch && (
                 <Pressable onPress={() => setIsAddModalVisible(false)}>
-                  <Feather name="x" size={22} color={colors.sub} />
+                  <IconX size={22} color={colors.sub} stroke={2} />
                 </Pressable>
               )}
             </View>
@@ -639,7 +652,7 @@ export default function BatchScreen() {
                   onPress={handleStartBatchFromQuery}
                   style={[styles.submitBatchBtn, { backgroundColor: colors.accent }]}
                 >
-                  <Feather name="download" size={18} color="#fff" style={{ marginRight: 8 }} />
+                  <IconDownload size={18} color="#fff" stroke={2} style={{ marginRight: 8 }} />
                   <Text style={styles.submitBatchBtnText}>Rechercher et Ajouter</Text>
                 </Pressable>
               </ScrollView>
@@ -666,7 +679,7 @@ export default function BatchScreen() {
                   onPress={handleStartBatchFromIds}
                   style={[styles.submitBatchBtn, { backgroundColor: colors.accent }]}
                 >
-                  <Feather name="download" size={18} color="#fff" style={{ marginRight: 8 }} />
+                  <IconDownload size={18} color="#fff" stroke={2} style={{ marginRight: 8 }} />
                   <Text style={styles.submitBatchBtnText}>Ajouter les identifiants</Text>
                 </Pressable>
               </ScrollView>

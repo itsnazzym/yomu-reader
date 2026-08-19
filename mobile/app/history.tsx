@@ -7,7 +7,7 @@ import {
   Alert,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
-import { Feather } from "@expo/vector-icons";
+import { IconTrash } from "@tabler/icons-react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { format } from "date-fns";
@@ -16,6 +16,7 @@ import { useHistory, HistoryEntry } from "@/lib/historyStore";
 import SmartImage from "@/components/SmartImage";
 import { CardPressable } from "@/components/ui/CardPressable";
 import { IconBtn } from "@/components/ui/IconBtn";
+import { AnimatedEmptyState } from "@/components/ui/AnimatedEmptyState";
 
 export default function HistoryScreen() {
   const { colors } = useTheme();
@@ -42,6 +43,17 @@ export default function HistoryScreen() {
         initialPage: String(entry.lastPage),
       },
     });
+  };
+
+  const formatDateSafe = (timestamp: number | undefined) => {
+    if (!timestamp) return "";
+    try {
+      const d = new Date(timestamp);
+      if (isNaN(d.getTime())) return "";
+      return format(d, "dd/MM/yyyy HH:mm");
+    } catch {
+      return "";
+    }
   };
 
   const renderItem = ({ item }: { item: HistoryEntry }) => {
@@ -81,7 +93,7 @@ export default function HistoryScreen() {
               Page {item.lastPage + 1} sur {item.totalPages}
             </Text>
             <Text style={[styles.dateText, { color: colors.sub }]}>
-              {item.readAt ? format(new Date(item.readAt), "dd/MM/yyyy HH:mm") : ""}
+              {formatDateSafe(item.readAt)}
             </Text>
           </View>
 
@@ -108,7 +120,7 @@ export default function HistoryScreen() {
             }}
             style={({ pressed }) => [styles.deleteBtn, { opacity: pressed ? 0.6 : 1 }]}
           >
-            <Feather name="trash-2" size={16} color={colors.sub} />
+            <IconTrash size={16} color={colors.sub} stroke={1.8} />
           </Pressable>
         </View>
       </CardPressable>
@@ -143,22 +155,18 @@ export default function HistoryScreen() {
               { backgroundColor: colors.tagBg, opacity: pressed ? 0.7 : 1 },
             ]}
           >
-            <Feather name="trash" size={14} color="#ff4757" style={{ marginRight: 6 }} />
+            <IconTrash size={14} color="#ff4757" stroke={2} style={{ marginRight: 6 }} />
             <Text style={[styles.clearAllText, { color: "#ff4757" }]}>Tout effacer</Text>
           </Pressable>
         )}
       </View>
 
       {history.length === 0 ? (
-        <View style={styles.centerContainer}>
-          <Feather name="clock" size={48} color={colors.sub} style={{ opacity: 0.4 }} />
-          <Text style={[styles.emptyTitle, { color: colors.txt }]}>
-            Aucun historique de lecture
-          </Text>
-          <Text style={[styles.emptySub, { color: colors.sub }]}>
-            Les mangas que vous lisez apparaîtront ici avec la sauvegarde automatique de votre dernière page lue.
-          </Text>
-        </View>
+        <AnimatedEmptyState
+          type="history"
+          actionLabel="Commencer à lire"
+          onActionPress={() => router.push("/" as any)}
+        />
       ) : (
         <FlashList
           data={history}

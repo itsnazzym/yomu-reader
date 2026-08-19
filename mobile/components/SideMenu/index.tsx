@@ -8,11 +8,29 @@ import {
   ActivityIndicator,
   Linking,
 } from "react-native";
-import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import {
+  IconBook2,
+  IconUser,
+  IconDownload,
+  IconBookmark,
+  IconHeart,
+  IconClock,
+  IconBox,
+  IconTag,
+  IconSparkles,
+  IconCloudDownload,
+  IconKey,
+  IconSettings,
+  IconLock,
+  IconChevronRight,
+  IconArrowsShuffle,
+  IconBrandDiscord,
+  IconUserCheck,
+  IconLogin,
+} from "@tabler/icons-react-native";
 import { usePathname, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/lib/ThemeContext";
-import { CardPressable } from "@/components/ui/CardPressable";
 import { getRandomGallery } from "@/lib/api/nhentai";
 import { SignInModal } from "@/components/modals/SignInModal";
 import { useAccount } from "@/lib/accountStore";
@@ -31,11 +49,24 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
   const [isSignInOpen, setIsSignInOpen] = useState(false);
 
   const menuItems = [
-    { label: "Downloaded", icon: "download", route: "/downloaded", hasArrow: true },
-    { label: "Bookmarks", icon: "bookmark", route: "/favorites", hasArrow: true },
     {
-      label: isLoggedIn ? `Online favorites (${session.cloudFavoritesCount || 0})` : "Online favorites",
-      icon: "heart",
+      label: isLoggedIn ? (session.username || "Profil") : "Profil",
+      icon: IconUser,
+      route: "/profile",
+      hasArrow: true,
+      onPress: () => {
+        if (!isLoggedIn) {
+          setIsSignInOpen(true);
+        } else {
+          handleNavigate("/profile");
+        }
+      },
+    },
+    { label: "Téléchargements", icon: IconDownload, route: "/downloaded", hasArrow: true },
+    { label: "Favoris locaux", icon: IconBookmark, route: "/favorites", hasArrow: true },
+    {
+      label: isLoggedIn ? `Favoris Cloud (${session.cloudFavoritesCount || 0})` : "Favoris Cloud",
+      icon: IconHeart,
       route: "/favorites",
       isLocked: !isLoggedIn,
       onPress: () => {
@@ -46,12 +77,12 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
         }
       },
     },
-    { label: "History", icon: "clock", route: "/history", hasArrow: true },
-    { label: "Characters", icon: "box", route: "/tags", hasArrow: true },
-    { label: "Recommendations", icon: "star", route: "/recommendations", hasArrow: true },
-    { label: "Batch Downloader", icon: "download-cloud", route: "/batch", hasArrow: true },
-    { label: "Clés API", icon: "key", route: "/api-keys", hasArrow: true },
-    { label: "Settings", icon: "settings", route: "/settings", hasArrow: true },
+    { label: "Historique", icon: IconClock, route: "/history", hasArrow: true },
+    { label: "Tags & Packs", icon: IconTag, route: "/tags", hasArrow: true },
+    { label: "Recommandations", icon: IconSparkles, route: "/recommendations", hasArrow: true },
+    { label: "Téléchargement groupé", icon: IconCloudDownload, route: "/batch", hasArrow: true },
+    { label: "Clés API", icon: IconKey, route: "/api-keys", hasArrow: true },
+    { label: "Paramètres", icon: IconSettings, route: "/settings", hasArrow: true },
   ];
 
   const handleNavigate = (route: string) => {
@@ -91,15 +122,21 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
         },
       ]}
     >
-      {/* Brand Header (Matching NHApp) */}
+      {/* Brand Header */}
       <View style={styles.header}>
         <View style={styles.brandRow}>
-          <View style={[styles.brandIcon, { backgroundColor: "#202030" }]}>
-            <Feather name="book-open" size={22} color={colors.accent} />
+          <View style={[styles.brandIcon, { backgroundColor: "#1e1e2c", borderColor: "#28283a", borderWidth: 1 }]}>
+            <IconBook2 size={20} color={colors.accent} stroke={1.8} />
           </View>
-          <View>
-            <Text style={styles.brandTitle}>NHApp</Text>
-            <Text style={styles.brandSubtitle}>Unofficial</Text>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Text style={styles.brandTitle}>nHentai</Text>
+              <View style={styles.networkDiodeWrap}>
+                <View style={styles.networkDiode} />
+                <Text style={styles.networkDiodeText}>Photon</Text>
+              </View>
+            </View>
+            <Text style={styles.brandSubtitle}>Archive & Reader</Text>
           </View>
         </View>
       </View>
@@ -112,6 +149,7 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
           {menuItems.map((item) => {
             const isActive = pathname?.startsWith(item.route);
             const tint = isActive ? "#ffffff" : "#c4c6cf";
+            const IconComp = item.icon;
 
             return (
               <TouchableOpacity
@@ -126,10 +164,10 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
                 ]}
               >
                 <View style={styles.menuItemContent}>
-                  <Feather
-                    name={item.icon as any}
+                  <IconComp
                     size={18}
                     color={tint}
+                    stroke={isActive ? 2 : 1.7}
                     style={styles.menuIcon}
                   />
                   <Text
@@ -145,9 +183,9 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
                   </Text>
 
                   {item.isLocked ? (
-                    <Feather name="lock" size={14} color="#6b7280" />
+                    <IconLock size={14} color="#6b7280" stroke={1.8} />
                   ) : item.hasArrow ? (
-                    <Feather name="chevron-right" size={16} color="#6b7280" />
+                    <IconChevronRight size={16} color="#6b7280" stroke={2} />
                   ) : null}
                 </View>
               </TouchableOpacity>
@@ -155,7 +193,7 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
           })}
         </View>
 
-        {/* I'M FEELING LUCKY Button with Floral Sparkles Decoration */}
+        {/* I'M FEELING LUCKY Button */}
         <View style={styles.luckySection}>
           <TouchableOpacity
             activeOpacity={0.82}
@@ -167,7 +205,7 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
               {randomLoading ? (
                 <ActivityIndicator size="small" color="#1c191a" />
               ) : (
-                <Feather name="shuffle" size={17} color="#1c191a" />
+                <IconArrowsShuffle size={17} color="#1c191a" stroke={2.2} />
               )}
               <Text style={styles.luckyText}>I'M FEELING LUCKY</Text>
               <Text style={styles.sparkleFloral}>✧ ✦</Text>
@@ -175,14 +213,14 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
           </TouchableOpacity>
         </View>
 
-        {/* Discord Join Card with Celestial Sparkles */}
+        {/* Discord Join Card */}
         <TouchableOpacity
           activeOpacity={0.82}
           onPress={handleDiscord}
           style={styles.discordCard}
         >
           <View style={styles.discordContent}>
-            <Ionicons name="chatbubble-outline" size={20} color="#c5878d" />
+            <IconBrandDiscord size={20} color="#c5878d" stroke={1.8} />
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                 <Text style={styles.discordTitle}>Join Discord</Text>
@@ -200,23 +238,29 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
       <View style={styles.footer}>
         <TouchableOpacity
           activeOpacity={0.7}
-          onPress={() => setIsSignInOpen(true)}
+          onPress={() => {
+            if (isLoggedIn) {
+              handleNavigate("/profile");
+            } else {
+              setIsSignInOpen(true);
+            }
+          }}
           style={styles.signInBtn}
         >
           <View style={styles.signInContent}>
-            <Feather
-              name={isLoggedIn ? "user-check" : "log-in"}
-              size={18}
-              color={isLoggedIn ? "#52c41a" : "#c5878d"}
-            />
+            {isLoggedIn ? (
+              <IconUserCheck size={18} color="#52c41a" stroke={2} />
+            ) : (
+              <IconLogin size={18} color="#c5878d" stroke={2} />
+            )}
             <Text style={styles.signInText}>
-              {isLoggedIn ? (session.username || "Compte Cloud") : "Sign in"}
+              {isLoggedIn ? (session.username || "Mon Profil") : "Sign in"}
             </Text>
           </View>
         </TouchableOpacity>
       </View>
 
-      {/* Sign In / Cloud Sync Modal */}
+      {/* Sign In Modal */}
       <SignInModal visible={isSignInOpen} onClose={() => setIsSignInOpen(false)} />
     </View>
   );
@@ -249,6 +293,28 @@ const styles = StyleSheet.create({
     color: "#f3f4f6",
     letterSpacing: 0.3,
   },
+  networkDiodeWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(82, 196, 26, 0.12)",
+    borderColor: "rgba(82, 196, 26, 0.25)",
+    borderWidth: 0.8,
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 6,
+  },
+  networkDiode: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: "#52c41a",
+  },
+  networkDiodeText: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#52c41a",
+  },
   brandSubtitle: {
     fontSize: 11,
     color: "#9ca3af",
@@ -276,81 +342,83 @@ const styles = StyleSheet.create({
   menuItemContent: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 11,
-    paddingHorizontal: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
   },
   menuIcon: {
-    marginRight: 12,
+    marginRight: 14,
   },
   menuText: {
-    fontSize: 13.5,
     flex: 1,
+    fontSize: 13.5,
   },
   luckySection: {
-    marginTop: 20,
-    marginBottom: 12,
+    marginTop: 14,
+    marginBottom: 8,
   },
   luckyButton: {
-    borderRadius: 14,
-    paddingVertical: 12,
+    borderRadius: 12,
+    paddingVertical: 11,
     alignItems: "center",
     justifyContent: "center",
   },
   luckyButtonContent: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
+    gap: 8,
   },
   luckyText: {
-    fontSize: 13,
-    fontWeight: "900",
     color: "#1c191a",
-    letterSpacing: 0.5,
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0.8,
   },
   sparkleFloral: {
-    fontSize: 12,
     color: "#1c191a",
+    fontSize: 12,
     fontWeight: "800",
-    marginLeft: 2,
   },
   discordCard: {
-    backgroundColor: "#1a1a26",
-    borderColor: "#28283a",
-    borderWidth: 1,
+    backgroundColor: "#1b1b26",
+    borderRadius: 12,
     padding: 12,
-    borderRadius: 14,
-    marginBottom: 12,
+    marginTop: 6,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#28283a",
   },
   discordContent: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 12,
   },
   discordTitle: {
-    fontSize: 12.5,
-    fontWeight: "700",
+    fontSize: 13,
+    fontWeight: "800",
     color: "#f3f4f6",
   },
   discordSparkles: {
-    fontSize: 10.5,
+    fontSize: 10,
     color: "#c5878d",
     letterSpacing: 1,
   },
   discordSub: {
-    fontSize: 10,
+    fontSize: 10.5,
     color: "#9ca3af",
-    marginTop: 2,
-    lineHeight: 13,
+    marginTop: 1,
   },
   footer: {
-    paddingTop: 10,
+    paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: "#20202e",
   },
   signInBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    backgroundColor: "#1a1a24",
+    borderRadius: 12,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: "#28283a",
   },
   signInContent: {
     flexDirection: "row",
@@ -358,9 +426,9 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   signInText: {
-    fontSize: 13.5,
-    fontWeight: "700",
     color: "#f3f4f6",
+    fontSize: 13,
+    fontWeight: "700",
   },
 });
 

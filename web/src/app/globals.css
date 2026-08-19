@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+@theme inline {
+  /* NReader design tokens — extracted from the Framer design */
+  --color-background: #0b0b0b;
+  --color-surface: #141414;
+  --color-surface-2: #151515;
+  --color-surface-3: #181818;
+  --color-surface-4: #121212;
+  --color-line: #232323;
+  --color-line-soft: #252525;
+  --color-line-soft-2: #2c2c2c;
+  --color-line-soft-3: #2e2e2e;
+
+  --color-accent: #ed2553;
+  --color-accent-hover: #ff6a8b;
+  --color-accent-deep: #32181f;
+
+  --color-ink: #ffffff;
+  --color-muted: #a5a5ad;
+  --color-muted-2: #8e8e98;
+  --color-faint: #62626b;
+  --color-faint-2: #71717a;
+
+  --font-sans: var(--font-exo);
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--color-accent);
+  color: #fff;
+}

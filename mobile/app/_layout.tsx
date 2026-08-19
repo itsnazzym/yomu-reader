@@ -7,13 +7,15 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ThemeProvider, useTheme } from "@/lib/ThemeContext";
 import { DrawerProvider, useDrawer } from "@/lib/DrawerContext";
 import { SideMenu } from "@/components/SideMenu";
+import { TexturedBackground } from "@/components/ui/TexturedBackground";
+import { OnboardingModal } from "@/components/onboarding/OnboardingModal";
 
 function AppShell() {
   const { colors } = useTheme();
   const { isOpen, openDrawer, closeDrawer } = useDrawer();
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.bg }]}>
+    <TexturedBackground backgroundColor={colors.bg}>
       <StatusBar style="light" backgroundColor="transparent" translucent />
       <Drawer
         open={isOpen}
@@ -43,9 +45,14 @@ function AppShell() {
           <Stack.Screen name="tags/index" />
           <Stack.Screen name="recommendations" />
           <Stack.Screen name="settings/index" />
+          <Stack.Screen name="profile" />
+          <Stack.Screen name="api-keys/index" />
         </Stack>
       </Drawer>
-    </View>
+
+      {/* Onboarding au premier lancement */}
+      <OnboardingModal />
+    </TexturedBackground>
   );
 }
 

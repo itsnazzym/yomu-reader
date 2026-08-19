@@ -6,7 +6,11 @@ import {
   Text,
   Pressable,
 } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import {
+  IconFolder,
+  IconSettings,
+  IconCircleCheck,
+} from "@tabler/icons-react-native";
 import { useTheme } from "@/lib/ThemeContext";
 import { CardPressable } from "@/components/ui/CardPressable";
 import { openAppSettings } from "@/lib/permissions";
@@ -17,7 +21,7 @@ interface PermissionModalProps {
   onDismiss: () => void;
   title?: string;
   description?: string;
-  icon?: string;
+  icon?: any;
   isPermanentlyDenied?: boolean;
 }
 
@@ -27,7 +31,6 @@ export function PermissionModal({
   onDismiss,
   title = "Autorisation de stockage requise",
   description = "Pour télécharger et stocker des mangas sur votre appareil afin de les lire hors connexion, l'application a besoin de l'accès au stockage.",
-  icon = "folder",
   isPermanentlyDenied = false,
 }: PermissionModalProps) {
   const { colors } = useTheme();
@@ -47,7 +50,7 @@ export function PermissionModal({
           ]}
         >
           <View style={[styles.iconCircle, { backgroundColor: colors.accent + "20" }]}>
-            <Feather name={icon as any} size={32} color={colors.accent} />
+            <IconFolder size={32} color={colors.accent} stroke={1.8} />
           </View>
 
           <Text style={[styles.title, { color: colors.txt }]}>{title}</Text>
@@ -61,7 +64,7 @@ export function PermissionModal({
                 style={[styles.grantBtn, { backgroundColor: colors.accent }]}
               >
                 <View style={styles.btnContent}>
-                  <Feather name="settings" size={16} color="#fff" />
+                  <IconSettings size={16} color="#fff" stroke={2} />
                   <Text style={styles.grantBtnText}>Ouvrir les Paramètres</Text>
                 </View>
               </CardPressable>
@@ -72,7 +75,7 @@ export function PermissionModal({
                 style={[styles.grantBtn, { backgroundColor: colors.accent }]}
               >
                 <View style={styles.btnContent}>
-                  <Feather name="check-circle" size={16} color="#fff" />
+                  <IconCircleCheck size={16} color="#fff" stroke={2.5} />
                   <Text style={styles.grantBtnText}>Accorder l'autorisation</Text>
                 </View>
               </CardPressable>
@@ -100,10 +103,10 @@ const styles = StyleSheet.create({
   },
   box: {
     width: "100%",
-    maxWidth: 360,
+    maxWidth: 340,
     borderRadius: 20,
     borderWidth: 1,
-    padding: 22,
+    padding: 24,
     alignItems: "center",
   },
   iconCircle: {
@@ -131,9 +134,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   grantBtn: {
-    paddingVertical: 12,
+    paddingVertical: 13,
     alignItems: "center",
     justifyContent: "center",
+    borderRadius: 12,
   },
   btnContent: {
     flexDirection: "row",
@@ -143,10 +147,10 @@ const styles = StyleSheet.create({
   grantBtnText: {
     color: "#fff",
     fontSize: 14,
-    fontWeight: "800",
+    fontWeight: "700",
   },
   dismissBtn: {
-    paddingVertical: 8,
+    paddingVertical: 10,
     alignItems: "center",
   },
   dismissText: {
@@ -154,5 +158,3 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 });
-
-export default PermissionModal;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   StyleSheet,
   View,
@@ -8,8 +8,20 @@ import {
   ActivityIndicator,
   useWindowDimensions,
   StatusBar,
+  Platform,
 } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import * as NavigationBar from "expo-navigation-bar";
+import {
+  IconArrowLeft,
+  IconLayoutList,
+  IconBook2,
+  IconCircleArrowLeft,
+  IconCircleArrowRight,
+  IconShare,
+  IconAlertCircle,
+  IconEye,
+  IconColumns,
+} from "@tabler/icons-react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import PagerView from "react-native-pager-view";
@@ -17,10 +29,14 @@ import { useTheme } from "@/lib/ThemeContext";
 import { getGallery, resolvePageUrl } from "@/lib/api/nhentai";
 import { readLocalGallery } from "@/lib/localLibrary";
 import { Gallery } from "@/lib/api/types";
-import SmartImage from "@/components/SmartImage";
+import SmartImage, { preloadSmartImage } from "@/components/SmartImage";
 import { IconBtn } from "@/components/ui/IconBtn";
+import { SmoothSlider } from "@/components/ui/SmoothSlider";
 import { recordReadingProgress } from "@/lib/historyStore";
 import { QuickShareModal } from "@/components/modals/QuickShareModal";
+import { useReaderSettings } from "@/lib/readerSettingsStore";
+import { ThumbRail } from "@/components/reader/ThumbRail";
+import { lightTap } from "@/lib/haptics";
 
 export default function ReaderScreen() {
   const { id, initialPage, local, localId } = useLocalSearchParams<{
@@ -33,6 +49,7 @@ export default function ReaderScreen() {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const { colors } = useTheme();
+  const { settings: readerSettings, updateSettings } = useReaderSettings();
 
   const [gallery, setGallery] = useState<Gallery | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,18 +58,26 @@ export default function ReaderScreen() {
     initialPage ? parseInt(initialPage, 10) : 0
   );
   const [controlsVisible, setControlsVisible] = useState(true);
-  const [readMode, setReadMode] = useState<"webtoon" | "pager">("webtoon");
-  const [readingDirection, setReadingDirection] = useState<"rtl" | "ltr">("rtl");
+  const [readMode, setReadMode] = useState<"webtoon" | "pager">(
+    readerSettings.defaultMode || "webtoon"
+  );
+  const [readingDirection, setReadingDirection] = useState<"rtl" | "ltr">(
+    readerSettings.defaultDirection || "rtl"
+  );
   const [isShareOpen, setIsShareOpen] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
   const pagerRef = useRef<PagerView>(null);
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
+  const isLandscape = width > height;
+  const isDualPage = Boolean(
+    readerSettings.dualPageMode &&
+      readMode === "pager" &&
+      (isLandscape || width >= 600)
+  );
+
   useEffect(() => {
-    // Mode hors-ligne : la galerie est lue depuis le disque (Bibliothèque
-    // Hors-Ligne / batch). Le localId est validé et résolu par le repository
-    // (garde anti-traversée incluse).
     const rawLocal = typeof localId === "string" && localId ? localId : local;
     if (rawLocal) {
       setLoading(true);
@@ -89,10 +114,38 @@ export default function ReaderScreen() {
   const pages = gallery?.images?.pages || [];
   const totalPages = pages.length || gallery?.num_pages || 1;
 
+  // Pre-load next 2 pages and previous page
+  useEffect(() => {
+    if (pages.length === 0) return;
+    const nextIdx1 = currentPage + 1;
+    const nextIdx2 = currentPage + 2;
+    const prevIdx = currentPage - 1;
+
+    [nextIdx1, nextIdx2, prevIdx].forEach((idx) => {
+      if (idx >= 0 && idx < pages.length) {
+        const p = pages[idx];
+        const url = p?.url || resolvePageUrl(gallery?.media_id || "", idx, p);
+        if (url) preloadSmartImage(url);
+      }
+    });
+  }, [currentPage, pages, gallery?.media_id]);
+
+  // System bar handling
+  useEffect(() => {
+    if (Platform.OS === "android") {
+      if (readerSettings.hideStatusBar && !controlsVisible) {
+        NavigationBar.setVisibilityAsync("hidden").catch(() => {});
+      } else {
+        NavigationBar.setVisibilityAsync("visible").catch(() => {});
+      }
+    }
+  }, [controlsVisible, readerSettings.hideStatusBar]);
+
   const handlePageChange = useCallback(
-    (pageIdx: number) => {
-      const clamped = Math.max(0, Math.min(totalPages - 1, pageIdx));
+    (nextPage: number) => {
+      const clamped = Math.max(0, Math.min(nextPage, totalPages - 1));
       setCurrentPage(clamped);
+
       if (gallery) {
         recordReadingProgress(gallery, clamped, totalPages);
       }
@@ -100,45 +153,116 @@ export default function ReaderScreen() {
     [gallery, totalPages]
   );
 
-  const toggleControls = () => {
-    setControlsVisible((prev) => !prev);
+  const jumpToPage = useCallback(
+    (index: number) => {
+      const target = Math.max(0, Math.min(index, totalPages - 1));
+      handlePageChange(target);
+
+      if (readMode === "webtoon") {
+        flatListRef.current?.scrollToIndex({
+          index: target,
+          animated: true,
+          viewPosition: 0,
+        });
+      } else {
+        const pagerTarget = isDualPage ? Math.floor(target / 2) : target;
+        pagerRef.current?.setPage(pagerTarget);
+      }
+    },
+    [readMode, handlePageChange, totalPages, isDualPage]
+  );
+
+  const handleReaderTouchStart = (e: any) => {
+    touchStartRef.current = {
+      x: e.nativeEvent.locationX,
+      y: e.nativeEvent.locationY,
+      time: Date.now(),
+    };
   };
 
-  // Ne pas entourer PagerView d'un Pressable : il capture les gestes horizontaux
-  // et empêche le changement de page. On ne bascule les contrôles que pour un
-  // vrai tap, en laissant les swipes au composant natif.
-  const handleReaderTouchStart = (event: any) => {
-    const { pageX, pageY } = event.nativeEvent;
-    touchStartRef.current = { x: pageX, y: pageY, time: Date.now() };
-  };
-
-  const handleReaderTouchEnd = (event: any) => {
-    const start = touchStartRef.current;
+  const handleReaderTouchEnd = (e: any) => {
+    if (!touchStartRef.current) return;
+    const dx = Math.abs(e.nativeEvent.locationX - touchStartRef.current.x);
+    const dy = Math.abs(e.nativeEvent.locationY - touchStartRef.current.y);
+    const dt = Date.now() - touchStartRef.current.time;
     touchStartRef.current = null;
-    if (!start) return;
 
-    const { pageX, pageY } = event.nativeEvent;
-    const distance = Math.hypot(pageX - start.x, pageY - start.y);
-    if (distance < 12 && Date.now() - start.time < 500) {
-      toggleControls();
+    if (dx < 12 && dy < 12 && dt < 300) {
+      const tapX = e.nativeEvent.locationX;
+      const leftZone = width * 0.28;
+      const rightZone = width * 0.72;
+
+      if (readerSettings.tapToTurnPage && readMode === "pager") {
+        if (tapX < leftZone) {
+          jumpToPage(readingDirection === "rtl" ? currentPage + 1 : currentPage - 1);
+          return;
+        } else if (tapX > rightZone) {
+          jumpToPage(readingDirection === "rtl" ? currentPage - 1 : currentPage + 1);
+          return;
+        }
+      }
+
+      lightTap();
+      setControlsVisible((v) => !v);
     }
   };
 
-  const jumpToPage = (index: number) => {
-    handlePageChange(index);
-    if (readMode === "webtoon") {
-      flatListRef.current?.scrollToIndex({ index, animated: true });
-    } else {
-      pagerRef.current?.setPage(index);
-    }
+  const cycleFilter = () => {
+    lightTap();
+    const current = readerSettings.colorFilter || "none";
+    const next =
+      current === "none"
+        ? "sepia"
+        : current === "sepia"
+        ? "night"
+        : current === "night"
+        ? "invert"
+        : "none";
+    updateSettings({ colorFilter: next });
   };
 
-  if (error && !gallery) {
+  const toggleDualPage = () => {
+    lightTap();
+    updateSettings({ dualPageMode: !readerSettings.dualPageMode });
+  };
+
+  // Group pages for dual-page mode
+  const dualPageSpreads = useMemo(() => {
+    if (!isDualPage) return [];
+    const spreads: { left: number; right: number | null }[] = [];
+    for (let i = 0; i < pages.length; i += 2) {
+      if (readingDirection === "rtl") {
+        spreads.push({
+          right: i,
+          left: i + 1 < pages.length ? i + 1 : null,
+        });
+      } else {
+        spreads.push({
+          left: i,
+          right: i + 1 < pages.length ? i + 1 : null,
+        });
+      }
+    }
+    return spreads;
+  }, [pages, isDualPage, readingDirection]);
+
+  if (loading) {
     return (
       <View style={[styles.centerContainer, { backgroundColor: "#000" }]}>
-        <Feather name="alert-circle" size={44} color="#ff4757" />
-        <Text style={[styles.loadingText, { color: "#fff", marginTop: 12 }]}>
-          {error}
+        <ActivityIndicator size="large" color={colors.accent} />
+        <Text style={[styles.loadingText, { color: colors.sub }]}>
+          Préparation du lecteur...
+        </Text>
+      </View>
+    );
+  }
+
+  if (error || !gallery) {
+    return (
+      <View style={[styles.centerContainer, { backgroundColor: "#000" }]}>
+        <IconAlertCircle size={48} color="#ff4757" stroke={1.5} />
+        <Text style={[styles.loadingText, { color: "#fff" }]}>
+          {error || "Galerie introuvable"}
         </Text>
         <Pressable
           onPress={() => router.back()}
@@ -150,20 +274,16 @@ export default function ReaderScreen() {
     );
   }
 
-  if (loading || !gallery) {
-    return (
-      <View style={[styles.centerContainer, { backgroundColor: "#000" }]}>
-        <ActivityIndicator size="large" color={colors.accent} />
-        <Text style={[styles.loadingText, { color: "#fff" }]}>
-          Chargement du lecteur...
-        </Text>
-      </View>
-    );
-  }
+  const isImmersive = Boolean(readerSettings.hideStatusBar && !controlsVisible);
+  const galleryTitle =
+    gallery?.title?.pretty ||
+    gallery?.title?.english ||
+    gallery?.title?.japanese ||
+    `Manga #${gallery?.id || id || ""}`;
 
   return (
     <View style={[styles.container, { backgroundColor: "#000" }]}>
-      <StatusBar hidden={!controlsVisible} animated />
+      <StatusBar hidden={isImmersive} animated />
 
       {/* Reader Main Content */}
       <View
@@ -180,10 +300,9 @@ export default function ReaderScreen() {
             data={pages}
             keyExtractor={(_, idx) => String(idx)}
             initialScrollIndex={currentPage > 0 ? currentPage : undefined}
-            onScrollToIndexFailed={() => {}}
             renderItem={({ item, index }) => {
               const imgUrl = item.url || resolvePageUrl(gallery.media_id, index, item);
-              const imgRatio = item.w && item.h ? item.w / item.h : 0.7;
+              const imgRatio = item.w && item.h ? item.w / item.h : 0.707;
               const imgHeight = width / imgRatio;
 
               return (
@@ -208,6 +327,50 @@ export default function ReaderScreen() {
               handlePageChange(approxIdx);
             }}
           />
+        ) : isDualPage ? (
+          <PagerView
+            ref={pagerRef}
+            style={StyleSheet.absoluteFillObject}
+            initialPage={Math.floor(currentPage / 2)}
+            layoutDirection={readingDirection}
+            onPageSelected={(e) => handlePageChange(e.nativeEvent.position * 2)}
+          >
+            {dualPageSpreads.map((spread, sIdx) => {
+              const leftUrl =
+                spread.left !== null
+                  ? pages[spread.left]?.url ||
+                    resolvePageUrl(gallery.media_id, spread.left, pages[spread.left])
+                  : null;
+              const rightUrl =
+                spread.right !== null
+                  ? pages[spread.right]?.url ||
+                    resolvePageUrl(gallery.media_id, spread.right, pages[spread.right])
+                  : null;
+
+              return (
+                <View key={sIdx} style={styles.dualPageSpread}>
+                  <View style={styles.dualPageHalf}>
+                    {leftUrl ? (
+                      <SmartImage
+                        uri={leftUrl}
+                        style={{ width: width / 2, height }}
+                        contentFit="contain"
+                      />
+                    ) : null}
+                  </View>
+                  <View style={styles.dualPageHalf}>
+                    {rightUrl ? (
+                      <SmartImage
+                        uri={rightUrl}
+                        style={{ width: width / 2, height }}
+                        contentFit="contain"
+                      />
+                    ) : null}
+                  </View>
+                </View>
+              );
+            })}
+          </PagerView>
         ) : (
           <PagerView
             ref={pagerRef}
@@ -231,6 +394,17 @@ export default function ReaderScreen() {
             })}
           </PagerView>
         )}
+
+        {/* Screen / Color Filters Overlay */}
+        {readerSettings.colorFilter === "sepia" && (
+          <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, styles.sepiaOverlay]} />
+        )}
+        {readerSettings.colorFilter === "night" && (
+          <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, styles.nightOverlay]} />
+        )}
+        {readerSettings.colorFilter === "invert" && (
+          <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, styles.invertOverlay]} />
+        )}
       </View>
 
       {/* Floating Top Controls Overlay */}
@@ -240,17 +414,17 @@ export default function ReaderScreen() {
             styles.topOverlay,
             {
               paddingTop: Math.max(insets.top, 12),
-              backgroundColor: "rgba(0,0,0,0.85)",
+              backgroundColor: "rgba(0,0,0,0.88)",
             },
           ]}
         >
           <IconBtn onPress={() => router.back()} size={40}>
-            <Feather name="arrow-left" size={22} color="#fff" />
+            <IconArrowLeft size={22} color="#fff" stroke={2} />
           </IconBtn>
 
           <View style={styles.titleWrapper}>
             <Text style={styles.readerTitle} numberOfLines={1}>
-              {gallery.title.pretty || gallery.title.english}
+              {galleryTitle}
             </Text>
             <Text style={styles.readerPageCount}>
               Page {currentPage + 1} / {totalPages}
@@ -258,6 +432,26 @@ export default function ReaderScreen() {
           </View>
 
           <View style={styles.topActions}>
+            {/* Filter Toggle (None / Sepia / Night / Invert) */}
+            <IconBtn onPress={cycleFilter} size={40}>
+              <IconEye
+                size={20}
+                color={readerSettings.colorFilter !== "none" ? colors.accent : "#fff"}
+                stroke={1.8}
+              />
+            </IconBtn>
+
+            {/* Dual Page Toggle in landscape / tablet */}
+            {(isLandscape || width >= 600) && (
+              <IconBtn onPress={toggleDualPage} size={40}>
+                <IconColumns
+                  size={20}
+                  color={readerSettings.dualPageMode ? colors.accent : "#9ca3af"}
+                  stroke={1.8}
+                />
+              </IconBtn>
+            )}
+
             {/* Mode Switch: Webtoon / Manga */}
             <IconBtn
               onPress={() =>
@@ -265,14 +459,14 @@ export default function ReaderScreen() {
               }
               size={40}
             >
-              <Feather
-                name={readMode === "webtoon" ? "list" : "book"}
-                size={20}
-                color={colors.accent}
-              />
+              {readMode === "webtoon" ? (
+                <IconLayoutList size={20} color={colors.accent} stroke={2} />
+              ) : (
+                <IconBook2 size={20} color={colors.accent} stroke={1.8} />
+              )}
             </IconBtn>
 
-            {/* Reading Direction (Manga Mode) */}
+            {/* Reading Direction */}
             {readMode === "pager" && (
               <IconBtn
                 onPress={() =>
@@ -280,64 +474,60 @@ export default function ReaderScreen() {
                 }
                 size={40}
               >
-                <Feather
-                  name={readingDirection === "rtl" ? "arrow-left-circle" : "arrow-right-circle"}
-                  size={20}
-                  color={colors.accent}
-                />
+                {readingDirection === "rtl" ? (
+                  <IconCircleArrowLeft size={20} color={colors.accent} stroke={2} />
+                ) : (
+                  <IconCircleArrowRight size={20} color={colors.accent} stroke={2} />
+                )}
               </IconBtn>
             )}
 
-            {/* Quick Share & AirDrop */}
+            {/* Share */}
             <IconBtn onPress={() => setIsShareOpen(true)} size={40}>
-              <Feather name="share-2" size={20} color={colors.txt} />
+              <IconShare size={20} color={colors.txt} stroke={2} />
             </IconBtn>
           </View>
         </View>
       )}
 
-      {/* Floating Bottom ThumbRail Overlay */}
+      {/* Floating ThumbRail Filmstrip */}
+      {controlsVisible && (
+        <ThumbRail
+          pages={pages}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          visible={controlsVisible}
+          onSelectPage={jumpToPage}
+        />
+      )}
+
+      {/* Floating Bottom Slider Overlay */}
       {controlsVisible && (
         <View
           style={[
             styles.bottomOverlay,
             {
-              paddingBottom: Math.max(insets.bottom, 12),
-              backgroundColor: "rgba(0,0,0,0.85)",
+              paddingBottom: Math.max(insets.bottom, 10),
+              backgroundColor: "rgba(0,0,0,0.92)",
             },
           ]}
         >
-          <FlatList
-            horizontal
-            data={pages}
-            keyExtractor={(_, idx) => String(idx)}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.thumbRailContent}
-            renderItem={({ item, index }) => {
-              const isCurrent = index === currentPage;
-              return (
-                <Pressable
-                  onPress={() => jumpToPage(index)}
-                  style={[
-                    styles.thumbRailItem,
-                    {
-                      borderColor: isCurrent ? colors.accent : "transparent",
-                      borderWidth: isCurrent ? 2 : 1,
-                    },
-                  ]}
-                >
-                  <SmartImage
-                    uri={item.urlThumb || item.url || ""}
-                    style={styles.thumbRailImage}
-                    contentFit="cover"
-                  />
-                  <View style={styles.thumbRailBadge}>
-                    <Text style={styles.thumbRailText}>{index + 1}</Text>
-                  </View>
-                </Pressable>
-              );
-            }}
-          />
+          <View style={styles.sliderRow}>
+            <Text style={styles.sliderPageLabel}>1</Text>
+            <SmoothSlider
+              value={currentPage + 1}
+              min={1}
+              max={totalPages}
+              step={1}
+              activeColor={colors.accent}
+              thumbColor={colors.accent}
+              style={{ flex: 1, marginHorizontal: 8 }}
+              onSlidingComplete={(val) => {
+                jumpToPage(val - 1);
+              }}
+            />
+            <Text style={styles.sliderPageLabel}>{totalPages}</Text>
+          </View>
         </View>
       )}
 
@@ -382,6 +572,8 @@ const styles = StyleSheet.create({
   },
   pageNumberText: { color: "#fff", fontSize: 11, fontWeight: "700" },
   pagerPageWrap: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#000" },
+  dualPageSpread: { flex: 1, flexDirection: "row", backgroundColor: "#000" },
+  dualPageHalf: { flex: 1, alignItems: "center", justifyContent: "center" },
   topOverlay: {
     position: "absolute",
     top: 0,
@@ -402,27 +594,28 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    paddingTop: 10,
+    paddingTop: 8,
     zIndex: 20,
   },
-  thumbRailContent: { paddingHorizontal: 12, gap: 8 },
-  thumbRailItem: {
-    width: 48,
-    height: 68,
-    borderRadius: 8,
-    overflow: "hidden",
-    position: "relative",
-    backgroundColor: "#181824",
+  sliderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
   },
-  thumbRailImage: { width: "100%", height: "100%" },
-  thumbRailBadge: {
-    position: "absolute",
-    bottom: 2,
-    right: 2,
-    backgroundColor: "rgba(0,0,0,0.8)",
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    borderRadius: 4,
+  sliderPageLabel: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "700",
+    minWidth: 26,
+    textAlign: "center",
   },
-  thumbRailText: { color: "#fff", fontSize: 9, fontWeight: "700" },
+  sepiaOverlay: {
+    backgroundColor: "rgba(235, 180, 80, 0.16)",
+  },
+  nightOverlay: {
+    backgroundColor: "rgba(220, 100, 30, 0.24)",
+  },
+  invertOverlay: {
+    backgroundColor: "rgba(30, 30, 50, 0.35)",
+  },
 });

@@ -1,4 +1,4 @@
-import React, { useState, useSyncExternalStore } from "react";
+import React, { useState, useEffect, useSyncExternalStore } from "react";
 import {
   StyleSheet,
   View,
@@ -8,19 +8,108 @@ import {
   Pressable,
   Switch,
   Alert,
+  Linking,
+  ActivityIndicator,
 } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import {
+  IconArrowLeft,
+  IconUser,
+  IconChevronRight,
+  IconRefresh,
+  IconLogin,
+  IconArrowRight,
+  IconPalette,
+  IconCheck,
+  IconChevronUp,
+  IconChevronDown,
+  IconBook2,
+  IconLayoutList,
+  IconCloudDownload,
+  IconFolder,
+  IconDatabase,
+  IconTrash,
+  IconClock,
+  IconBan,
+  IconPlus,
+  IconX,
+  IconWorld,
+  IconKey,
+  IconHelpCircle,
+  IconDeviceFloppy,
+  IconUpload,
+} from "@tabler/icons-react-native";
+import * as Clipboard from "expo-clipboard";
+import { exportBackupToFile, restoreBackupFromJson } from "@/lib/backupStore";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/lib/ThemeContext";
 import { CardPressable } from "@/components/ui/CardPressable";
 import { SmoothSlider } from "@/components/ui/SmoothSlider";
+import { IconBtn } from "@/components/ui/IconBtn";
 import {
   getDownloadQueueSnapshot,
   setMaxConcurrent,
   subscribeDownloadQueue,
 } from "@/lib/downloadQueueStore";
 import { useBlacklist } from "@/lib/blacklistFilter";
+import { useAccount } from "@/lib/accountStore";
+import { useReaderSettings } from "@/lib/readerSettingsStore";
+import { useOnboarding } from "@/lib/useOnboarding";
+import { getCacheSize, clearAppCache, formatBytes } from "@/lib/cacheManager";
+import { clearHistory } from "@/lib/historyStore";
+import { SignInModal } from "@/components/modals/SignInModal";
+import SmartImage from "@/components/SmartImage";
+
+const PREVIEW_SAMPLE_MANGA = [
+  {
+    id: 1,
+    title: "[Shiina You] Kyoudai ni Okeru",
+    pages: "28 p.",
+    lang: "FR",
+    tag: "doujinshi",
+    cover: "https://i0.wp.com/t.nhentai.net/galleries/988732/thumb.jpg",
+  },
+  {
+    id: 2,
+    title: "[Takeda Hiromitsu] Sukebe na Musume",
+    pages: "65 p.",
+    lang: "EN",
+    tag: "original",
+    cover: "https://i0.wp.com/t.nhentai.net/galleries/1008632/thumb.jpg",
+  },
+  {
+    id: 3,
+    title: "[Hisasi] Kko to Yamioji",
+    pages: "84 p.",
+    lang: "JP",
+    tag: "manga",
+    cover: "https://i0.wp.com/t.nhentai.net/galleries/1109832/thumb.jpg",
+  },
+  {
+    id: 4,
+    title: "[Homunculus] Toki wo Kakeru",
+    pages: "42 p.",
+    lang: "FR",
+    tag: "doujinshi",
+    cover: "https://i0.wp.com/t.nhentai.net/galleries/1204562/thumb.jpg",
+  },
+  {
+    id: 5,
+    title: "[Ootsuka Kotora] Maid Kanojo",
+    pages: "36 p.",
+    lang: "EN",
+    tag: "cosplay",
+    cover: "https://i0.wp.com/t.nhentai.net/galleries/1304562/thumb.jpg",
+  },
+  {
+    id: 6,
+    title: "[Ashitaba Fuu] Secret Garden",
+    pages: "50 p.",
+    lang: "JP",
+    tag: "sole female",
+    cover: "https://i0.wp.com/t.nhentai.net/galleries/1404562/thumb.jpg",
+  },
+];
 
 const THEME_PALETTES = [
   { hue: 0, color: "#ff4d4f" },
@@ -50,10 +139,25 @@ const THEME_PALETTES = [
   { hue: 355, color: "#e84749" },
 ];
 
+const QUICK_BLACKLIST_SUGGESTIONS = [
+  "netorare",
+  "guro",
+  "ugly bastard",
+  "scat",
+  "amputee",
+  "furry",
+  "snuff",
+  "vomit",
+];
+
 export default function SettingsScreen() {
   const router = useRouter();
   const { colors, hue, setHue } = useTheme();
   const insets = useSafeAreaInsets();
+
+  const { session, isLoggedIn, syncFavorites } = useAccount();
+  const { settings: readerSettings, updateSettings: updateReaderSettings } = useReaderSettings();
+  const { reset: resetOnboarding } = useOnboarding();
 
   const queueSnap = useSyncExternalStore(
     subscribeDownloadQueue,
@@ -64,14 +168,61 @@ export default function SettingsScreen() {
   const { tags: blacklistedTags, addTag, removeTag } = useBlacklist();
   const [newTagInput, setNewTagInput] = useState("");
 
-  // Settings states matching NHApp
-  const [selectedLanguage, setSelectedLanguage] = useState("System");
-  const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
-  const [infiniteScroll, setInfiniteScroll] = useState(true);
-  const [respectActiveTags, setRespectActiveTags] = useState(true);
-  const [previewDevice, setPreviewDevice] = useState<"phone-p" | "phone-l" | "tab-p" | "tab-l">("tab-l");
-  const [columns, setColumns] = useState(5);
-  const [minCardWidth, setMinCardWidth] = useState(80);
+  // Interface & Grid preview states
+  const [previewDevice, setPreviewDevice] = useState<"phone-p" | "phone-l" | "tab-p" | "tab-l">("phone-p");
+  const [showGridCustomizer, setShowGridCustomizer] = useState(true);
+
+  const columns = (() => {
+    switch (previewDevice) {
+      case "phone-p":
+        return readerSettings.catalogColumnsPhonePortrait ?? 2;
+      case "phone-l":
+        return readerSettings.catalogColumnsPhoneLandscape ?? 3;
+      case "tab-p":
+        return readerSettings.catalogColumnsTabletPortrait ?? 4;
+      case "tab-l":
+        return readerSettings.catalogColumnsTabletLandscape ?? 5;
+      default:
+        return 2;
+    }
+  })();
+
+  const setColumns = (val: number) => {
+    switch (previewDevice) {
+      case "phone-p":
+        updateReaderSettings({ catalogColumnsPhonePortrait: val });
+        break;
+      case "phone-l":
+        updateReaderSettings({ catalogColumnsPhoneLandscape: val });
+        break;
+      case "tab-p":
+        updateReaderSettings({ catalogColumnsTabletPortrait: val });
+        break;
+      case "tab-l":
+        updateReaderSettings({ catalogColumnsTabletLandscape: val });
+        break;
+    }
+  };
+
+  const minCardWidth = readerSettings.catalogMinCardWidth ?? 130;
+  const setMinCardWidth = (val: number) => updateReaderSettings({ catalogMinCardWidth: val });
+
+  const infiniteScroll = readerSettings.infiniteScroll ?? true;
+  const setInfiniteScroll = (val: boolean) => updateReaderSettings({ infiniteScroll: val });
+
+  const respectActiveTags = readerSettings.respectActiveTags ?? true;
+  const setRespectActiveTags = (val: boolean) => updateReaderSettings({ respectActiveTags: val });
+
+  // Cache & Storage states
+  const [cacheSizeBytes, setCacheSizeBytes] = useState<number>(0);
+  const [clearingCache, setClearingCache] = useState(false);
+  const [syncingCloud, setSyncingCloud] = useState(false);
+
+  const [isSignInOpen, setIsSignInOpen] = useState(false);
+
+  useEffect(() => {
+    getCacheSize().then(setCacheSizeBytes);
+  }, []);
 
   const handleAddTag = () => {
     const clean = newTagInput.trim().toLowerCase();
@@ -80,555 +231,1238 @@ export default function SettingsScreen() {
     setNewTagInput("");
   };
 
+  const handleClearCache = () => {
+    Alert.alert(
+      "Vider le cache des images",
+      "Voulez-vous supprimer les fichiers temporaires et les images mises en cache ? Cela libérera de l'espace sur votre appareil.",
+      [
+        { text: "Annuler", style: "cancel" },
+        {
+          text: "Vider le cache",
+          style: "destructive",
+          onPress: async () => {
+            setClearingCache(true);
+            try {
+              await clearAppCache();
+              const newSize = await getCacheSize();
+              setCacheSizeBytes(newSize);
+              Alert.alert("Succès", "Le cache des images a été vidé.");
+            } finally {
+              setClearingCache(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleClearHistory = () => {
+    Alert.alert(
+      "Réinitialiser l'historique",
+      "Voulez-vous effacer tout votre historique de recherche et de lecture ?",
+      [
+        { text: "Annuler", style: "cancel" },
+        {
+          text: "Effacer tout",
+          style: "destructive",
+          onPress: async () => {
+            await clearHistory();
+            Alert.alert("Succès", "Historique effacé avec succès.");
+          },
+        },
+      ]
+    );
+  };
+
+  const handleSyncFavorites = async () => {
+    setSyncingCloud(true);
+    try {
+      const res = await syncFavorites();
+      if (res.success) {
+        Alert.alert("Cloud Synchronisé", `${res.count} favoris officiels à jour.`);
+      } else {
+        Alert.alert("Erreur de synchro", res.error || "Impossible de joindre le serveur.");
+      }
+    } finally {
+      setSyncingCloud(false);
+    }
+  };
+
   return (
     <View
       style={[
         styles.container,
         {
-          backgroundColor: "#12121a",
+          backgroundColor: readerSettings.oledMode ? "#000000" : "#12121a",
           paddingTop: Math.max(insets.top, 12),
         },
       ]}
     >
-      {/* Top Header with Back Arrow */}
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <Feather name="arrow-left" size={20} color="#f3f4f6" />
-        </Pressable>
-        <Text style={styles.headerTitle}>Settings</Text>
+      {/* Header */}
+      <View style={[styles.header, { borderBottomColor: "#222232" }]}>
+        <IconBtn onPress={() => router.back()} size={36} style={styles.backBtn}>
+          <IconArrowLeft size={18} color="#f3f4f6" stroke={2} />
+        </IconBtn>
+        <Text style={styles.headerTitle}>Paramètres</Text>
       </View>
 
       <ScrollView
-        contentContainerStyle={{
-          paddingHorizontal: 16,
-          paddingTop: 12,
-          paddingBottom: insets.bottom + 32,
-        }}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: insets.bottom + 36 },
+        ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Language Section */}
-        <View style={styles.sectionHeader}>
-          <Feather name="settings" size={16} color="#c5878d" />
-          <Text style={styles.sectionTitle}>Language</Text>
+        {/* ================================================================= */}
+        {/* 1. COMPTE & PROFIL HERO CARD */}
+        {/* ================================================================= */}
+        <View style={styles.sectionBlock}>
+          <View style={styles.sectionTitleRow}>
+            <View style={[styles.sectionIconBadge, { backgroundColor: colors.accent + "20" }]}>
+              <IconUser size={14} color={colors.accent} stroke={2} />
+            </View>
+            <Text style={styles.sectionHeaderTitle}>Compte</Text>
+          </View>
+
+          {isLoggedIn ? (
+            <CardPressable
+              radius={16}
+              onPress={() => router.push("/profile")}
+              style={[styles.accountHeroCard, { borderColor: "#28283a" }]}
+            >
+              <View style={styles.accountHeroRow}>
+                <View style={[styles.avatarBox, { backgroundColor: colors.accent }]}>
+                  <Text style={styles.avatarInitial}>
+                    {(session.username || "M").charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View style={styles.accountNameRow}>
+                    <Text style={styles.accountName} numberOfLines={1}>
+                      {session.username || "Compte nHentai"}
+                    </Text>
+                    <View style={styles.activePill}>
+                      <Text style={styles.activePillText}>Actif</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.accountMeta}>
+                    {session.cloudFavoritesCount || 0} favoris · {session.credentialType === "apiKey" ? "Clé API" : "Session API v2"}
+                  </Text>
+                </View>
+                <IconChevronRight size={18} color="#6b7280" stroke={2} />
+              </View>
+
+              <View style={styles.accountQuickActions}>
+                <Pressable
+                  onPress={handleSyncFavorites}
+                  disabled={syncingCloud}
+                  style={[styles.quickActionPill, { backgroundColor: "#222232" }]}
+                >
+                  {syncingCloud ? (
+                    <ActivityIndicator size="small" color={colors.accent} />
+                  ) : (
+                    <IconRefresh size={12} color={colors.accent} stroke={2} />
+                  )}
+                  <Text style={[styles.quickActionText, { color: colors.accent }]}>
+                    {syncingCloud ? "Synchro..." : "Synchroniser"}
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => router.push("/profile")}
+                  style={[styles.quickActionPill, { backgroundColor: colors.accent }]}
+                >
+                  <Text style={[styles.quickActionText, { color: "#fff", fontWeight: "800" }]}>
+                    Voir mon profil →
+                  </Text>
+                </Pressable>
+              </View>
+            </CardPressable>
+          ) : (
+            <CardPressable
+              radius={16}
+              onPress={() => setIsSignInOpen(true)}
+              style={[styles.loginPromptCard, { borderColor: "#28283a" }]}
+            >
+              <View style={styles.loginPromptRow}>
+                <View style={[styles.avatarBox, { backgroundColor: "#222232" }]}>
+                  <IconLogin size={18} color={colors.accent} stroke={2} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.loginPromptTitle}>Connecter mon compte nHentai</Text>
+                  <Text style={styles.loginPromptSub}>
+                    Retrouvez vos favoris Cloud et accédez à votre profil.
+                  </Text>
+                </View>
+                <IconArrowRight size={18} color={colors.accent} stroke={2} />
+              </View>
+            </CardPressable>
+          )}
         </View>
 
-        <View style={styles.card}>
-          <Pressable
-            onPress={() => setIsLangDropdownOpen((prev) => !prev)}
-            style={styles.dropdownTrigger}
-          >
-            <View>
-              <Text style={styles.dropdownSub}>Current</Text>
-              <Text style={styles.dropdownVal}>{selectedLanguage}</Text>
+        {/* ================================================================= */}
+        {/* 2. APPARENCE & INTERFACE */}
+        {/* ================================================================= */}
+        <View style={styles.sectionBlock}>
+          <View style={styles.sectionTitleRow}>
+            <View style={[styles.sectionIconBadge, { backgroundColor: "rgba(235, 47, 150, 0.15)" }]}>
+              <IconPalette size={14} color="#eb2f96" stroke={2} />
             </View>
-            <Feather
-              name={isLangDropdownOpen ? "chevron-up" : "chevron-down"}
-              size={18}
-              color="#9ca3af"
-            />
-          </Pressable>
+            <Text style={styles.sectionHeaderTitle}>Interface & Thème</Text>
+          </View>
 
-          {isLangDropdownOpen && (
-            <View style={styles.dropdownList}>
-              {["System", "English", "Français", "日本語 (Japanese)", "中文 (Chinese)"].map(
-                (l) => (
+          <View style={styles.groupCard}>
+            <Text style={styles.cardSectionLabel}>Thème & Couleur d'accent</Text>
+
+            {/* 25-color Swatches Grid */}
+            <View style={styles.paletteGrid}>
+              {THEME_PALETTES.map((p) => {
+                const isSelected = Math.abs(hue - p.hue) < 10;
+                return (
                   <Pressable
-                    key={l}
-                    onPress={() => {
-                      setSelectedLanguage(l);
-                      setIsLangDropdownOpen(false);
-                    }}
+                    key={p.hue}
+                    onPress={() => setHue(p.hue)}
                     style={[
-                      styles.dropdownItem,
-                      selectedLanguage === l && { backgroundColor: "rgba(197, 135, 141, 0.15)" },
+                      styles.colorSwatch,
+                      { backgroundColor: p.color },
+                      isSelected && styles.colorSwatchActive,
+                    ]}
+                  >
+                    {isSelected && <IconCheck size={12} color="#fff" stroke={2.5} />}
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {/* Hue Slider */}
+            <View style={styles.hueRow}>
+              <Text style={styles.hueText}>Teinte (Hue) : {Math.round(hue)}°</Text>
+              <View style={[styles.hueBubble, { backgroundColor: colors.accent }]} />
+            </View>
+            <SmoothSlider
+              min={0}
+              max={360}
+              step={1}
+              value={hue}
+              onValueChange={setHue}
+              activeColor={colors.accent}
+              thumbColor={colors.accent}
+            />
+
+            <View style={styles.divider} />
+
+            {/* OLED Mode Switch */}
+            <View style={styles.rowToggle}>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={styles.rowToggleTitle}>Mode Noir Pur OLED</Text>
+                <Text style={styles.rowToggleSub}>
+                  Fond noir 100% profond pour économiser la batterie sur écran AMOLED.
+                </Text>
+              </View>
+              <Switch
+                value={readerSettings.oledMode}
+                onValueChange={(val) => updateReaderSettings({ oledMode: val })}
+                trackColor={{ false: "#28283a", true: colors.accent }}
+                thumbColor="#fff"
+              />
+            </View>
+
+            <View style={styles.divider} />
+
+            {/* Infinite Scroll Switch */}
+            <View style={styles.rowToggle}>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={styles.rowToggleTitle}>Défilement infini du catalogue</Text>
+                <Text style={styles.rowToggleSub}>
+                  Charge automatiquement la page suivante lors du défilement.
+                </Text>
+              </View>
+              <Switch
+                value={infiniteScroll}
+                onValueChange={setInfiniteScroll}
+                trackColor={{ false: "#28283a", true: colors.accent }}
+                thumbColor="#fff"
+              />
+            </View>
+
+            <View style={styles.divider} />
+
+            {/* Catalog Grid Customizer Accordion */}
+            <Pressable
+              onPress={() => setShowGridCustomizer((prev) => !prev)}
+              style={styles.accordionHeader}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={styles.rowToggleTitle}>Disposition de la grille du catalogue</Text>
+                <Text style={styles.rowToggleSub}>
+                  Personnalisez le nombre de colonnes et la taille des cartes.
+                </Text>
+              </View>
+              {showGridCustomizer ? (
+                <IconChevronUp size={18} color="#9ca3af" stroke={2} />
+              ) : (
+                <IconChevronDown size={18} color="#9ca3af" stroke={2} />
+              )}
+            </Pressable>
+
+            {showGridCustomizer && (
+              <View style={styles.gridCustomizerWrap}>
+                {/* Device Tabs */}
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.deviceTabs}
+                >
+                  {[
+                    { key: "phone-p", label: "Téléphone (portrait)" },
+                    { key: "phone-l", label: "Téléphone (paysage)" },
+                    { key: "tab-p", label: "Tablette (portrait)" },
+                    { key: "tab-l", label: "Tablette (paysage)" },
+                  ].map((d) => (
+                    <Pressable
+                      key={d.key}
+                      onPress={() => setPreviewDevice(d.key as any)}
+                      style={[
+                        styles.deviceTab,
+                        previewDevice === d.key && {
+                          backgroundColor: colors.accent + "20",
+                          borderColor: colors.accent,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.deviceTabText,
+                          previewDevice === d.key && { color: colors.accent, fontWeight: "800" },
+                        ]}
+                      >
+                        {d.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+
+                {/* Real-time Dynamic Cards Preview */}
+                <View style={styles.previewContainer}>
+                  <View style={styles.previewHeaderInfo}>
+                    <Text style={styles.previewHeaderLabel}>
+                      Aperçu live · {previewDevice === "phone-p" ? "Téléphone (portrait)" : previewDevice === "phone-l" ? "Téléphone (paysage)" : previewDevice === "tab-p" ? "Tablette (portrait)" : "Tablette (paysage)"}
+                    </Text>
+                    <View style={[styles.previewBadgePill, { backgroundColor: colors.accent + "20" }]}>
+                      <Text style={[styles.previewHeaderBadge, { color: colors.accent }]}>
+                        {columns} colonne{columns > 1 ? "s" : ""}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.previewGrid}>
+                    {PREVIEW_SAMPLE_MANGA.slice(0, Math.min(6, Math.max(columns * 2, 3))).map((item) => {
+                      const itemWidthPercent = `${Math.floor(100 / columns) - (columns > 1 ? 2 : 0)}%`;
+                      return (
+                        <View
+                          key={item.id}
+                          style={[
+                            styles.previewCard,
+                            {
+                              width: itemWidthPercent as any,
+                              backgroundColor: "#161622",
+                              borderColor: "#252538",
+                            },
+                          ]}
+                        >
+                          <View style={styles.previewCoverWrap}>
+                            <SmartImage
+                              uri={item.cover}
+                              recyclingKey={`prev_${item.id}_${item.cover}`}
+                              style={styles.previewCover}
+                              contentFit="cover"
+                            />
+                            <View
+                              style={[
+                                styles.previewLangBadge,
+                                {
+                                  backgroundColor:
+                                    item.lang === "FR"
+                                      ? "#3b82f6"
+                                      : item.lang === "JP"
+                                      ? "#ec4899"
+                                      : "#10b981",
+                                },
+                              ]}
+                            >
+                              <Text style={styles.previewLangText}>{item.lang}</Text>
+                            </View>
+                          </View>
+                          <Text style={styles.previewTitle} numberOfLines={1}>
+                            {item.title}
+                          </Text>
+                          <View style={styles.previewMetaRow}>
+                            <Text style={styles.previewMetaTag} numberOfLines={1}>{item.tag}</Text>
+                            <Text style={styles.previewMetaPages}>{item.pages}</Text>
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                  <Text style={styles.previewFooterNote}>
+                    ✦ Modifie instantanément le catalogue d'accueil et les listes de mangas.
+                  </Text>
+                </View>
+
+                {/* Columns slider */}
+                <View style={styles.sliderHeaderRow}>
+                  <Text style={styles.sliderLabel}>Nombre de colonnes</Text>
+                  <View style={[styles.sliderValBadge, { backgroundColor: colors.accent + "20" }]}>
+                    <Text style={[styles.sliderValText, { color: colors.accent }]}>
+                      {columns} {columns === 1 ? "colonne" : "colonnes"}
+                    </Text>
+                  </View>
+                </View>
+                <SmoothSlider
+                  min={1}
+                  max={previewDevice.startsWith("tab") ? 8 : 5}
+                  step={1}
+                  value={columns}
+                  onValueChange={(val) => setColumns(Math.round(val))}
+                  activeColor={colors.accent}
+                  thumbColor={colors.accent}
+                />
+
+                {/* Min card width slider */}
+                <View style={[styles.sliderHeaderRow, { marginTop: 10 }]}>
+                  <Text style={styles.sliderLabel}>Largeur minimale des cartes</Text>
+                  <View style={[styles.sliderValBadge, { backgroundColor: colors.accent + "20" }]}>
+                    <Text style={[styles.sliderValText, { color: colors.accent }]}>
+                      {minCardWidth}px
+                    </Text>
+                  </View>
+                </View>
+                <SmoothSlider
+                  min={80}
+                  max={240}
+                  step={5}
+                  value={minCardWidth}
+                  onValueChange={(val) => setMinCardWidth(Math.round(val))}
+                  activeColor={colors.accent}
+                  thumbColor={colors.accent}
+                />
+              </View>
+            )}
+          </View>
+        </View>
+
+        {/* ================================================================= */}
+        {/* 3. LECTEUR (READER SETTINGS) */}
+        {/* ================================================================= */}
+        <View style={styles.sectionBlock}>
+          <View style={styles.sectionTitleRow}>
+            <View style={[styles.sectionIconBadge, { backgroundColor: "rgba(96, 165, 250, 0.15)" }]}>
+              <IconBook2 size={14} color="#60a5fa" stroke={1.8} />
+            </View>
+            <Text style={styles.sectionHeaderTitle}>Lecteur</Text>
+          </View>
+
+          <View style={styles.groupCard}>
+            <Text style={styles.cardSectionLabel}>Mode de lecture</Text>
+            <View style={styles.segmentedRow}>
+              {[
+                { key: "webtoon", label: "Webtoon", icon: "align-justify" },
+                { key: "pager", label: "Page par page", icon: "book" },
+              ].map((m) => {
+                const active = readerSettings.defaultMode === m.key;
+                return (
+                  <Pressable
+                    key={m.key}
+                    onPress={() => updateReaderSettings({ defaultMode: m.key as any })}
+                    style={[
+                      styles.segmentedBtn,
+                      active && { backgroundColor: colors.accent, borderColor: colors.accent },
+                    ]}
+                  >
+                    {m.key === "webtoon" ? (
+                      <IconLayoutList size={14} color={active ? "#fff" : "#9ca3af"} stroke={2} />
+                    ) : (
+                      <IconBook2 size={14} color={active ? "#fff" : "#9ca3af"} stroke={1.8} />
+                    )}
+                    <Text
+                      style={[
+                        styles.segmentedText,
+                        active && { color: "#fff", fontWeight: "800" },
+                      ]}
+                    >
+                      {m.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <View style={styles.divider} />
+
+            <Text style={styles.cardSectionLabel}>Sens de lecture</Text>
+            <View style={styles.segmentedRow}>
+              {[
+                { key: "rtl", label: "Droite à gauche (Manga)" },
+                { key: "ltr", label: "Gauche à droite" },
+              ].map((d) => {
+                const active = readerSettings.defaultDirection === d.key;
+                return (
+                  <Pressable
+                    key={d.key}
+                    onPress={() => updateReaderSettings({ defaultDirection: d.key as any })}
+                    style={[
+                      styles.segmentedBtn,
+                      active && { backgroundColor: colors.accent, borderColor: colors.accent },
                     ]}
                   >
                     <Text
                       style={[
-                        styles.dropdownItemText,
-                        selectedLanguage === l && { color: "#c5878d", fontWeight: "700" },
+                        styles.segmentedText,
+                        active && { color: "#fff", fontWeight: "800" },
                       ]}
                     >
-                      {l}
+                      {d.label}
                     </Text>
-                    {selectedLanguage === l && (
-                      <Feather name="check" size={16} color="#c5878d" />
-                    )}
                   </Pressable>
-                )
-              )}
+                );
+              })}
             </View>
-          )}
-        </View>
 
-        {/* Appearance Section */}
-        <View style={styles.sectionHeader}>
-          <Feather name="settings" size={16} color="#c5878d" />
-          <Text style={styles.sectionTitle}>Appearance</Text>
-        </View>
+            <View style={styles.divider} />
 
-        <View style={styles.card}>
-          <Text style={styles.cardSectionTitle}>App theme</Text>
-
-          {/* Color Palette Grid (32 swatches matching NHApp) */}
-          <View style={styles.paletteGrid}>
-            {THEME_PALETTES.map((p) => {
-              const isSelected = Math.abs(hue - p.hue) < 10;
-              return (
-                <Pressable
-                  key={p.hue}
-                  onPress={() => setHue(p.hue)}
-                  style={[
-                    styles.colorSwatch,
-                    { backgroundColor: p.color },
-                    isSelected && styles.colorSwatchActive,
-                  ]}
-                >
-                  {isSelected && <Feather name="check" size={12} color="#fff" />}
-                </Pressable>
-              );
-            })}
-          </View>
-
-          {/* Hue indicator and slider */}
-          <View style={styles.hueRow}>
-            <Text style={styles.hueText}>Hue: {Math.round(hue)}°</Text>
-            <View style={[styles.hueBubble, { backgroundColor: colors.accent }]} />
-          </View>
-
-          <SmoothSlider
-            min={0}
-            max={360}
-            step={1}
-            value={hue}
-            onValueChange={setHue}
-            activeColor={colors.accent}
-            thumbColor={colors.accent}
-          />
-
-          {/* Infinite scroll toggle */}
-          <View style={styles.toggleRow}>
-            <View style={{ flex: 1, paddingRight: 10 }}>
-              <Text style={styles.toggleTitle}>Infinite scroll</Text>
-              <Text style={styles.toggleSub}>
-                Automatically load next page when scrolling down instead of pagination
-              </Text>
-            </View>
-            <Switch
-              value={infiniteScroll}
-              onValueChange={setInfiniteScroll}
-              trackColor={{ false: "#28283a", true: colors.accent }}
-              thumbColor="#fff"
-            />
-          </View>
-
-          {/* Respect active tags toggle */}
-          <View style={styles.toggleRow}>
-            <View style={{ flex: 1, paddingRight: 10 }}>
-              <Text style={styles.toggleTitle}>
-                Respect active tags when opening a book tag?
-              </Text>
-              <Text style={styles.toggleSub}>
-                When enabled, opening a tag from a book keeps current tag filters. When disabled, it opens only that tag without current filters.
-              </Text>
-            </View>
-            <Switch
-              value={respectActiveTags}
-              onValueChange={setRespectActiveTags}
-              trackColor={{ false: "#28283a", true: colors.accent }}
-              thumbColor="#fff"
-            />
-          </View>
-        </View>
-
-        {/* Catalog Grid Section (Matching NHApp) */}
-        <View style={styles.sectionHeader}>
-          <Feather name="settings" size={16} color="#c5878d" />
-          <Text style={styles.sectionTitle}>Catalog grid</Text>
-        </View>
-
-        <View style={styles.card}>
-          {/* Device Tabs */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.deviceTabs}>
-            {[
-              { key: "phone-p", label: "Phone (portrait)" },
-              { key: "phone-l", label: "Phone (landscape)" },
-              { key: "tab-p", label: "Tablet (portrait)" },
-              { key: "tab-l", label: "Tablet (landscape)" },
-            ].map((d) => (
-              <Pressable
-                key={d.key}
-                onPress={() => setPreviewDevice(d.key as any)}
-                style={[
-                  styles.deviceTab,
-                  previewDevice === d.key && styles.deviceTabActive,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.deviceTabText,
-                    previewDevice === d.key && styles.deviceTabTextActive,
-                  ]}
-                >
-                  {d.label}
+            {/* Fullscreen status bar */}
+            <View style={styles.rowToggle}>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={styles.rowToggleTitle}>Plein écran immersif</Text>
+                <Text style={styles.rowToggleSub}>
+                  Masque la barre d'état du téléphone pendant la lecture.
                 </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
+              </View>
+              <Switch
+                value={readerSettings.hideStatusBar}
+                onValueChange={(val) => updateReaderSettings({ hideStatusBar: val })}
+                trackColor={{ false: "#28283a", true: colors.accent }}
+                thumbColor="#fff"
+              />
+            </View>
 
-          {/* Mini Cards Preview */}
-          <View style={styles.previewContainer}>
-            <View style={styles.previewRow}>
-              {[
-                { title: "Kyoudai ni Okeru Seikoushou", pages: "28 стр.", tags: ["inari", "doujinshi"] },
-                { title: "Sukebe na Musume no Otoshikata", pages: "65 стр.", tags: ["kazuhiro", "original"] },
-                { title: "Kko to Yamioji Ha", pages: "84 стр.", tags: ["rororogi", "original"] },
-              ].map((item, idx) => (
-                <View key={idx} style={styles.previewCard}>
-                  <View style={styles.previewCover} />
-                  <Text style={styles.previewTitle} numberOfLines={1}>
-                    {item.title}
-                  </Text>
-                  <Text style={styles.previewMeta}>EN · {item.pages}</Text>
-                  <View style={styles.previewTags}>
-                    {item.tags.map((t) => (
-                      <View key={t} style={styles.previewTagChip}>
-                        <Text style={styles.previewTagText}>{t}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              ))}
+            <View style={styles.divider} />
+
+            {/* Tap to turn */}
+            <View style={styles.rowToggle}>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={styles.rowToggleTitle}>Toucher pour tourner</Text>
+                <Text style={styles.rowToggleSub}>
+                  Taper à gauche/droite pour changer de page en mode Pager.
+                </Text>
+              </View>
+              <Switch
+                value={readerSettings.tapToTurnPage}
+                onValueChange={(val) => updateReaderSettings({ tapToTurnPage: val })}
+                trackColor={{ false: "#28283a", true: colors.accent }}
+                thumbColor="#fff"
+              />
+            </View>
+
+            <View style={styles.divider} />
+
+            {/* Mode Double-Page */}
+            <View style={styles.rowToggle}>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={styles.rowToggleTitle}>Double-page (Paysage)</Text>
+                <Text style={styles.rowToggleSub}>
+                  Affiche deux pages côte à côte en mode paysage ou sur grand écran.
+                </Text>
+              </View>
+              <Switch
+                value={readerSettings.dualPageMode}
+                onValueChange={(val) => updateReaderSettings({ dualPageMode: val })}
+                trackColor={{ false: "#28283a", true: colors.accent }}
+                thumbColor="#fff"
+              />
+            </View>
+
+            <View style={styles.divider} />
+
+            {/* Rail de miniatures Filmstrip */}
+            <View style={styles.rowToggle}>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={styles.rowToggleTitle}>Rail de miniatures</Text>
+                <Text style={styles.rowToggleSub}>
+                  Bande coulissante de navigation rapide dans le lecteur.
+                </Text>
+              </View>
+              <Switch
+                value={readerSettings.showThumbRail}
+                onValueChange={(val) => updateReaderSettings({ showThumbRail: val })}
+                trackColor={{ false: "#28283a", true: colors.accent }}
+                thumbColor="#fff"
+              />
             </View>
           </View>
+        </View>
 
-          {/* Columns Slider */}
-          <View style={styles.sliderHeaderRow}>
-            <Text style={styles.sliderLabel}>Columns</Text>
-            <View style={[styles.sliderValBadge, { backgroundColor: colors.accent + "20" }]}>
-              <Text style={[styles.sliderValText, { color: colors.accent }]}>{columns}</Text>
+        {/* ================================================================= */}
+        {/* 4. TÉLÉCHARGEMENTS & CONCURRENCE */}
+        {/* ================================================================= */}
+        <View style={styles.sectionBlock}>
+          <View style={styles.sectionTitleRow}>
+            <View style={[styles.sectionIconBadge, { backgroundColor: "rgba(52, 199, 89, 0.15)" }]}>
+              <IconCloudDownload size={14} color="#34c759" stroke={2} />
             </View>
+            <Text style={styles.sectionHeaderTitle}>Téléchargements</Text>
           </View>
-          <SmoothSlider
-            min={1}
-            max={8}
-            step={1}
-            value={columns}
-            onValueChange={setColumns}
-            activeColor={colors.accent}
-            thumbColor={colors.accent}
-          />
 
-          {/* Min card width Slider */}
-          <View style={[styles.sliderHeaderRow, { marginTop: 12 }]}>
-            <Text style={styles.sliderLabel}>Experimental • Min card width</Text>
-            <View style={[styles.sliderValBadge, { backgroundColor: colors.accent + "20" }]}>
-              <Text style={[styles.sliderValText, { color: colors.accent }]}>{minCardWidth}px</Text>
+          <View style={styles.groupCard}>
+            <View style={styles.sliderHeaderRow}>
+              <Text style={styles.sliderLabel}>Téléchargements simultanés</Text>
+              <View style={[styles.sliderValBadge, { backgroundColor: colors.accent + "20" }]}>
+                <Text style={[styles.sliderValText, { color: colors.accent }]}>
+                  {queueSnap.maxConcurrent}
+                </Text>
+              </View>
             </View>
-          </View>
-          <SmoothSlider
-            min={60}
-            max={260}
-            step={5}
-            value={minCardWidth}
-            onValueChange={setMinCardWidth}
-            activeColor={colors.accent}
-            thumbColor={colors.accent}
-          />
-        </View>
-
-        {/* Downloads & Concurrency */}
-        <View style={styles.sectionHeader}>
-          <Feather name="download" size={16} color="#c5878d" />
-          <Text style={styles.sectionTitle}>Téléchargements & Concurrence</Text>
-        </View>
-
-        <View style={styles.card}>
-          <View style={styles.sliderHeaderRow}>
-            <Text style={styles.sliderLabel}>Téléchargements simultanés (Workers)</Text>
-            <View style={[styles.sliderValBadge, { backgroundColor: colors.accent + "20" }]}>
-              <Text style={[styles.sliderValText, { color: colors.accent }]}>
-                {queueSnap.maxConcurrent}
-              </Text>
-            </View>
-          </View>
-          <Text style={styles.toggleSub}>
-            Nombre de mangas pouvant être téléchargés en même temps (1 à 8).
-          </Text>
-          <SmoothSlider
-            min={1}
-            max={8}
-            step={1}
-            value={queueSnap.maxConcurrent}
-            onValueChange={setMaxConcurrent}
-            activeColor={colors.accent}
-            thumbColor={colors.accent}
-          />
-        </View>
-
-        {/* Excluded Tags */}
-        <View style={styles.sectionHeader}>
-          <Feather name="slash" size={16} color="#c5878d" />
-          <Text style={styles.sectionTitle}>Filtrage & Balises Exclues</Text>
-        </View>
-
-        <View style={styles.card}>
-          <View style={styles.addTagRow}>
-            <TextInput
-              value={newTagInput}
-              onChangeText={setNewTagInput}
-              placeholder="Ex: netorare, gore, ugly bastard..."
-              placeholderTextColor="#6b7280"
-              style={styles.tagInput}
+            <Text style={styles.rowToggleSub}>
+              Nombre de mangas téléchargés simultanément (1 à 8).
+            </Text>
+            <SmoothSlider
+              min={1}
+              max={8}
+              step={1}
+              value={queueSnap.maxConcurrent}
+              onValueChange={setMaxConcurrent}
+              activeColor={colors.accent}
+              thumbColor={colors.accent}
             />
-            <Pressable
-              onPress={handleAddTag}
-              style={[styles.addTagBtn, { backgroundColor: colors.accent }]}
+
+            <View style={styles.divider} />
+
+            <CardPressable
+              radius={10}
+              onPress={() => router.push("/downloaded")}
+              style={styles.linkRow}
             >
-              <Feather name="plus" size={18} color="#fff" />
+              <IconFolder size={16} color={colors.accent} stroke={2} />
+              <Text style={styles.linkRowText}>Voir les téléchargements</Text>
+              <IconChevronRight size={16} color="#6b7280" stroke={2} />
+            </CardPressable>
+          </View>
+        </View>
+
+        {/* ================================================================= */}
+        {/* 5. STOCKAGE & CACHE */}
+        {/* ================================================================= */}
+        <View style={styles.sectionBlock}>
+          <View style={styles.sectionTitleRow}>
+            <View style={[styles.sectionIconBadge, { backgroundColor: "rgba(250, 173, 20, 0.15)" }]}>
+              <IconDatabase size={14} color="#faad14" stroke={2} />
+            </View>
+            <Text style={styles.sectionHeaderTitle}>Stockage & Cache</Text>
+          </View>
+
+          <View style={styles.groupCard}>
+            {/* Cache row */}
+            <View style={styles.cacheRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.rowToggleTitle}>Cache des images</Text>
+                <Text style={styles.cacheSizeText}>{formatBytes(cacheSizeBytes)}</Text>
+              </View>
+
+              <Pressable
+                onPress={handleClearCache}
+                disabled={clearingCache}
+                style={[styles.clearCacheBtn, { backgroundColor: "rgba(255, 71, 87, 0.15)", borderColor: "rgba(255, 71, 87, 0.3)" }]}
+              >
+                {clearingCache ? (
+                  <ActivityIndicator size="small" color="#ff4757" />
+                ) : (
+                  <IconTrash size={14} color="#ff4757" stroke={2} />
+                )}
+                <Text style={styles.clearCacheText}>Vider le cache</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.divider} />
+
+            {/* Clear History */}
+            <Pressable onPress={handleClearHistory} style={styles.dangerRow}>
+              <IconClock size={16} color="#ff4757" stroke={2} />
+              <Text style={styles.dangerRowText}>Effacer l'historique</Text>
             </Pressable>
           </View>
+        </View>
 
-          <View style={styles.tagsContainer}>
-            {blacklistedTags.length === 0 ? (
-              <Text style={styles.noTagsText}>
-                Aucun tag exclu. Les mangas s'afficheront normalement.
-              </Text>
-            ) : (
-              blacklistedTags.map((tag) => (
-                <View key={tag} style={styles.blackTagChip}>
-                  <Text style={styles.blackTagText}>{tag}</Text>
-                  <Pressable onPress={() => removeTag(tag)}>
-                    <Feather name="x" size={14} color="#ff4757" />
+        {/* ================================================================= */}
+        {/* 6. FILTRES & SÉCURITÉ */}
+        {/* ================================================================= */}
+        <View style={styles.sectionBlock}>
+          <View style={styles.sectionTitleRow}>
+            <View style={[styles.sectionIconBadge, { backgroundColor: "rgba(255, 71, 87, 0.15)" }]}>
+              <IconBan size={14} color="#ff4757" stroke={2} />
+            </View>
+            <Text style={styles.sectionHeaderTitle}>Tags masqués</Text>
+          </View>
+
+          <View style={styles.groupCard}>
+            {/* Blur NSFW Covers */}
+            <View style={styles.rowToggle}>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={styles.rowToggleTitle}>Mode discret (Flou)</Text>
+                <Text style={styles.rowToggleSub}>
+                  Floute les couvertures sur la page d'accueil pour la discrétion.
+                </Text>
+              </View>
+              <Switch
+                value={readerSettings.blurNsfwCovers}
+                onValueChange={(val) => updateReaderSettings({ blurNsfwCovers: val })}
+                trackColor={{ false: "#28283a", true: colors.accent }}
+                thumbColor="#fff"
+              />
+            </View>
+
+            <View style={styles.divider} />
+
+            <Text style={styles.cardSectionLabel}>Tags masqués automatiquement</Text>
+
+            {/* Input to add tag */}
+            <View style={styles.addTagRow}>
+              <TextInput
+                value={newTagInput}
+                onChangeText={setNewTagInput}
+                placeholder="Ajouter un tag (ex: guro, ntr...)"
+                placeholderTextColor="#6b7280"
+                autoCapitalize="none"
+                style={styles.tagInput}
+              />
+              <Pressable
+                onPress={handleAddTag}
+                style={[styles.addTagBtn, { backgroundColor: colors.accent }]}
+              >
+                <IconPlus size={18} color="#fff" stroke={2.5} />
+              </Pressable>
+            </View>
+
+            {/* Quick 1-click suggestions */}
+            <Text style={styles.quickSuggestLabel}>Suggestions rapides :</Text>
+            <View style={styles.suggestChipsWrap}>
+              {QUICK_BLACKLIST_SUGGESTIONS.map((sug) => {
+                const isAlready = blacklistedTags.includes(sug);
+                return (
+                  <Pressable
+                    key={sug}
+                    onPress={() => (isAlready ? removeTag(sug) : addTag(sug))}
+                    style={[
+                      styles.suggestChip,
+                      isAlready && { backgroundColor: "rgba(255, 71, 87, 0.2)", borderColor: "#ff4757" },
+                    ]}
+                  >
+                    {isAlready ? (
+                      <IconCheck size={11} color="#ff4757" stroke={2.5} />
+                    ) : (
+                      <IconPlus size={11} color="#9ca3af" stroke={2} />
+                    )}
+                    <Text
+                      style={[
+                        styles.suggestChipText,
+                        isAlready && { color: "#ff4757", fontWeight: "700" },
+                      ]}
+                    >
+                      {sug}
+                    </Text>
                   </Pressable>
-                </View>
-              ))
-            )}
+                );
+              })}
+            </View>
+
+            {/* Currently blacklisted chips */}
+            <View style={styles.tagsContainer}>
+              {blacklistedTags.length === 0 ? (
+                <Text style={styles.noTagsText}>
+                  Aucun tag exclu. Tous les mangas s'afficheront normalement.
+                </Text>
+              ) : (
+                blacklistedTags.map((tag) => (
+                  <View key={tag} style={styles.blackTagChip}>
+                    <Text style={styles.blackTagText}>{tag}</Text>
+                    <Pressable onPress={() => removeTag(tag)} style={{ padding: 2 }}>
+                      <IconX size={13} color="#ff4757" stroke={2} />
+                    </Pressable>
+                  </View>
+                ))
+              )}
+            </View>
+          </View>
+        </View>
+
+        {/* ================================================================= */}
+        {/* 6. SAUVEGARDE & RESTAURATION */}
+        {/* ================================================================= */}
+        <View style={styles.sectionBlock}>
+          <View style={styles.sectionTitleRow}>
+            <View style={[styles.sectionIconBadge, { backgroundColor: "rgba(168, 85, 247, 0.15)" }]}>
+              <IconDeviceFloppy size={14} color="#a855f7" stroke={2} />
+            </View>
+            <Text style={styles.sectionHeaderTitle}>Sauvegarde</Text>
+          </View>
+
+          <View style={styles.groupCard}>
+            <Text style={styles.rowToggleSub}>
+              Exportez ou restaurez vos favoris, tags, packs et historique en fichier JSON portable.
+            </Text>
+
+            <CardPressable
+              radius={10}
+              onPress={async () => {
+                const res = await exportBackupToFile();
+                if (res.success) {
+                  Alert.alert("Sauvegarde générée", res.message || "Fichier JSON créé avec succès.");
+                } else {
+                  Alert.alert("Erreur", res.message);
+                }
+              }}
+              style={[styles.btnActionRow, { backgroundColor: colors.accent }]}
+            >
+              <IconCloudDownload size={16} color="#fff" stroke={2} />
+              <Text style={styles.btnActionText}>Exporter la sauvegarde</Text>
+            </CardPressable>
+
+            <View style={styles.divider} />
+
+            <CardPressable
+              radius={10}
+              onPress={async () => {
+                const clip = await Clipboard.getStringAsync();
+                if (!clip || !clip.trim().startsWith("{")) {
+                  Alert.alert(
+                    "Presse-papier vide",
+                    "Veuillez copier le contenu JSON de votre sauvegarde dans le presse-papier avant d'importer."
+                  );
+                  return;
+                }
+                const res = await restoreBackupFromJson(clip);
+                if (res.success) {
+                  Alert.alert(
+                    "Restauration réussie !",
+                    `Restauré avec succès :\n• ${res.restoredItems.favorites} favoris\n• ${res.restoredItems.tagFavorites} tags favoris\n• ${res.restoredItems.tagCollections} packs\n• ${res.restoredItems.history} mangas dans l'historique`
+                  );
+                } else {
+                  Alert.alert("Erreur de restauration", res.error);
+                }
+              }}
+              style={[styles.btnActionRow, { backgroundColor: "#1e1e2c", borderColor: "#2f2f44", borderWidth: 1 }]}
+            >
+              <IconUpload size={16} color={colors.accent} stroke={2} />
+              <Text style={[styles.btnActionText, { color: colors.txt }]}>
+                Restaurer la sauvegarde (JSON)
+              </Text>
+            </CardPressable>
+          </View>
+        </View>
+
+        {/* ================================================================= */}
+        {/* 7. RÉSEAU & AVANCÉ */}
+        {/* ================================================================= */}
+        <View style={styles.sectionBlock}>
+          <View style={styles.sectionTitleRow}>
+            <View style={[styles.sectionIconBadge, { backgroundColor: "rgba(168, 85, 247, 0.15)" }]}>
+              <IconWorld size={14} color="#a855f7" stroke={2} />
+            </View>
+            <Text style={styles.sectionHeaderTitle}>Réseau</Text>
+          </View>
+
+          <View style={styles.groupCard}>
+            {/* Mirror status */}
+            <View style={styles.mirrorStatusRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.rowToggleTitle}>Proxy Photon nHentai</Text>
+                <Text style={styles.rowToggleSub}>
+                  Contourne le blocage DNS des FAI et accélère les images.
+                </Text>
+              </View>
+              <View style={styles.onlineBadge}>
+                <View style={styles.onlineDot} />
+                <Text style={styles.onlineBadgeText}>Actif</Text>
+              </View>
+            </View>
+
+            <View style={styles.divider} />
+
+            {/* API Keys link */}
+            <CardPressable
+              radius={10}
+              onPress={() => router.push("/api-keys")}
+              style={styles.linkRow}
+            >
+              <IconKey size={16} color="#60a5fa" stroke={2} />
+              <Text style={styles.linkRowText}>Clés API</Text>
+              <IconChevronRight size={16} color="#6b7280" stroke={2} />
+            </CardPressable>
+
+            <View style={styles.divider} />
+
+            {/* Replay Onboarding */}
+            <CardPressable
+              radius={10}
+              onPress={() => {
+                resetOnboarding();
+                router.replace("/");
+              }}
+              style={styles.linkRow}
+            >
+              <IconHelpCircle size={16} color={colors.accent} stroke={2} />
+              <Text style={styles.linkRowText}>Revoir l'introduction</Text>
+              <IconChevronRight size={16} color="#6b7280" stroke={2} />
+            </CardPressable>
+
+            <View style={styles.divider} />
+
+            {/* About */}
+            <View style={styles.aboutRow}>
+              <Text style={styles.aboutTitle}>nHentai Launcher (Unofficial)</Text>
+              <Text style={styles.aboutVersion}>Version 1.0.0 · Moteur Natif v2</Text>
+            </View>
           </View>
         </View>
       </ScrollView>
+
+      {/* Modal de connexion */}
+      <SignInModal visible={isSignInOpen} onClose={() => setIsSignInOpen(false)} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: {
+    flex: 1,
+  },
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 14,
+    paddingVertical: 10,
+    gap: 12,
+    borderBottomWidth: 1,
   },
   backBtn: {
-    padding: 4,
+    marginLeft: -6,
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: "800",
     color: "#f3f4f6",
   },
-  sectionHeader: {
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    gap: 20,
+  },
+  sectionBlock: {
+    gap: 8,
+  },
+  sectionTitleRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    marginTop: 16,
-    marginBottom: 8,
+    paddingLeft: 4,
   },
-  sectionTitle: {
-    fontSize: 14,
+  sectionIconBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 7,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sectionHeaderTitle: {
+    fontSize: 13.5,
     fontWeight: "800",
     color: "#f3f4f6",
+    letterSpacing: 0.2,
   },
-  card: {
-    backgroundColor: "#1a1a26",
+  groupCard: {
+    backgroundColor: "#161622",
     borderColor: "#28283a",
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 16,
+    gap: 12,
   },
-  dropdownTrigger: {
+  cardSectionLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#9ca3af",
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "#222232",
+    marginVertical: 4,
+  },
+  rowToggle: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#14141e",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: "#28283a",
+    justifyContent: "space-between",
   },
-  dropdownSub: {
+  rowToggleTitle: {
+    fontSize: 13.5,
+    fontWeight: "700",
+    color: "#f3f4f6",
+  },
+  rowToggleSub: {
     fontSize: 11,
     color: "#9ca3af",
-    fontWeight: "600",
-  },
-  dropdownVal: {
-    fontSize: 14,
-    color: "#f3f4f6",
-    fontWeight: "700",
     marginTop: 2,
+    lineHeight: 15,
   },
-  dropdownList: {
-    marginTop: 8,
-    backgroundColor: "#14141e",
-    borderRadius: 12,
+  accountHeroCard: {
+    backgroundColor: "#161622",
     borderWidth: 1,
-    borderColor: "#28283a",
-    overflow: "hidden",
+    padding: 14,
+    gap: 12,
   },
-  dropdownItem: {
+  accountHeroRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 11,
-    paddingHorizontal: 14,
+    gap: 12,
   },
-  dropdownItemText: {
-    fontSize: 13.5,
-    color: "#d1d5db",
+  avatarBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  cardSectionTitle: {
-    fontSize: 13,
+  avatarInitial: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#fff",
+  },
+  accountNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  accountName: {
+    fontSize: 15,
     fontWeight: "800",
     color: "#f3f4f6",
-    marginBottom: 10,
+  },
+  activePill: {
+    backgroundColor: "rgba(82, 196, 26, 0.15)",
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+  },
+  activePillText: {
+    fontSize: 9.5,
+    color: "#52c41a",
+    fontWeight: "700",
+  },
+  accountMeta: {
+    fontSize: 11,
+    color: "#9ca3af",
+    marginTop: 2,
+  },
+  accountQuickActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: "#222232",
+  },
+  quickActionPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  quickActionText: {
+    fontSize: 11.5,
+    fontWeight: "600",
+  },
+  loginPromptCard: {
+    backgroundColor: "#161622",
+    borderWidth: 1,
+    padding: 14,
+  },
+  loginPromptRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  loginPromptTitle: {
+    fontSize: 13.5,
+    fontWeight: "700",
+    color: "#f3f4f6",
+  },
+  loginPromptSub: {
+    fontSize: 11,
+    color: "#9ca3af",
+    marginTop: 2,
   },
   paletteGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 6,
-    marginBottom: 14,
+    gap: 8,
+    marginTop: 2,
   },
   colorSwatch: {
-    width: 26,
-    height: 26,
-    borderRadius: 6,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },
   colorSwatchActive: {
-    borderWidth: 2,
-    borderColor: "#ffffff",
+    borderWidth: 2.5,
+    borderColor: "#fff",
+    transform: [{ scale: 1.15 }],
   },
   hueRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 6,
+    marginTop: 4,
   },
   hueText: {
-    fontSize: 12.5,
-    fontWeight: "700",
+    fontSize: 12,
     color: "#9ca3af",
+    fontWeight: "700",
   },
   hueBubble: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
   },
-  toggleRow: {
+  accordionHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 16,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#222232",
+    justifyContent: "space-between",
   },
-  toggleTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#f3f4f6",
-  },
-  toggleSub: {
-    fontSize: 11,
-    color: "#9ca3af",
-    marginTop: 3,
-    lineHeight: 14,
+  gridCustomizerWrap: {
+    gap: 10,
+    marginTop: 4,
   },
   deviceTabs: {
-    flexDirection: "row",
-    marginBottom: 12,
+    marginTop: 4,
   },
   deviceTab: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 14,
-    marginRight: 6,
-  },
-  deviceTabActive: {
-    backgroundColor: "rgba(197, 135, 141, 0.2)",
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#c5878d",
+    borderColor: "#28283a",
+    marginRight: 6,
+    backgroundColor: "#12121a",
   },
   deviceTabText: {
-    fontSize: 11.5,
-    fontWeight: "600",
+    fontSize: 11,
     color: "#9ca3af",
-  },
-  deviceTabTextActive: {
-    color: "#f3f4f6",
-    fontWeight: "700",
+    fontWeight: "600",
   },
   previewContainer: {
-    backgroundColor: "#12121a",
-    borderRadius: 12,
-    padding: 10,
-    marginBottom: 14,
-  },
-  previewRow: {
-    flexDirection: "row",
+    backgroundColor: "#101018",
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#252538",
     gap: 8,
   },
+  previewHeaderInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  previewHeaderLabel: {
+    fontSize: 11.5,
+    color: "#9ca3af",
+    fontWeight: "700",
+  },
+  previewBadgePill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  previewHeaderBadge: {
+    fontSize: 10.5,
+    fontWeight: "800",
+  },
+  previewGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
   previewCard: {
-    flex: 1,
-    backgroundColor: "#1a1a26",
-    borderRadius: 8,
+    borderRadius: 10,
     padding: 6,
+    gap: 4,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  previewCoverWrap: {
+    position: "relative",
+    width: "100%",
+    aspectRatio: 0.72,
+    borderRadius: 6,
+    overflow: "hidden",
+    backgroundColor: "#0d0d14",
   },
   previewCover: {
     width: "100%",
-    aspectRatio: 0.72,
-    backgroundColor: "#202030",
+    height: "100%",
     borderRadius: 6,
-    marginBottom: 6,
+  },
+  previewLangBadge: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    paddingHorizontal: 4.5,
+    paddingVertical: 1.5,
+    borderRadius: 4,
+  },
+  previewLangText: {
+    color: "#fff",
+    fontSize: 8,
+    fontWeight: "900",
   },
   previewTitle: {
     fontSize: 9.5,
-    fontWeight: "700",
     color: "#f3f4f6",
+    fontWeight: "700",
   },
-  previewMeta: {
-    fontSize: 8.5,
-    color: "#9ca3af",
-    marginTop: 2,
-  },
-  previewTags: {
+  previewMetaRow: {
     flexDirection: "row",
-    gap: 3,
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  previewMetaTag: {
+    fontSize: 8,
+    color: "#93c5fd",
+    fontWeight: "600",
+    flex: 1,
+  },
+  previewMetaPages: {
+    fontSize: 8,
+    color: "#6b7280",
+    fontWeight: "600",
+  },
+  previewFooterNote: {
+    fontSize: 10,
+    color: "#6b7280",
     marginTop: 4,
-  },
-  previewTagChip: {
-    backgroundColor: "#252538",
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  previewTagText: {
-    fontSize: 7.5,
-    color: "#9ca3af",
+    textAlign: "center",
   },
   sliderHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 6,
   },
   sliderLabel: {
     fontSize: 12.5,
-    fontWeight: "700",
     color: "#f3f4f6",
+    fontWeight: "700",
   },
   sliderValBadge: {
     paddingHorizontal: 8,
@@ -639,21 +1473,94 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "800",
   },
+  segmentedRow: {
+    flexDirection: "row",
+    backgroundColor: "#12121a",
+    borderRadius: 10,
+    padding: 3,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: "#28283a",
+  },
+  segmentedBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+  segmentedText: {
+    fontSize: 11.5,
+    color: "#9ca3af",
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  linkRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 4,
+  },
+  linkRowText: {
+    flex: 1,
+    fontSize: 13,
+    color: "#f3f4f6",
+    fontWeight: "600",
+  },
+  cacheRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  cacheSizeText: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#faad14",
+    marginTop: 2,
+  },
+  clearCacheBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  clearCacheText: {
+    fontSize: 11.5,
+    fontWeight: "700",
+    color: "#ff4757",
+  },
+  dangerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 4,
+  },
+  dangerRowText: {
+    fontSize: 13,
+    color: "#ff4757",
+    fontWeight: "700",
+  },
   addTagRow: {
     flexDirection: "row",
     gap: 8,
-    marginBottom: 12,
   },
   tagInput: {
     flex: 1,
     height: 40,
-    borderRadius: 10,
-    borderWidth: 1,
+    backgroundColor: "#1c1c28",
     borderColor: "#28283a",
-    backgroundColor: "#14141e",
+    borderWidth: 1,
+    borderRadius: 10,
     paddingHorizontal: 12,
-    fontSize: 13,
     color: "#f3f4f6",
+    fontSize: 12.5,
   },
   addTagBtn: {
     width: 40,
@@ -662,28 +1569,109 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  quickSuggestLabel: {
+    fontSize: 11,
+    color: "#6b7280",
+    marginTop: 2,
+  },
+  suggestChipsWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  suggestChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#1c1c28",
+    borderColor: "#28283a",
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  suggestChipText: {
+    fontSize: 11,
+    color: "#9ca3af",
+  },
   tagsContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 6,
+    marginTop: 4,
+  },
+  noTagsText: {
+    fontSize: 11.5,
+    color: "#6b7280",
+    fontStyle: "italic",
   },
   blackTagChip: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#222232",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
     gap: 6,
+    backgroundColor: "rgba(255, 71, 87, 0.15)",
+    borderColor: "rgba(255, 71, 87, 0.3)",
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
   blackTagText: {
-    fontSize: 12,
-    fontWeight: "600",
+    fontSize: 11.5,
+    color: "#ff4757",
+    fontWeight: "700",
+  },
+  mirrorStatusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  onlineBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(82, 196, 26, 0.15)",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  onlineDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#52c41a",
+  },
+  onlineBadgeText: {
+    fontSize: 10,
+    color: "#52c41a",
+    fontWeight: "700",
+  },
+  aboutRow: {
+    gap: 2,
+    paddingVertical: 2,
+  },
+  aboutTitle: {
+    fontSize: 12.5,
+    fontWeight: "700",
     color: "#f3f4f6",
   },
-  noTagsText: {
-    fontSize: 12,
-    fontStyle: "italic",
-    color: "#9ca3af",
+  aboutVersion: {
+    fontSize: 10.5,
+    color: "#6b7280",
+  },
+  btnActionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 11,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    marginTop: 4,
+  },
+  btnActionText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#fff",
   },
 });

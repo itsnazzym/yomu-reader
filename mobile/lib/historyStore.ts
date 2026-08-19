@@ -37,7 +37,8 @@ export async function recordReadingProgress(
   page: number,
   totalPages?: number
 ) {
-  const existing = historyList.filter((h) => h.gallery.id !== gallery.id);
+  const targetId = Number(gallery?.id);
+  const existing = historyList.filter((h) => Number(h.gallery?.id) !== targetId);
   const entry: HistoryEntry = {
     gallery,
     lastPage: Math.max(0, page),
@@ -55,8 +56,9 @@ export async function clearHistory() {
   notify();
 }
 
-export async function removeHistoryItem(id: number) {
-  historyList = historyList.filter((h) => h.gallery.id !== id);
+export async function removeHistoryItem(id: number | string) {
+  const targetId = Number(id);
+  historyList = historyList.filter((h) => Number(h.gallery?.id) !== targetId);
   await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(historyList));
   notify();
 }

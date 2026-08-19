@@ -8,7 +8,6 @@ import {
   Pressable,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
-import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useTheme } from "@/lib/ThemeContext";
@@ -16,6 +15,7 @@ import { IconBtn } from "@/components/ui/IconBtn";
 import { BookCard } from "@/components/BookCard";
 import { Gallery } from "@/lib/api/types";
 import { listLocalLibrary, LocalLibraryEntry } from "@/lib/localLibrary";
+import { AnimatedEmptyState } from "@/components/ui/AnimatedEmptyState";
 
 export default function DownloadedScreen() {
   const { colors } = useTheme();
@@ -109,15 +109,11 @@ export default function DownloadedScreen() {
           </Text>
         </View>
       ) : downloadedGalleries.length === 0 ? (
-        <View style={styles.centerContainer}>
-          <Feather name="download" size={48} color={colors.sub} style={{ opacity: 0.4 }} />
-          <Text style={[styles.emptyTitle, { color: colors.txt }]}>
-            Aucun manga téléchargé
-          </Text>
-          <Text style={[styles.emptySub, { color: colors.sub }]}>
-            Téléchargez des mangas ou lancez des téléchargements par lot pour les lire hors connexion.
-          </Text>
-        </View>
+        <AnimatedEmptyState
+          type="downloads"
+          actionLabel="Explorer le catalogue"
+          onActionPress={() => router.push("/" as any)}
+        />
       ) : (
         <FlashList
           data={downloadedGalleries}

@@ -32,3 +32,4 @@
 - [reference] SmoothSlider PanResponder: seul slider fiable sur Fabric/Bridgeless Android → tech-decisions.md
 - [reference] Cloud sync: sessionid cookie → /api/v2/favorites + merge Map<id,Gallery> → tech-decisions.md
 - [reference] FlashList estimatedItemSize=240, numColumns dynamique (2 phone / 3 tablet) → tech-decisions.md
+- [reference] Checkpoint Design Tactile Manga V1 & Revert Guide → design-checkpoints.md

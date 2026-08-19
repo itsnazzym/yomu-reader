@@ -10,7 +10,12 @@ import {
   Alert,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
-import { Feather } from "@expo/vector-icons";
+import {
+  IconRefresh,
+  IconCloud,
+  IconCircleCheck,
+  IconSearch,
+} from "@tabler/icons-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/lib/ThemeContext";
 import { BookCard } from "@/components/BookCard";
@@ -19,6 +24,7 @@ import { useFavorites } from "@/lib/favoritesStore";
 import { useAccount, useSyncProgress } from "@/lib/accountStore";
 import { Gallery } from "@/lib/api/types";
 import { SignInModal } from "@/components/modals/SignInModal";
+import { AnimatedEmptyState } from "@/components/ui/AnimatedEmptyState";
 
 export default function FavoritesScreen() {
   const { colors } = useTheme();
@@ -128,12 +134,10 @@ export default function FavoritesScreen() {
             <View style={styles.syncBtnInner}>
               {syncing ? (
                 <ActivityIndicator size="small" color="#fff" />
+              ) : isLoggedIn ? (
+                <IconRefresh size={15} color={colors.accent} stroke={2} />
               ) : (
-                <Feather
-                  name={isLoggedIn ? "refresh-cw" : "cloud"}
-                  size={15}
-                  color={isLoggedIn ? colors.accent : "#fff"}
-                />
+                <IconCloud size={15} color="#fff" stroke={2} />
               )}
               <Text
                 style={[
@@ -185,7 +189,7 @@ export default function FavoritesScreen() {
         {/* Sync Status Banner */}
         {isLoggedIn && (
           <View style={styles.cloudBanner}>
-            <Feather name="check-circle" size={13} color="#52c41a" />
+            <IconCircleCheck size={13} color="#52c41a" stroke={2.5} />
             <Text style={styles.cloudBannerText}>
               Compte : <Text style={{ color: "#fff", fontWeight: "700" }}>{session.username || "nHentai"}</Text>
               {session.lastSync ? ` · Synchro à ${session.lastSync}` : ""}
@@ -223,7 +227,7 @@ export default function FavoritesScreen() {
 
         {favorites.length > 0 && (
           <View style={styles.filterBar}>
-            <Feather name="search" size={16} color="#9ca3af" style={{ marginRight: 8 }} />
+            <IconSearch size={16} color="#9ca3af" stroke={1.8} style={{ marginRight: 8 }} />
             <TextInput
               value={filterQuery}
               onChangeText={setFilterQuery}
@@ -236,17 +240,17 @@ export default function FavoritesScreen() {
       </View>
 
       {filtered.length === 0 ? (
-        <View style={styles.centerContainer}>
-          <Feather name="bookmark" size={48} color="#6b7280" style={{ opacity: 0.4 }} />
-          <Text style={styles.emptyTitle}>
-            {filterQuery ? "Aucun favori correspondant" : "Aucun favori enregistré"}
-          </Text>
-          <Text style={styles.emptySub}>
-            {filterQuery
+        <AnimatedEmptyState
+          type="favorites"
+          title={filterQuery ? "Aucun favori correspondant" : "Aucun favori enregistré"}
+          description={
+            filterQuery
               ? "Modifiez votre recherche pour afficher vos mangas."
-              : "Appuyez sur 'Lier Compte' pour importer vos favoris en ligne ou ajoutez des mangas avec le bouton signet."}
-          </Text>
-        </View>
+              : "Appuyez sur 'Lier Compte' pour importer vos favoris en ligne ou ajoutez des mangas avec le bouton signet."
+          }
+          actionLabel={!isLoggedIn ? "Lier mon compte" : undefined}
+          onActionPress={!isLoggedIn ? () => setIsSignInOpen(true) : undefined}
+        />
       ) : (
         <FlashList
           data={filtered}

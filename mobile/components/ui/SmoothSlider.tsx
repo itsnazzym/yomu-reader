@@ -56,17 +56,19 @@ export function SmoothSlider({
     [min, max, step]
   );
 
+  const range = max - min;
+
   const updateFromPosition = useCallback(
     (touchX: number) => {
       if (widthRef.current <= 0) return currentVal;
       const ratio = Math.max(0, Math.min(1, touchX / widthRef.current));
-      const rawVal = min + ratio * (max - min);
+      const rawVal = range > 0 ? min + ratio * range : min;
       const snapped = snapValue(rawVal);
       setCurrentVal(snapped);
       onValueChange?.(snapped);
       return snapped;
     },
-    [min, max, snapValue, onValueChange, currentVal]
+    [min, range, snapValue, onValueChange, currentVal]
   );
 
   const panResponder = useRef(
@@ -101,7 +103,9 @@ export function SmoothSlider({
     widthRef.current = w;
   };
 
-  const activePercent = Math.max(0, Math.min(100, ((currentVal - min) / (max - min)) * 100));
+  const activePercent = range > 0
+    ? Math.max(0, Math.min(100, ((currentVal - min) / range) * 100))
+    : 0;
   const effectiveActive = activeColor || colors.accent;
   const effectiveTrack = trackColor || "#252535";
   const effectiveThumb = thumbColor || colors.accent;

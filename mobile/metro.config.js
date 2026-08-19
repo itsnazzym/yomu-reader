@@ -3,6 +3,10 @@ const { getDefaultConfig } = require("expo/metro-config");
 
 const config = getDefaultConfig(__dirname);
 
+config.resolver.sourceExts = Array.from(
+  new Set([...config.resolver.sourceExts, "mjs", "cjs"])
+);
+
 // `react-native-pager-view` imports a native-only module that Metro refuses to
 // bundle on web. It is only used by the reader screen (read.tsx), which is not
 // web-ready. Stub it on web only so the rest of the app — including the
@@ -15,6 +19,14 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
       filePath: path.resolve(__dirname, "web-shims", "react-native-pager-view.js"),
     };
   }
+
+  if (moduleName === "@tabler/icons-react-native") {
+    return {
+      type: "sourceFile",
+      filePath: path.resolve(__dirname, "components", "ui", "TablerIcons.tsx"),
+    };
+  }
+
   return context.resolveRequest(context, moduleName, platform);
 };
 

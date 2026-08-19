@@ -9,7 +9,13 @@ import {
   ScrollView,
   ActivityIndicator,
 } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import {
+  IconMenu2,
+  IconX,
+  IconAdjustmentsHorizontal,
+  IconArrowsShuffle,
+  IconCheck,
+} from "@tabler/icons-react-native";
 import { useRouter } from "expo-router";
 import { useTheme } from "@/lib/ThemeContext";
 import { useDrawer } from "@/lib/DrawerContext";
@@ -95,7 +101,7 @@ export function SearchBar({
       >
         {/* Drawer Toggle */}
         <IconBtn onPress={handleMenuPress} size={36}>
-          <Feather name="menu" size={20} color={colors.txt} />
+          <IconMenu2 size={20} color={colors.txt} stroke={2} />
         </IconBtn>
 
         {/* Input */}
@@ -116,16 +122,16 @@ export function SearchBar({
             onPress={() => onQueryChange("")}
             style={styles.clearBtn}
           >
-            <Feather name="x" size={16} color={colors.sub} />
+            <IconX size={16} color={colors.sub} stroke={2} />
           </TouchableOpacity>
         ) : null}
 
         {/* Sort Filter Trigger */}
         <IconBtn onPress={() => setIsSortModalOpen(true)} size={36}>
-          <Feather
-            name="sliders"
+          <IconAdjustmentsHorizontal
             size={18}
             color={sort !== "recent" ? colors.accent : colors.sub}
+            stroke={1.8}
           />
         </IconBtn>
 
@@ -134,7 +140,7 @@ export function SearchBar({
           {isRandomLoading ? (
             <ActivityIndicator size="small" color={colors.accent} />
           ) : (
-            <Feather name="shuffle" size={18} color={colors.accent} />
+            <IconArrowsShuffle size={18} color={colors.accent} stroke={2} />
           )}
         </IconBtn>
       </View>
@@ -230,7 +236,7 @@ export function SearchBar({
                       {sortLabels[key]}
                     </Text>
                     {isSelected && (
-                      <Feather name="check" size={18} color={colors.accent} />
+                      <IconCheck size={18} color={colors.accent} stroke={2.5} />
                     )}
                   </TouchableOpacity>
                 );
@@ -260,7 +266,7 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     height: "100%",
-    fontSize: 14,
+    fontSize: 13,
     paddingHorizontal: 8,
   },
   clearBtn: {
@@ -268,45 +274,47 @@ const styles = StyleSheet.create({
     marginRight: 2,
   },
   langPillsContainer: {
-    flexDirection: "row",
-    gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 4,
+    paddingTop: 8,
+    paddingBottom: 2,
+    gap: 6,
   },
   langChip: {
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+    paddingVertical: 5,
+    borderRadius: 14,
     borderWidth: 1,
   },
   langChipText: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: "700",
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: "rgba(0,0,0,0.65)",
     justifyContent: "center",
+    alignItems: "center",
     padding: 24,
   },
   modalContent: {
-    borderRadius: 18,
+    width: "100%",
+    maxWidth: 320,
+    borderRadius: 16,
     borderWidth: 1,
-    padding: 20,
+    padding: 16,
+    gap: 8,
   },
   modalTitle: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: "800",
-    marginBottom: 16,
+    marginBottom: 8,
   },
   sortOptionRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingVertical: 12,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     borderRadius: 10,
-    marginBottom: 6,
   },
   sortOptionText: {
     fontSize: 14,

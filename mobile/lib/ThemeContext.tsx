@@ -50,10 +50,12 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     const load = () =>
       AsyncStorage.getItem(STORAGE_KEY).then((v) => {
-        const deg = Number(v);
-        if (!Number.isNaN(deg)) {
-          setBaseHue(deg);
-          _setHue(deg);
+        if (v !== null) {
+          const deg = Number(v);
+          if (!Number.isNaN(deg)) {
+            setBaseHue(deg);
+            _setHue(deg);
+          }
         }
       });
     load();

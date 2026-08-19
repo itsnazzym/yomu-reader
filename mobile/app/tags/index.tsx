@@ -1,134 +1,300 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import {
   StyleSheet,
   View,
   Text,
   TextInput,
   Pressable,
+  Modal,
+  ScrollView,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
-import { Feather } from "@expo/vector-icons";
+import {
+  IconArrowLeft,
+  IconSearch,
+  IconX,
+  IconHeart,
+  IconPlus,
+  IconSparkles,
+  IconSearchOff,
+  IconTag,
+  IconFeather,
+  IconDeviceTv,
+  IconUser,
+  IconUsers,
+  IconWorld,
+  IconFolder,
+  IconTrash,
+  IconCheck,
+} from "@tabler/icons-react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/lib/ThemeContext";
 import { CardPressable } from "@/components/ui/CardPressable";
 import { IconBtn } from "@/components/ui/IconBtn";
+import { lightTap } from "@/lib/haptics";
+import {
+  getAllTaxonomies,
+  CATEGORY_META,
+  TaxonomyItem,
+} from "@/lib/taxonomyData";
+import { useTagFavs } from "@/lib/tagFavoritesStore";
+import { useTagCollections, TagCollection } from "@/lib/tagCollectionsStore";
 
-interface TagItem {
-  id: number;
-  name: string;
-  count: number;
-  category: "tags" | "parodies" | "characters" | "artists" | "groups";
-}
-
-// Popular curated taxonomies
-const DEFAULT_TAXONOMIES: TagItem[] = [
-  // Parodies
-  { id: 1, name: "original", count: 75400, category: "parodies" },
-  { id: 2, name: "fate grand order", count: 48900, category: "parodies" },
-  { id: 3, name: "touhou project", count: 44200, category: "parodies" },
-  { id: 4, name: "kantai collection", count: 32100, category: "parodies" },
-  { id: 5, name: "granblue fantasy", count: 28400, category: "parodies" },
-  { id: 6, name: "the idolmaster", count: 25600, category: "parodies" },
-  { id: 7, name: "blue archive", count: 19800, category: "parodies" },
-  { id: 8, name: "genshin impact", count: 18200, category: "parodies" },
-  { id: 9, name: "pokemon", count: 14500, category: "parodies" },
-  { id: 10, name: "hololive", count: 12100, category: "parodies" },
-
-  // Characters
-  { id: 101, name: "gudao", count: 12400, category: "characters" },
-  { id: 102, name: "producer", count: 10800, category: "characters" },
-  { id: 103, name: "artoria pendragon", count: 9400, category: "characters" },
-  { id: 104, name: "asuka langley soryu", count: 8200, category: "characters" },
-  { id: 105, name: "tifa lockhart", count: 7600, category: "characters" },
-  { id: 106, name: "reimu hakurei", count: 7100, category: "characters" },
-  { id: 107, name: "raiden shogun", count: 6800, category: "characters" },
-  { id: 108, name: "marin kitagawa", count: 5400, category: "characters" },
-
-  // Tags
-  { id: 201, name: "big breasts", count: 198000, category: "tags" },
-  { id: 202, name: "sole female", count: 165000, category: "tags" },
-  { id: 203, name: "sole male", count: 142000, category: "tags" },
-  { id: 204, name: "schoolgirl uniform", count: 98000, category: "tags" },
-  { id: 205, name: "stockings", count: 92000, category: "tags" },
-  { id: 206, name: "nakadashi", count: 87000, category: "tags" },
-  { id: 207, name: "blowjob", count: 81000, category: "tags" },
-  { id: 208, name: "milf", count: 68000, category: "tags" },
-  { id: 209, name: "glasses", count: 62000, category: "tags" },
-  { id: 210, name: "maid", count: 48000, category: "tags" },
-
-  // Artists
-  { id: 301, name: "shindo l", count: 120, category: "artists" },
-  { id: 302, name: "hisasi", count: 98, category: "artists" },
-  { id: 303, name: "asakura ryou", count: 85, category: "artists" },
-  { id: 304, name: "homunculus", count: 78, category: "artists" },
-  { id: 305, name: "michiking", count: 74, category: "artists" },
-  { id: 306, name: "crimson", count: 68, category: "artists" },
-
-  // Groups
-  { id: 401, name: "studio fow", count: 110, category: "groups" },
-  { id: 402, name: "carmine", count: 84, category: "groups" },
-  { id: 403, name: "alice soft", count: 76, category: "groups" },
-  { id: 404, name: "type-moon", count: 62, category: "groups" },
-];
+type ActiveTab =
+  | "all"
+  | "favs"
+  | "collections"
+  | "tags"
+  | "artists"
+  | "parodies"
+  | "characters"
+  | "groups"
+  | "languages";
 
 export default function TagsScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { isFav, toggleFav, favoriteList, favCount } = useTagFavs();
+  const {
+    collections,
+    createCollection,
+    deleteCollection,
+    formatQuery: formatColQuery,
+  } = useTagCollections();
 
-  const [activeCategory, setActiveCategory] = useState<
-    "parodies" | "characters" | "tags" | "artists" | "groups"
-  >("tags");
+  const [activeTab, setActiveTab] = useState<ActiveTab>("all");
   const [searchFilter, setSearchFilter] = useState("");
 
-  const categories = [
-    { key: "tags", label: "Balises" },
-    { key: "parodies", label: "Séries" },
-    { key: "characters", label: "Personnages" },
-    { key: "artists", label: "Artistes" },
-    { key: "groups", label: "Groupes" },
-  ] as const;
+  // Create Collection Modal state
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [newColName, setNewColName] = useState("");
+  const [newColDesc, setNewColDesc] = useState("");
+  const [newColColor, setNewColColor] = useState("#ec4899");
+  const [selectedTagsForCol, setSelectedTagsForCol] = useState<
+    { type: string; name: string }[]
+  >([]);
+
+  const categories: { key: ActiveTab; label: string; icon: any }[] = [
+    { key: "all", label: "Tous", icon: IconSparkles },
+    {
+      key: "collections",
+      label: `Packs (${collections.length})`,
+      icon: IconFolder,
+    },
+    {
+      key: "favs",
+      label: favCount > 0 ? `Favoris (${favCount})` : "Favoris",
+      icon: IconHeart,
+    },
+    { key: "tags", label: "Tags", icon: IconTag },
+    { key: "artists", label: "Artistes", icon: IconFeather },
+    { key: "parodies", label: "Séries", icon: IconDeviceTv },
+    { key: "characters", label: "Personnages", icon: IconUser },
+    { key: "groups", label: "Groupes", icon: IconUsers },
+    { key: "languages", label: "Langues", icon: IconWorld },
+  ];
+
+  const categoryTypeMap: Record<string, string> = {
+    tags: "tag",
+    parodies: "parody",
+    characters: "character",
+    artists: "artist",
+    groups: "group",
+    languages: "language",
+    tag: "tag",
+    parody: "parody",
+    character: "character",
+    artist: "artist",
+    group: "group",
+    language: "language",
+  };
 
   const filteredItems = useMemo(() => {
-    let list = DEFAULT_TAXONOMIES.filter((t) => t.category === activeCategory);
-    if (searchFilter.trim()) {
-      const q = searchFilter.toLowerCase();
-      list = list.filter((t) => t.name.toLowerCase().includes(q));
-    }
-    return list;
-  }, [activeCategory, searchFilter]);
+    let baseList: TaxonomyItem[] = [];
 
-  const handleSelectTag = (tag: TagItem) => {
+    if (activeTab === "favs") {
+      baseList = favoriteList.map((f, idx) => {
+        let cat: any = "tags";
+        const t = (f.type || "").toLowerCase();
+        if (t === "artist") cat = "artists";
+        else if (t === "parody") cat = "parodies";
+        else if (t === "character") cat = "characters";
+        else if (t === "group") cat = "groups";
+        else if (t === "language") cat = "languages";
+        else if (f.category) cat = f.category;
+
+        return {
+          id: 90000 + idx,
+          name: f.name || "",
+          category: cat,
+          count: f.count || 0,
+        };
+      });
+      if (searchFilter.trim()) {
+        const q = searchFilter.toLowerCase();
+        baseList = baseList.filter((t) => (t.name || "").toLowerCase().includes(q));
+      }
+    } else if (activeTab !== "collections") {
+      baseList = getAllTaxonomies(activeTab, searchFilter);
+    }
+
+    return baseList;
+  }, [activeTab, searchFilter, favoriteList]);
+
+  // Clic sur le tag -> lance directement la recherche sur la page d'accueil
+  const handleSelectTag = (tag: TaxonomyItem) => {
+    lightTap();
+    const type = categoryTypeMap[tag.category] || "tag";
     router.push({
       pathname: "/",
-      params: { tag: tag.name },
+      params: { tag: tag.name, type },
     });
   };
 
-  const renderItem = ({ item }: { item: TagItem }) => (
-    <CardPressable
-      onPress={() => handleSelectTag(item)}
-      radius={12}
-      style={[
-        styles.tagCard,
-        { backgroundColor: colors.page, borderColor: colors.tagBg },
-      ]}
-    >
-      <View style={styles.tagCardInner}>
-        <View style={styles.tagIconWrap}>
-          <Feather name="tag" size={16} color={colors.accent} />
+  // Clic sur le bouton + -> ajoute le tag en plus à la recherche existante
+  const handleAppendTag = (tag: TaxonomyItem) => {
+    lightTap();
+    const type = categoryTypeMap[tag.category] || "tag";
+    router.push({
+      pathname: "/",
+      params: { appendTag: tag.name, type },
+    });
+  };
+
+  // Clic sur le cœur -> met en favoris instantanément
+  const handleToggleFavorite = (tag: TaxonomyItem) => {
+    lightTap();
+    const type = categoryTypeMap[tag.category] || "tag";
+    toggleFav({
+      type,
+      name: tag.name,
+      category: tag.category,
+      count: tag.count,
+    });
+  };
+
+  // Lancer une recherche combinant tous les favoris
+  const handleSearchAllFavorites = () => {
+    if (favoriteList.length === 0) return;
+    lightTap();
+    const combinedQuery = favoriteList
+      .map((f) => `${f.type || "tag"}:"${f.name}"`)
+      .join(" ");
+    router.push({
+      pathname: "/",
+      params: { query: combinedQuery },
+    });
+  };
+
+  // Lancer la recherche d'une collection
+  const handleSearchCollection = (col: TagCollection) => {
+    lightTap();
+    const q = formatColQuery(col);
+    router.push({
+      pathname: "/",
+      params: { query: q },
+    });
+  };
+
+  const handleCreateCollectionSubmit = async () => {
+    if (!newColName.trim()) return;
+    lightTap();
+    await createCollection(newColName.trim(), selectedTagsForCol, {
+      description: newColDesc.trim(),
+      color: newColColor,
+    });
+    setNewColName("");
+    setNewColDesc("");
+    setSelectedTagsForCol([]);
+    setIsCreateModalOpen(false);
+  };
+
+  const toggleTagSelectionForCol = (tag: TaxonomyItem) => {
+    lightTap();
+    const type = categoryTypeMap[tag.category] || "tag";
+    const exists = selectedTagsForCol.some((t) => t.name === tag.name && t.type === type);
+    if (exists) {
+      setSelectedTagsForCol((prev) => prev.filter((t) => !(t.name === tag.name && t.type === type)));
+    } else {
+      setSelectedTagsForCol((prev) => [...prev, { type, name: tag.name }]);
+    }
+  };
+
+  const renderItem = useCallback(
+    ({ item }: { item: TaxonomyItem }) => {
+      const meta = CATEGORY_META[item.category] || CATEGORY_META.tags || {
+        icon: IconTag,
+        color: "#60a5fa",
+        label: "Tag",
+        type: "tag",
+      };
+      const IconComp = meta.icon || IconTag;
+      const itemType = categoryTypeMap[item.category] || "tag";
+      const favorited = isFav(itemType, item.name);
+
+      return (
+        <View
+          style={[
+            styles.tagCard,
+            {
+              backgroundColor: "#14141e",
+              borderColor: favorited ? "rgba(244,63,94,0.4)" : "#232332",
+            },
+          ]}
+        >
+          {/* Main row press -> open single search */}
+          <Pressable
+            onPress={() => handleSelectTag(item)}
+            android_ripple={{ color: "#ffffff15" }}
+            style={styles.tagCardInner}
+          >
+            <View
+              style={[
+                styles.tagIconWrap,
+                { backgroundColor: meta.color + "18", borderColor: meta.color + "30" },
+              ]}
+            >
+              <IconComp size={15} color={meta.color} stroke={1.8} />
+            </View>
+
+            <View style={{ flex: 1 }}>
+              <Text style={styles.tagName} numberOfLines={1}>
+                {item.name}
+              </Text>
+              <Text style={styles.tagSubMeta}>
+                {meta.label} {item.count > 0 ? `• ${item.count.toLocaleString("fr-FR")}` : ""}
+              </Text>
+            </View>
+          </Pressable>
+
+          {/* Bouton + pour ajouter à la recherche */}
+          <Pressable
+            onPress={() => handleAppendTag(item)}
+            hitSlop={6}
+            style={[styles.tagActionBtn, { borderLeftColor: "#232332" }]}
+          >
+            <IconPlus size={16} color={colors.accent} stroke={2.5} />
+          </Pressable>
+
+          {/* Bouton Cœur Favori */}
+          <Pressable
+            onPress={() => handleToggleFavorite(item)}
+            hitSlop={6}
+            style={[styles.tagActionBtn, { borderLeftColor: "#232332" }]}
+          >
+            <IconHeart
+              size={16}
+              color={favorited ? "#f43f5e" : "#9ca3af"}
+              fill={favorited ? "#f43f5e" : "transparent"}
+              stroke={1.8}
+            />
+          </Pressable>
         </View>
-        <Text style={[styles.tagName, { color: colors.txt }]} numberOfLines={1}>
-          {item.name}
-        </Text>
-        <View style={[styles.countBadge, { backgroundColor: colors.tagBg }]}>
-          <Text style={[styles.countText, { color: colors.sub }]}>
-            {item.count > 999 ? `${(item.count / 1000).toFixed(1)}k` : item.count}
-          </Text>
-        </View>
-      </View>
-    </CardPressable>
+      );
+    },
+    [colors.accent, favoriteList, isFav]
   );
 
   return (
@@ -136,113 +302,628 @@ export default function TagsScreen() {
       style={[
         styles.container,
         {
-          backgroundColor: colors.bg,
           paddingTop: Math.max(insets.top, 12),
+          backgroundColor: colors.bg,
         },
       ]}
     >
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: colors.txt }]}>
-          Balises & Taxonomies
-        </Text>
-        <Text style={[styles.headerSub, { color: colors.sub }]}>
-          Explorez les mangas par séries, personnages, balises ou artistes
-        </Text>
-
-        {/* Search input */}
-        <View style={[styles.searchWrap, { backgroundColor: colors.page, borderColor: colors.tagBg }]}>
-          <Feather name="search" size={16} color={colors.sub} style={{ marginRight: 8 }} />
-          <TextInput
-            value={searchFilter}
-            onChangeText={setSearchFilter}
-            placeholder={`Filtrer les ${activeCategory}...`}
-            placeholderTextColor={colors.sub}
-            style={[styles.searchInput, { color: colors.txt }]}
-          />
-          {searchFilter ? (
-            <Pressable onPress={() => setSearchFilter("")}>
-              <Feather name="x" size={16} color={colors.sub} />
-            </Pressable>
-          ) : null}
+      <View style={[styles.header, { borderBottomColor: "#222232" }]}>
+        <IconBtn onPress={() => router.back()} size={36} style={styles.backBtn}>
+          <IconArrowLeft size={18} color="#f3f4f6" stroke={2} />
+        </IconBtn>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.headerTitle}>Tags & Packs</Text>
+          <Text style={styles.headerSub}>
+            {activeTab === "collections"
+              ? `${collections.length} pack${collections.length > 1 ? "s" : ""} disponible${collections.length > 1 ? "s" : ""}`
+              : activeTab === "favs"
+              ? `${favoriteList.length} tag${favoriteList.length > 1 ? "s" : ""} favori${favoriteList.length > 1 ? "s" : ""}`
+              : `${filteredItems.length.toLocaleString("fr-FR")} résultat${filteredItems.length > 1 ? "s" : ""}`}
+          </Text>
         </View>
 
-        {/* Category Tabs */}
-        <View style={styles.tabsRow}>
-          {categories.map((c) => {
-            const isActive = activeCategory === c.key;
+        {activeTab === "collections" && (
+          <Pressable
+            onPress={() => setIsCreateModalOpen(true)}
+            style={[styles.headerActionBtn, { backgroundColor: colors.accent }]}
+          >
+            <IconPlus size={15} color="#fff" stroke={2.5} />
+            <Text style={styles.headerActionText}>Créer</Text>
+          </Pressable>
+        )}
+      </View>
+
+      {/* Search Input Bar */}
+      {activeTab !== "collections" && (
+        <View style={styles.searchBarWrapper}>
+          <View style={[styles.searchBarBox, { backgroundColor: "#14141e", borderColor: "#232332" }]}>
+            <IconSearch size={16} color="#9ca3af" stroke={2} />
+            <TextInput
+              value={searchFilter}
+              onChangeText={setSearchFilter}
+              placeholder="Filtrer parmi les tags, artistes, séries..."
+              placeholderTextColor="#6b7280"
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="search"
+              style={styles.searchInput}
+            />
+            {searchFilter.length > 0 && (
+              <Pressable onPress={() => setSearchFilter("")} hitSlop={6}>
+                <IconX size={15} color="#9ca3af" stroke={2} />
+              </Pressable>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* Category Tabs Scroll (Using standard ScrollView for rock-solid stability) */}
+      <View style={styles.tabsContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 16 }}
+        >
+          {categories.map((item) => {
+            const isActive = activeTab === item.key;
+            const TabIcon = item.icon;
             return (
               <Pressable
-                key={c.key}
+                key={item.key}
                 onPress={() => {
-                  setActiveCategory(c.key);
-                  setSearchFilter("");
+                  lightTap();
+                  setActiveTab(item.key);
                 }}
                 style={[
                   styles.tabChip,
                   {
-                    backgroundColor: isActive ? colors.accent : colors.page,
-                    borderColor: isActive ? colors.accent : colors.tagBg,
+                    backgroundColor: isActive ? colors.accent : "#14141e",
+                    borderColor: isActive ? colors.accent : "#232332",
                   },
                 ]}
               >
+                <TabIcon
+                  size={14}
+                  color={isActive ? "#ffffff" : "#9ca3af"}
+                  stroke={2}
+                  fill={item.key === "favs" && isActive ? "#ffffff" : "transparent"}
+                />
                 <Text
                   style={[
                     styles.tabChipText,
-                    { color: isActive ? "#fff" : colors.sub },
+                    {
+                      color: isActive ? "#ffffff" : "#9ca3af",
+                      fontWeight: isActive ? "800" : "600",
+                    },
                   ]}
                 >
-                  {c.label}
+                  {item.label}
                 </Text>
               </Pressable>
             );
           })}
-        </View>
+        </ScrollView>
       </View>
 
-      {/* List */}
-      <FlashList
-        data={filteredItems}
-        renderItem={renderItem}
-        estimatedItemSize={60}
-        contentContainerStyle={{
-          paddingHorizontal: 16,
-          paddingTop: 8,
-          paddingBottom: insets.bottom + 24,
-        }}
-        keyExtractor={(item) => String(item.id)}
-      />
+      {/* Bannière d'action si onglet Favoris actif avec éléments */}
+      {activeTab === "favs" && favoriteList.length > 0 && (
+        <View style={styles.favActionBanner}>
+          <CardPressable
+            radius={10}
+            onPress={handleSearchAllFavorites}
+            style={[styles.searchAllFavsBtn, { backgroundColor: colors.accent }]}
+          >
+            <IconSearch size={15} color="#fff" stroke={2.5} />
+            <Text style={styles.searchAllFavsText}>
+              Rechercher les favoris ({favoriteList.length})
+            </Text>
+          </CardPressable>
+        </View>
+      )}
+
+      {/* Collections Tab Content */}
+      {activeTab === "collections" ? (
+        <ScrollView
+          contentContainerStyle={[
+            styles.collectionsContainer,
+            { paddingBottom: insets.bottom + 40 },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          {collections.map((col) => (
+            <View
+              key={col.id}
+              style={[
+                styles.colCard,
+                { backgroundColor: "#14141e", borderColor: col.color + "50" },
+              ]}
+            >
+              <View style={styles.colHeader}>
+                <View style={styles.colTitleRow}>
+                  <View style={[styles.colColorDot, { backgroundColor: col.color }]} />
+                  <Text style={styles.colName}>{col.name}</Text>
+                </View>
+
+                <Pressable
+                  onPress={() => {
+                    lightTap();
+                    deleteCollection(col.id);
+                  }}
+                  hitSlop={8}
+                >
+                  <IconTrash size={16} color="#ef4444" stroke={1.8} />
+                </Pressable>
+              </View>
+
+              {col.description ? (
+                <Text style={styles.colDesc}>{col.description}</Text>
+              ) : null}
+
+              {/* Tags included */}
+              <View style={styles.colTagsWrap}>
+                {col.tags.map((t, idx) => (
+                  <View key={idx} style={[styles.colTagBadge, { backgroundColor: col.color + "20" }]}>
+                    <Text style={[styles.colTagBadgeText, { color: col.color }]}>
+                      +{t.name}
+                    </Text>
+                  </View>
+                ))}
+                {col.excludeTags?.map((t, idx) => (
+                  <View key={`ex_${idx}`} style={[styles.colTagBadge, { backgroundColor: "rgba(239, 68, 68, 0.15)" }]}>
+                    <Text style={[styles.colTagBadgeText, { color: "#ef4444" }]}>
+                      -{t.name}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* Launch Search Button */}
+              <Pressable
+                onPress={() => handleSearchCollection(col)}
+                style={[styles.colSearchBtn, { backgroundColor: col.color }]}
+              >
+                <IconSearch size={14} color="#fff" stroke={2.5} />
+                <Text style={styles.colSearchBtnText}>Rechercher le pack</Text>
+              </Pressable>
+            </View>
+          ))}
+        </ScrollView>
+      ) : filteredItems.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <IconSearchOff size={44} color="#6b7280" stroke={1.5} style={{ opacity: 0.6 }} />
+          <Text style={styles.emptyTitle}>
+            {activeTab === "favs" ? "Aucun favori" : "Aucun résultat"}
+          </Text>
+          <Text style={styles.emptySub}>
+            {activeTab === "favs"
+              ? "Touchez l'icône cœur sur n'importe quel tag pour le conserver ici."
+              : "Essayez avec d'autres termes de recherche."}
+          </Text>
+        </View>
+      ) : (
+        <FlashList
+          data={filteredItems}
+          renderItem={renderItem}
+          estimatedItemSize={58}
+          drawDistance={400}
+          keyExtractor={(item) => `${item.category}_${item.name}`}
+          contentContainerStyle={{
+            paddingHorizontal: 16,
+            paddingTop: 6,
+            paddingBottom: insets.bottom + 40,
+          }}
+        />
+      )}
+
+      {/* Modal Créer une Collection */}
+      <Modal
+        visible={isCreateModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsCreateModalOpen(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setIsCreateModalOpen(false)}>
+          <Pressable
+            style={[styles.modalCard, { backgroundColor: "#13131e", borderColor: "#28283a" }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Nouveau pack</Text>
+              <Pressable onPress={() => setIsCreateModalOpen(false)} hitSlop={6}>
+                <IconX size={18} color="#9ca3af" stroke={2} />
+              </Pressable>
+            </View>
+
+            <TextInput
+              value={newColName}
+              onChangeText={setNewColName}
+              placeholder="Nom du pack (ex: Romance Vanilla, FGO...)"
+              placeholderTextColor="#6b7280"
+              style={[styles.modalInput, { backgroundColor: "#181826", borderColor: "#2c2c3e" }]}
+            />
+
+            <TextInput
+              value={newColDesc}
+              onChangeText={setNewColDesc}
+              placeholder="Description courte (optionnel)"
+              placeholderTextColor="#6b7280"
+              style={[styles.modalInput, { backgroundColor: "#181826", borderColor: "#2c2c3e" }]}
+            />
+
+            {/* Color Palette Selector */}
+            <Text style={styles.paletteTitle}>Couleur :</Text>
+            <View style={styles.paletteRow}>
+              {["#ec4899", "#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ef4444"].map((c) => (
+                <Pressable
+                  key={c}
+                  onPress={() => setNewColColor(c)}
+                  style={[
+                    styles.paletteDot,
+                    { backgroundColor: c },
+                    newColColor === c && styles.paletteDotSelected,
+                  ]}
+                >
+                  {newColColor === c && <IconCheck size={14} color="#fff" stroke={3} />}
+                </Pressable>
+              ))}
+            </View>
+
+            {/* Quick Tag Selector */}
+            <Text style={styles.paletteTitle}>
+              Tags favoris inclus ({selectedTagsForCol.length}) :
+            </Text>
+            <ScrollView style={{ maxHeight: 150 }} showsVerticalScrollIndicator={false}>
+              <View style={styles.tagsSelectionWrap}>
+                {favoriteList.map((f, idx) => {
+                  const isSelected = selectedTagsForCol.some((t) => t.name === f.name);
+                  return (
+                    <Pressable
+                      key={idx}
+                      onPress={() =>
+                        toggleTagSelectionForCol({
+                          id: idx,
+                          name: f.name,
+                          category: (f.category as any) || "tags",
+                          count: f.count || 0,
+                        })
+                      }
+                      style={[
+                        styles.selectTagChip,
+                        {
+                          backgroundColor: isSelected ? newColColor : "#181826",
+                          borderColor: isSelected ? newColColor : "#2c2c3e",
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.selectTagText,
+                          { color: isSelected ? "#ffffff" : "#d1d5db" },
+                        ]}
+                      >
+                        {f.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </ScrollView>
+
+            <Pressable
+              onPress={handleCreateCollectionSubmit}
+              disabled={!newColName.trim()}
+              style={[
+                styles.modalSubmitBtn,
+                { backgroundColor: newColName.trim() ? newColColor : "#2d2d3e" },
+              ]}
+            >
+              <Text style={styles.modalSubmitText}>Créer le pack</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: { paddingHorizontal: 16, paddingBottom: 8 },
-  headerTitle: { fontSize: 20, fontWeight: "800" },
-  headerSub: { fontSize: 13, marginTop: 2, marginBottom: 12 },
-  searchWrap: {
+  container: {
+    flex: 1,
+  },
+  header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+  },
+  backBtn: {
+    marginLeft: -6,
+  },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#f3f4f6",
+  },
+  headerSub: {
+    fontSize: 11,
+    color: "#9ca3af",
+    marginTop: 1,
+  },
+  headerActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  headerActionText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#fff",
+  },
+  searchBarWrapper: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 8,
+  },
+  searchBarBox: {
+    flexDirection: "row",
+    alignItems: "center",
     height: 40,
-    borderRadius: 12,
+    borderRadius: 10,
     borderWidth: 1,
-    marginBottom: 12,
+    paddingHorizontal: 12,
+    gap: 8,
   },
-  searchInput: { flex: 1, fontSize: 13 },
-  tabsRow: { flexDirection: "row", gap: 6, flexWrap: "wrap", marginBottom: 4 },
-  tabChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, borderWidth: 1 },
-  tabChipText: { fontSize: 12, fontWeight: "700" },
-  tagCard: { borderRadius: 12, borderWidth: 1, marginBottom: 8 },
-  tagCardInner: {
+  searchInput: {
+    flex: 1,
+    fontSize: 13,
+    color: "#f3f4f6",
+    padding: 0,
+  },
+  tabsContainer: {
+    paddingVertical: 4,
+    minHeight: 42,
+  },
+  tabChip: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 9,
+    borderWidth: 1,
+    marginRight: 8,
   },
-  tagIconWrap: { marginRight: 10 },
-  tagName: { flex: 1, fontSize: 14, fontWeight: "700" },
-  countBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  countText: { fontSize: 11, fontWeight: "700" },
+  tabChipText: {
+    fontSize: 12,
+  },
+  favActionBanner: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+  },
+  searchAllFavsBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+  },
+  searchAllFavsText: {
+    color: "#fff",
+    fontSize: 12.5,
+    fontWeight: "800",
+  },
+  tagCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 11,
+    borderWidth: 1,
+    marginBottom: 7,
+    overflow: "hidden",
+  },
+  tagCardInner: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+  },
+  tagIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  tagName: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#f3f4f6",
+  },
+  tagSubMeta: {
+    fontSize: 10.5,
+    color: "#9ca3af",
+    marginTop: 1,
+  },
+  tagActionBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderLeftWidth: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  collectionsContainer: {
+    padding: 16,
+    gap: 12,
+  },
+  colCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 14,
+    gap: 10,
+  },
+  colHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  colTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  colColorDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  colName: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#f3f4f6",
+  },
+  colDesc: {
+    fontSize: 12,
+    color: "#9ca3af",
+    lineHeight: 16,
+  },
+  colTagsWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  colTagBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  colTagBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  colSearchBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 9,
+    borderRadius: 9,
+    marginTop: 4,
+  },
+  colSearchBtnText: {
+    fontSize: 12.5,
+    fontWeight: "800",
+    color: "#fff",
+  },
+  emptyContainer: {
+    flex: 1,
+    minHeight: 280,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 32,
+    gap: 8,
+  },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#f3f4f6",
+    marginTop: 4,
+  },
+  emptySub: {
+    fontSize: 12,
+    color: "#9ca3af",
+    textAlign: "center",
+    lineHeight: 17,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.75)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  modalCard: {
+    width: "100%",
+    maxWidth: 380,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 16,
+    gap: 12,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#f3f4f6",
+  },
+  modalInput: {
+    height: 42,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    fontSize: 13,
+    color: "#f3f4f6",
+  },
+  paletteTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#9ca3af",
+    marginTop: 2,
+  },
+  paletteRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  paletteDot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  paletteDotSelected: {
+    borderWidth: 2,
+    borderColor: "#fff",
+  },
+  tagsSelectionWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    paddingVertical: 4,
+  },
+  selectTagChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  selectTagText: {
+    fontSize: 11.5,
+    fontWeight: "600",
+  },
+  modalSubmitBtn: {
+    paddingVertical: 11,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4,
+  },
+  modalSubmitText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#fff",
+  },
 });

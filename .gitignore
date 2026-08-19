@@ -1,14 +1,23 @@
 # ==============================================================================
-# nHentai Launcher - .gitignore
+# nHentai Launcher (Desktop & Mobile) - .gitignore
 # ==============================================================================
 
-# --- Node / Dependencies ---
+# --- Node / Package Managers ---
 node_modules/
 .pnpm-store/
-.npm
+.npm/
 .yarn/
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+.pnp
+.pnp.js
+.pnp.*
 
-# --- Logs & Runtime ---
+# --- Logs, Debugging & Performance ---
 logs/
 *.log
 npm-debug.log*
@@ -16,30 +25,93 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
-# --- Build & Distribution Outputs ---
+# --- Desktop Build & Distribution Outputs (Vite, Electron, Tauri) ---
 dist/
 dist-ssr/
 release/
 out/
 build/
+win-unpacked/
 *.local
-
-# --- Tauri / Rust Artifacts ---
 src-tauri/target/
 **/target/
 **/*.rs.bk
 *.pdb
+*.exe
+*.msi
+*.dmg
+*.AppImage
+*.deb
+*.rpm
+*.snap
 
-# --- Environment & Secrets ---
+# --- Mobile (Expo & React Native) Artifacts ---
+.expo/
+expo-env.d.ts
+.metro/
+.cache/
+metro-cache/
+
+# Android Native Build
+mobile/android/.gradle/
+mobile/android/build/
+mobile/android/app/build/
+mobile/android/.idea/
+mobile/android/*.iml
+mobile/android/app/*.iml
+mobile/android/local.properties
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# iOS Native Build
+mobile/ios/Pods/
+mobile/ios/build/
+mobile/ios/*.xcworkspace/xcuserdata/
+mobile/ios/*.xcodeproj/xcuserdata/
+mobile/ios/*.xcodeproj/project.xcworkspace/xcuserdata/
+*.ipa
+*.dSYM/
+
+# Android Keystores & Signing Keys
+*.keystore
+*.jks
+debug.keystore
+release.keystore
+signing-key.properties
+
+# --- Local Databases, Cache & Downloaded Media ---
+downloads/
+temp_downloads/
+cache/
+*.cbz
+*.cbr
+*.zip
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.db-journal
+
+# --- Environment, Secrets & Credentials ---
 .env
 .env.local
 .env.*.local
 .env.development.local
 .env.test.local
 .env.production.local
+api_keys.json
+credentials.json
+*.pem
+*.key
+*.cert
 
-# --- Editor & IDE Files ---
+# --- Editor & IDE Configurations ---
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
@@ -51,6 +123,8 @@ src-tauri/target/
 *.sw?
 *.swp
 *.swo
+*.sublime-project
+*.sublime-workspace
 
 # --- OS Generated Files ---
 .DS_Store
@@ -62,10 +136,16 @@ ehthumbs.db
 Thumbs.db
 [Dd]esktop.ini
 
-# --- Agent Tool State ---
-.freebuff/
+# Accidental Expo / agent debug captures (never part of the app)
+mobile/screen_*.png
+mobile/test-bundle.js
 
-# --- Temporary, Scratch & Backup Files ---
+# --- Test Coverage & Temporary Artifacts ---
+coverage/
+.nyc_output/
+*.lcov
+test-results/
+.freebuff/
 scratch/
 scratch_*
 *.scratch.*
@@ -75,11 +155,3 @@ backup*
 *.tmp
 *.temp
 .agents/scratch/
-
-# --- Downloads, Local Cache & Archives ---
-downloads/
-temp_downloads/
-cache/
-*.cbz
-*.cbr
-*.zip

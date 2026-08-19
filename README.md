@@ -2,30 +2,36 @@
 
   <img src="public/tauri.svg" alt="nHentai Launcher Logo" width="120" height="120" style="margin-bottom: 12px;" />
 
-  # 🌸 nHentai Desktop Launcher
+  # 🌸 nHentai Launcher Ecosystem
+  ### Client Desktop & Application Mobile Tactile Nouvelle Génération
 
   <p align="center">
-    <strong>Le client desktop open-source ultime, rapide et ultra-complet pour nHentai.</strong><br>
-    <em>Liseuse Manga & Webtoon, Téléchargements CBZ multi-flux avec ComicInfo.xml, Contournement DNS/DoH et Bibliothèque hors-ligne.</em>
+    <strong>L'écosystème open-source ultime, ultra-rapide et anti-blocage pour nHentai.</strong><br>
+    <em>Liseuse Manga & Webtoon, Téléchargements CBZ multi-flux avec ComicInfo.xml, Proxy Miroir Photon avec solveur PoW SHA-256 et Bibliothèque hors-ligne.</em>
   </p>
 
   <p align="center">
-    <a href="#-téléchargement--installation">
-      <img src="https://img.shields.io/badge/Télécharger-v1.0.0--Release-ed2553?style=for-the-badge&logo=windows&logoColor=white" alt="Download Release" />
+    <a href="#-démarrage-rapide--desktop">
+      <img src="https://img.shields.io/badge/Desktop-Démarrage-ed2553?style=for-the-badge&logo=electron&logoColor=white" alt="Desktop Quickstart" />
     </a>
-    <a href="#-démarrage-rapide">
-      <img src="https://img.shields.io/badge/Guide-Démarrage-1f2328?style=for-the-badge&logo=readme&logoColor=white" alt="Quick Start" />
+    <a href="#-démarrage-rapide--mobile-expo">
+      <img src="https://img.shields.io/badge/Mobile-Expo%20SDK%2052-1f2328?style=for-the-badge&logo=expo&logoColor=white" alt="Mobile Quickstart" />
+    </a>
+    <a href="#-proxy-miroir-photon-embarqué">
+      <img src="https://img.shields.io/badge/Proxy-Miroir%20Photon-6366f1?style=for-the-badge&logo=cloudflare&logoColor=white" alt="Photon Proxy" />
     </a>
   </p>
 
   <p align="center">
     <img src="https://img.shields.io/badge/React-19.1-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React 19" />
+    <img src="https://img.shields.io/badge/React%20Native-0.76-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React Native" />
+    <img src="https://img.shields.io/badge/Expo-SDK%2052-000020?style=flat-square&logo=expo&logoColor=white" alt="Expo 52" />
     <img src="https://img.shields.io/badge/TypeScript-5.8-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
     <img src="https://img.shields.io/badge/Vite-7.0-646CFF?style=flat-square&logo=vite&logoColor=white" alt="Vite" />
     <img src="https://img.shields.io/badge/Electron-43.4-47848F?style=flat-square&logo=electron&logoColor=white" alt="Electron" />
     <img src="https://img.shields.io/badge/TailwindCSS-v4.3-38B2AC?style=flat-square&logo=tailwindcss&logoColor=white" alt="Tailwind CSS" />
-    <img src="https://img.shields.io/badge/Zustand-5.0-brown?style=flat-square&logo=react&logoColor=white" alt="Zustand" />
-    <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-blue?style=flat-square" alt="Cross-Platform" />
+    <img src="https://img.shields.io/badge/Tabler%20Icons-v3.46-206bc4?style=flat-square&logo=tabler&logoColor=white" alt="Tabler Icons" />
+    <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20Android%20%7C%20Linux%20%7C%20macOS-blue?style=flat-square" alt="Multi-Platform" />
     <img src="https://img.shields.io/badge/License-MIT-2ea44f?style=flat-square" alt="License" />
   </p>
 
@@ -36,64 +42,64 @@
 ## 📑 Sommaire
 
 <details open>
-<summary><b>Cliquez pour déployer l'index complet</b></summary>
+<summary><b>Cliquez pour afficher le sommaire complet</b></summary>
 
-- [✨ Points Forts & Fonctionnalités](#-points-forts--fonctionnalités)
-- [🎯 Comparatif des Modes de Lecture](#-comparatif-des-modes-de-lecture)
-- [📐 Architecture Technique](#-architecture-technique)
-- [⌨️ Raccourcis Clavier](#️-raccourcis-clavier)
-- [🚀 Démarrage Rapide](#-démarrage-rapide)
-- [📦 Compilation & Packaging](#-compilation--packaging)
-- [📜 Scripts NPM](#-scripts-npm)
-- [🛡️ Système Réseau & Résolution DNS](#️-système-réseau--résolution-dns)
-- [🏷️ Structure des Métadonnées ComicInfo.xml](#️-structure-des-métadonnées-comicinfoxml)
-- [📂 Structure du Dépôt](#-structure-du-dépôt)
+- [✨ Points Forts & Vue d'Ensemble](#-points-forts--vue-densemble)
+- [📱 Comparatif Fonctionnel Desktop vs Mobile](#-comparatif-fonctionnel-desktop-vs-mobile)
+- [📐 Architecture Globale du Monorepo](#-architecture-globale-du-monorepo)
+- [🛡️ Proxy Miroir Photon Embarqué](#️-proxy-miroir-photon-embarqué)
+- [🚀 Démarrage Rapide : Desktop](#-démarrage-rapide--desktop)
+- [📱 Démarrage Rapide : Mobile (Expo)](#-démarrage-rapide--mobile-expo)
+- [⌨️ Raccourcis & Gestuelle Tactile](#️-raccourcis--gestuelle-tactile)
+- [🏷️ Format Métadonnées ComicInfo.xml](#️-format-métadonnées-comicinfoxml)
+- [📂 Structure du Projet](#-structure-du-projet)
+- [🧪 Tests & Qualité de Code](#-tests--qualité-de-code)
 - [⚠️ Avertissement Légal](#️-avertissement-légal)
 
 </details>
 
 ---
 
-## ✨ Points Forts & Fonctionnalités
+## ✨ Points Forts & Vue d'Ensemble
 
 <table>
   <tr>
     <td width="50%">
-      <h3>🔍 Recherche & Découverte</h3>
+      <h3>🔍 Moteur de Recherche & Recommandations</h3>
       <ul>
-        <li><b>Recherche Intelligente :</b> Syntaxe complète (<code>#id</code>, <code>tag:</code>, <code>artist:</code>, <code>parody:</code>, <code>character:</code>, <code>group:</code>, <code>language:</code>, <code>-exclude</code>).</li>
-        <li><b>Autocomplétion :</b> Suggestions instantanées en direct.</li>
-        <li><b>Navigateur de Taxonomie :</b> Parcourez artistes, séries, personnages et groupes avec cache mémoire (TTL 1h).</li>
-        <li><b>Filtres Rapides :</b> Sélecteur de langue en 1 clic (🇫🇷, 🇬🇧, 🇯🇵, 🇪🇸, etc.) et tris par popularité.</li>
+        <li><b>Syntaxe de Recherche Complète :</b> Filtres par tags, artistes, parodies, personnages, langues et exclusions négatives (ex: <code>-guro</code>).</li>
+        <li><b>Moteur de Signaux & Affinité :</b> Algorithme prédictif local calculant les recommandations personnalisées selon votre historique et vos favoris.</li>
+        <li><b>Navigateur de Taxonomie :</b> Exploration organisée par catégories avec mise en cache optimisée.</li>
+        <li><b>Blacklist Intelligente :</b> Masquage automatique ou mode discret (flou NSFW) en un clic.</li>
       </ul>
     </td>
     <td width="50%">
-      <h3>📖 Liseuse Double-Moteur</h3>
+      <h3>📖 Liseuse Double Moteur (Manga & Webtoon)</h3>
       <ul>
-        <li><b>Mode Manga :</b> Page par page, support natif des planches doubles (Spreads), navigation fluide au clavier.</li>
-        <li><b>Mode Webtoon :</b> Défilement vertical continu et infini avec centrage adaptatif et zoom fluide.</li>
-        <li><b>Chaîne de Repli Image :</b> Bascule automatique <code>WebP</code> ➔ <code>JPG</code> ➔ <code>PNG</code> en cas d'erreur réseau.</li>
-        <li><b>Mini-Rail de Défilement :</b> Saut rapide et aperçu visuel des pages.</li>
+        <li><b>Mode Manga :</b> Page par page (RTL / LTR) avec support des planches doubles (Spreads).</li>
+        <li><b>Mode Webtoon :</b> Défilement continu haute performance avec gestion de mémoire dynamique.</li>
+        <li><b>Plein Écran Immersif Sticky :</b> Masquage fluide des barres d'état et barres de navigation Android.</li>
+        <li><b>Tap-to-Turn :</b> Touchez les bords latéraux de l'écran pour tourner les pages sans quitter des yeux votre lecture.</li>
       </ul>
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <h3>⚡ Téléchargement & Export CBZ</h3>
+      <h3>⚡ Téléchargement Haute Vitesse & CBZ</h3>
       <ul>
-        <li><b>Multi-flux Haute Vitesse :</b> Gestionnaire de téléchargement parallèle avec concurrence ajustable.</li>
-        <li><b>Suivi Temps Réel :</b> Progression par galerie, jauge de vitesse (Ko/s, Mo/s) et estimation du temps restant (ETA).</li>
-        <li><b>Export CBZ + ComicInfo.xml :</b> Archives <code>.cbz</code> avec métadonnées compatibles Komga, Kavita, YACReader.</li>
-        <li><b>Téléchargement par Lot (Batch) :</b> Traitement asynchrone de listes d'IDs et de recherches complexes.</li>
+        <li><b>Gestionnaire Multi-flux Réglable :</b> Téléchargements parallèles avec suivi du débit (Mo/s) et estimation du temps restant (ETA).</li>
+        <li><b>Packaging CBZ & ComicInfo.xml :</b> Génération d'archives standardisées compatibles avec Komga, Kavita et YACReader.</li>
+        <li><b>Bibliothèque Hors-Ligne :</b> Lecture instantanée des tomes téléchargés directement depuis le stockage local.</li>
+        <li><b>Batch Downloader :</b> Importez et téléchargez des listes massives d'IDs en arrière-plan.</li>
       </ul>
     </td>
     <td width="50%">
-      <h3>📚 Bibliothèque & Anti-Blocage</h3>
+      <h3>🛡️ Sécurité, Anti-Blocage & PoW</h3>
       <ul>
-        <li><b>Lecteur CBZ Local :</b> Détection et lecture directe d'archives locales sans extraction sur le disque.</li>
-        <li><b>Favoris & Historique :</b> Suivi de lecture et sauvegarde persistante.</li>
-        <li><b>Contournement DNS Intégré :</b> Moteur DoH / DNS personnalisé (AdGuard, Cloudflare, Google, Quad9).</li>
-        <li><b>Bypass Cloudflare :</b> Résolution automatique avec fenêtre d'authentification interactive si nécessaire.</li>
+        <li><b>Contournement DNS / DoH :</b> Résolution directe via AdGuard, Cloudflare (1.1.1.1), Google ou Quad9 sans modifier le système d'exploitation.</li>
+        <li><b>Solveur Cryptographique PoW :</b> Résolution automatique des challenges SHA-256 nHentai en quelques millisecondes.</li>
+        <li><b>Passerelle Webview Sécurisée :</b> Validation interactive 1-clic pour franchir les captchas Cloudflare sans friction.</li>
+        <li><b>Thème Noir Pur OLED & 25 Teintes :</b> Confort visuel maximal et économie de batterie sur écrans AMOLED.</li>
       </ul>
     </td>
   </tr>
@@ -101,172 +107,152 @@
 
 ---
 
-## 🎯 Comparatif des Modes de Lecture
+## 📱 Comparatif Fonctionnel Desktop vs Mobile
 
-```
-┌───────────────────────────────────────────────────────────────────────────┐
-│                           MODES DE LECTURE                                │
-├─────────────────────────────────────┬─────────────────────────────────────┤
-│            📖 MODE MANGA            │           📜 MODE WEBTOON           │
-├─────────────────────────────────────┼─────────────────────────────────────┤
-│ • Page par page ou Double-Page      │ • Défilement vertical continu       │
-│ • Navigation clavier (Flèches, A/D) │ • Lecture fluide sans interruptions │
-│ • Idéal pour les doujins classiques │ • Optimisé pour manhwas & webtoons  │
-│ • Rendu haute définition centré     │ • Largeur de colonne ajustable      │
-└─────────────────────────────────────┴─────────────────────────────────────┘
-```
+| Fonctionnalité | 🖥️ Desktop (Electron + React 19) | 📱 Mobile (Expo SDK 52 + React Native) |
+|:---|:---:|:---:|
+| **Modes de Lecture** | Manga (Simple/Double page) & Webtoon | Manga (RTL/LTR) & Webtoon avec Tap-to-Turn |
+| **Plein Écran Immersif** | Touche <kbd>F</kbd> native | Mode Immersif Sticky (`expo-navigation-bar`) |
+| **Export CBZ + ComicInfo.xml** | ✅ Enregistrement direct sur disque | ✅ Format local indexé & exportable |
+| **Moteur de Recommandations** | ✅ Basé sur l'historique de recherche | ✅ Moteur multi-signaux avec score d'affinité |
+| **Téléchargements en Lot (Batch)** | ✅ File d'attente multi-tâches | ✅ Gestionnaire de téléchargement par lot |
+| **Gestionnaire de Clés API & Profil** | ✅ Vue dédiée | ✅ Interface native + gestionnaire de clés |
+| **Système d'Icônes** | Lucide Icons | Tabler Icons (`@tabler/icons-react-native`) |
+| **Onboarding Interactif** | — | ✅ Assistant au premier lancement (DA Manga) |
+| **Contournement FAI (DoH / Proxy)** | ✅ DoH intégré dans le Processus Principal | ✅ Proxy Miroir Photon avec solveur PoW |
 
 ---
 
-## 📐 Architecture Technique
-
-Le schéma ci-dessous illustre l'interaction entre l'interface utilisateur, le processus principal Electron et les modules de streaming/téléchargement :
+## 📐 Architecture Globale du Monorepo
 
 ```mermaid
 flowchart TB
-    subgraph UI ["🖥️ Processus Rendu (React 19 + TypeScript)"]
-        A[App & Vues] --> B[Zustand Stores]
-        A --> C[Composants UI / Tailwind v4]
-        B --> D[Liseuse Manga / Webtoon]
-        B --> E[Gestionnaire Téléchargement UI]
-        B --> F[Lecteur CBZ Local]
+    subgraph DesktopApp ["🖥️ Desktop App (Electron + React 19)"]
+        UI_D[Vues React 19 & Tailwind v4] --> IPC_Bridge[ContextBridge Preload]
+        IPC_Bridge --> Electron_Core[Processus Principal Electron]
+        Electron_Core --> DoH_Resolver[Résolveur DoH Multi-Fournisseurs]
+        Electron_Core --> CBZ_Archiver[Générateur d'archives CBZ]
     end
 
-    subgraph Bridge ["🌉 Electron ContextBridge (Preload)"]
-        G[ipcRenderer Invocation sécurisée]
+    subgraph MobileApp ["📱 Mobile App (Expo SDK 52 + React Native)"]
+        UI_M[Vues Expo Router & Tabler Icons] --> Engine_M[Moteur de Recommandations & Cache]
+        UI_M --> Reader_M[Lecteur Manga & Webtoon Natif]
+        Engine_M --> Mobile_Storage[(AsyncStorage & FileSystem)]
     end
 
-    subgraph Core ["⚙️ Processus Principal (Electron Backend)"]
-        H[IPC Handlers]
-        I[Moteur DNS & DoH Resolver]
-        J[Scraper / API nHentai v2]
-        K[Downloader Multi-flux]
-        L[Packager CBZ & Archiver]
-        M[Extracteur CBZ en Mémoire]
+    subgraph ProxyService ["🛡️ Proxy Miroir Photon (Node.js)"]
+        Proxy_HTTP[Serveur HTTP :8787] --> PoW_Solver[Solveur PoW SHA-256 Dynamique]
+        Proxy_HTTP --> Failover[Failover Multi-Miroirs Intelligents]
+        Proxy_HTTP --> Auth_Handler[Gestionnaire d'Authentification & Cookies]
     end
 
-    UI --> Bridge
-    Bridge --> Core
-    Core -->|Événements Temps Réel| UI
-    I -->|Requêtes Bypass| J
-    J --> K
-    K --> L
-    L -->|Fichier .cbz| Storage[(Disque Local)]
-    Storage --> M
+    subgraph RemoteServer ["🌐 Infrastructure Web"]
+        nHentai_API["API nHentai v2 & Miroirs"]
+        Cloudflare_Security["Protection Cloudflare & DoH"]
+    end
+
+    Electron_Core -->|Requêtes Directes / DoH| nHentai_API
+    UI_M -->|Appels Fallback| Proxy_HTTP
+    Proxy_HTTP -->|Bypass Chiffré| nHentai_API
+    Proxy_HTTP -->|Validation Sécurisée| Cloudflare_Security
 ```
 
 ---
 
-## ⌨️ Raccourcis Clavier
+## 🛡️ Proxy Miroir Photon Embarqué
 
-Lors de l'utilisation de la **Liseuse intégrée (Online & Offline)** :
+Le proxy local ([`proxy/nhentai-mirror.mjs`](file:///c:/Users/entre/Documents/Dev/nhentaidownlo/proxy/nhentai-mirror.mjs)) est un serveur haute performance conçu pour assurer une disponibilité continue :
 
+- **Résolution PoW (Proof of Work) :** Résout instantanément les défis cryptographiques imposés par l'API v2 de nHentai pour les actions authentifiées.
+- **Failover Intelligent :** Bascule automatiquement entre les serveurs miroirs en cas de panne ou de restriction DNS.
+- **Support des requêtes partielles (HTTP 206) :** Permet la reprise fluide des téléchargements interrompus (`expo-file-system createDownloadResumable`).
+- **Prise en charge de l'authentification native :** Gère la transmission sécurisée des clés API (`X-Api-Key`) et jetons de session (`X-Refresh-Token`).
+
+---
+
+## 🚀 Démarrage Rapide : Desktop
+
+### 1. Prérequis
+- [Node.js](https://nodejs.org/) `>= 18.0.0`
+- [npm](https://www.npmjs.com/) ou [pnpm](https://pnpm.io/)
+
+### 2. Lancement en Développement
+```bash
+# À la racine du projet
+npm install
+npm start
+```
+> Le serveur Vite démarre sur `http://localhost:1420` et la fenêtre Electron s'ouvre automatiquement.
+
+### 3. Compilation des Exécutables Windows
+```bash
+npm run dist:win
+```
+Les installateurs (`.exe` NSIS et version portable) seront générés dans le dossier `release/`.
+
+---
+
+## 📱 Démarrage Rapide : Mobile (Expo)
+
+### 1. Démarrer le Proxy Miroir
+```bash
+# À la racine du projet
+node proxy/nhentai-mirror.mjs
+```
+
+### 2. Lancer l'Application Mobile
+```bash
+cd mobile
+npm install
+npm start
+```
+
+### 3. Exécution sur Appareil / Émulateur
+- Appuyez sur <kbd>a</kbd> dans le terminal pour lancer sur **Android Emulator**.
+- Ou scannez le QR Code affiché dans votre terminal avec l'application **Expo Go**.
+
+---
+
+## ⌨️ Raccourcis & Gestuelle Tactile
+
+### 🖥️ Raccourcis Clavier Desktop
 | Touche | Action | Mode |
 |:---|:---|:---|
 | <kbd>→</kbd> ou <kbd>D</kbd> | Page suivante (ou double-page suivante) | Manga |
 | <kbd>←</kbd> ou <kbd>A</kbd> | Page précédente | Manga |
-| <kbd>Espace</kbd> | Page suivante | Manga |
-| <kbd>F</kbd> | Basculer en mode Plein Écran | Manga / Webtoon |
-| <kbd>M</kbd> | Basculer entre mode Simple Page et Double-Page | Manga |
-| <kbd>W</kbd> | Alterner entre Mode Manga et Mode Webtoon | Tous |
-| <kbd>Échap</kbd> | Fermer la liseuse et revenir à la galerie | Tous |
+| <kbd>Espace</kbd> | Défilement / Page suivante | Manga & Webtoon |
+| <kbd>F</kbd> | Basculer en Plein Écran | Tous |
+| <kbd>M</kbd> | Basculer Simple Page / Double Page | Manga |
+| <kbd>W</kbd> | Basculer Mode Manga / Mode Webtoon | Tous |
+| <kbd>Échap</kbd> | Quitter la liseuse | Tous |
 
----
-
-## 🚀 Démarrage Rapide
-
-### Prérequis
-
-Assurez-vous d'avoir installé :
-- [Node.js](https://nodejs.org/) `>= 18.0.0`
-- [npm](https://www.npmjs.com/) (fourni avec Node.js) ou [pnpm](https://pnpm.io/)
-
-### Installation en 3 étapes
-
-```bash
-# 1. Cloner le projet
-git clone https://github.com/itsnazzym/nHentai-Laucher--unofficial-.git
-cd nHentai-Laucher--unofficial-
-
-# 2. Installer les dépendances
-npm install
-
-# 3. Lancer en environnement de développement
-npm start
-```
-
-> [!TIP]
-> La commande `npm start` initialise le serveur Vite sur le port `1420` et lance automatiquement la fenêtre Electron dès que le serveur est accessible.
-
----
-
-## 📦 Compilation & Packaging
-
-Pour compiler l'application et générer les exécutables Windows (installateur NSIS et version portable) :
-
-```bash
-npm run dist:win
-```
-
-Les exécutables prêts à la distribution se trouveront dans le dossier `release/` :
-
-```text
-release/
-├── nHentai Launcher Setup 1.0.0.exe    # Installateur Windows complet
-├── nHentai Launcher 1.0.0.exe          # Version Standalone / Portable
-└── win-unpacked/                       # Dossier des binaires décompressés
-```
-
----
-
-## 📜 Scripts NPM
-
-| Script | Rôle |
+### 📱 Gestuelle Tactile Mobile
+| Geste | Action |
 |:---|:---|
-| `npm start` | **Recommandé :** Démarre Vite en dev et lance Electron de concert |
-| `npm run dev` | Démarre uniquement le serveur de développement Vite (`http://localhost:1420`) |
-| `npm run build` | Vérifie les types avec `tsc` et compile le frontend dans `dist/` |
-| `npm run electron` | Lance le processus Electron indépendamment |
-| `npm run dist:win` | Compile le frontend et assemble les installateurs Windows avec `electron-builder` |
-| `npm run preview` | Prévisualise la version de production Vite localement |
+| **Tap latéral gauche (28%)** | Page précédente (ou suivante selon le sens RTL/LTR) |
+| **Tap latéral droit (28%)** | Page suivante (ou précédente selon le sens RTL/LTR) |
+| **Tap central (44%)** | Afficher / Masquer les menus et commandes |
+| **Balayage vertical** | Défilement fluide (Mode Webtoon) |
+| **Balayage horizontal** | Changement de page fluide (Mode Manga) |
 
 ---
 
-## 🛡️ Système Réseau & Résolution DNS
+## 🏷️ Format Métadonnées ComicInfo.xml
 
-L'application intègre un résolveur DNS et DoH personnalisable directement depuis l'onglet **Paramètres** pour contrer les blocages au niveau FAI sans altérer la configuration réseau de votre machine :
-
-```mermaid
-graph LR
-    App[Requête nHentai] --> DNS{Moteur DNS}
-    DNS -->|DoH Chiffré| AdGuard[AdGuard DNS]
-    DNS -->|DoH Chiffré| Cloudflare[Cloudflare 1.1.1.1]
-    DNS -->|DoH Chiffré| Google[Google 8.8.8.8]
-    DNS -->|DoH Chiffré| Quad9[Quad9 9.9.9.9]
-    DNS -->|Système| OS[Résolveur OS FAI]
-```
-
-> [!NOTE]
-> La configuration DNS est sauvegardée localement dans le profil utilisateur (`user_dns_settings.json`).
-
----
-
-## 🏷️ Structure des Métadonnées ComicInfo.xml
-
-Chaque archive `.cbz` générée embarque un fichier XML standardisé `ComicInfo.xml` pour une intégration parfaite dans votre serveur de mangas ou lecteur externe :
+Toutes les galeries téléchargées sous forme de fichiers `.cbz` intègrent automatiquement un fichier `ComicInfo.xml` standardisé :
 
 <details>
-<summary><b>Exemple de ComicInfo.xml généré</b></summary>
+<summary><b>Exemple de structure XML</b></summary>
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <ComicInfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
-  <Title>[Artiste] Titre du Manga</Title>
+  <Title>[Artiste] Titre de l'œuvre</Title>
   <Series>Nom de la Parodie / Série</Series>
   <Number>673340</Number>
   <Writer>Artiste / Cercle</Writer>
   <Penciller>Artiste</Penciller>
-  <Genre>big breasts, stockings, schoolgirl uniform</Genre>
+  <Genre>doujinshi, stockings, schoolgirl uniform</Genre>
   <PageCount>33</PageCount>
   <LanguageISO>en</LanguageISO>
   <Web>https://nhentai.net/g/673340/</Web>
@@ -277,36 +263,41 @@ Chaque archive `.cbz` générée embarque un fichier XML standardisé `ComicInfo
 
 ---
 
-## 📂 Structure du Dépôt
+## 📂 Structure du Projet
 
 ```text
-├── 📁 electron/                 # Backend Electron (Processus Principal)
-│   ├── main.cjs                # Moteur réseau, IPC, téléchargements CBZ, DNS & Scrapers
+├── 📁 electron/                 # Backend Electron (Processus Principal Desktop)
+│   ├── main.cjs                # IPC, téléchargements CBZ, DNS DoH & Scrapers
 │   └── preload.cjs             # Bridge contextuel sécurisé
-├── 📁 src/                      # Frontend (React 19 + TypeScript + Tailwind CSS v4)
-│   ├── 📁 components/           # Composants UI
-│   │   ├── 📁 batch/            # Gestionnaire de téléchargement par lot
-│   │   ├── 📁 common/           # Composants réutilisables (SmartImage, Autocomplete, Erreurs)
-│   │   ├── 📁 downloader/       # Gestionnaire de téléchargement et files d'attente
-│   │   ├── 📁 favorites/        # Gestionnaire de favoris
-│   │   ├── 📁 gallery/          # Grille de galeries, cartes, fiches et commentaires
-│   │   ├── 📁 history/          # Historique de navigation et reprise de lecture
-│   │   ├── 📁 layout/           # En-tête, barre latérale et navigation
-│   │   ├── 📁 library/          # Bibliothèque locale & liseuse CBZ hors-ligne
-│   │   ├── 📁 reader/           # Liseuse en ligne (Manga, Webtoon, FastScrollRail)
-│   │   ├── 📁 settings/         # Configuration (DNS, Chemins, Concurrence)
-│   │   └── 📁 taxonomy/         # Explorateur de catégories (Artistes, Tags, Séries...)
-│   ├── 📁 stores/               # Stores d'état Zustand (Settings, Favorites, History)
-│   ├── 📁 types/                # Définitions TypeScript
-│   ├── 📁 utils/                # Utilitaires IPC et fonctions d'aide
-│   ├── App.tsx                 # Composant racine et routage interne
-│   └── main.tsx                # Point d'entrée React
-├── 📁 public/                   # Ressources statiques et icônes
-├── 📁 release/                  # Sorties de compilation Electron (ignoré par Git)
-├── 📄 .gitignore                # Règles d'exclusion Git complètes
-├── 📄 package.json              # Dépendances, scripts et configuration electron-builder
-├── 📄 tsconfig.json             # Configuration TypeScript
-└── 📄 vite.config.ts            # Configuration du bundler Vite
+├── 📁 src/                      # Frontend Desktop (React 19 + TypeScript + Tailwind CSS v4)
+│   ├── 📁 components/           # Composants Desktop (Liseuse, Téléchargeur, Galeries)
+│   ├── 📁 stores/               # Stores d'état Zustand
+│   └── App.tsx                 # Racine de l'application Desktop
+├── 📁 mobile/                   # Application Mobile (React Native + Expo Router)
+│   ├── 📁 app/                  # Routes Expo Router (Index, Read, Book, Settings, Tags...)
+│   ├── 📁 components/           # Composants tactiles (BookCard, Modales, Onboarding...)
+│   ├── 📁 lib/                  # Logique métier, Moteur de recommandation & Stores
+│   └── package.json            # Dépendances Mobile (Expo SDK 52, Tabler Icons)
+├── 📁 proxy/                    # Serveur Proxy Miroir Photon
+│   └── nhentai-mirror.mjs      # Proxy résilient avec solveur PoW SHA-256
+├── 📁 public/                   # Ressources statiques et logos
+├── 📄 package.json              # Configuration racine Desktop
+└── 📄 README.md                 # Documentation du projet
+```
+
+---
+
+## 🧪 Tests & Qualité de Code
+
+```bash
+# Vérification des types TypeScript (Desktop)
+npx tsc --noEmit
+
+# Vérification des types TypeScript (Mobile)
+cd mobile && npx tsc --noEmit
+
+# Suite de tests unitaires du moteur mobile
+cd mobile && npm test
 ```
 
 ---
@@ -314,10 +305,10 @@ Chaque archive `.cbz` générée embarque un fichier XML standardisé `ComicInfo
 ## ⚠️ Avertissement Légal
 
 > [!WARNING]
-> Ce projet est un client tiers non-officiel développé à des fins de recherche technique et d'apprentissage personnel. Il n'est en aucun cas affilié, entretenu, commandité ou approuvé par *nHentai.net*. L'utilisateur final est seul responsable de l'usage qu'il fait de cette application et du respect des législations en vigueur dans son pays.
+> Ce projet est un client tiers open-source non-officiel développé à des fins d'apprentissage technique et de recherche personnelle. Il n'est ni affilié, ni sponsorisé, ni approuvé par *nHentai.net*. Les utilisateurs finaux sont entièrement responsables du respect des législations en vigueur dans leur juridiction.
 
 ---
 
 <div align="center">
-  <sub>Développé avec ❤️ par la communauté open-source. Sous licence MIT.</sub>
+  <sub>Développé avec soin pour la communauté. Sous licence MIT.</sub>
 </div>

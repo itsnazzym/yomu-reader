@@ -7,12 +7,16 @@ import {
   TouchableOpacity,
   Share,
   Platform,
-  Dimensions,
 } from "react-native";
-import { BlurView } from "expo-blur";
 import * as Clipboard from "expo-clipboard";
 import * as Sharing from "expo-sharing";
-import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import {
+  IconShare,
+  IconX,
+  IconQrcode,
+  IconCopy,
+  IconDevices,
+} from "@tabler/icons-react-native";
 import { QRCodeView } from "../ui/QRCodeView";
 import { useTheme } from "../../lib/ThemeContext";
 import { mediumImpact, successFeedback } from "../../lib/haptics";
@@ -98,7 +102,7 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
           <View style={styles.header}>
             <View style={styles.headerTitleRow}>
               <View style={styles.iconCircle}>
-                <Feather name="share-2" size={18} color="#ffffff" />
+                <IconShare size={18} color="#ffffff" stroke={2} />
               </View>
               <View>
                 <Text style={styles.headerTitle}>Quick Share & AirDrop</Text>
@@ -113,7 +117,7 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
               style={styles.closeBtn}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Feather name="x" size={20} color="#9ca3af" />
+              <IconX size={20} color="#9ca3af" stroke={2} />
             </TouchableOpacity>
           </View>
 
@@ -132,11 +136,7 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
             onPress={handleNativeShare}
           >
             <View style={styles.airdropBtnContent}>
-              <MaterialCommunityIcons
-                name={(Platform.OS === "ios" ? "airplay" : "share-variant") as any}
-                size={22}
-                color="#ffffff"
-              />
+              <IconDevices size={20} color="#ffffff" stroke={2} />
               <Text style={styles.airdropBtnText}>
                 {Platform.OS === "ios"
                   ? "Envoyer via AirDrop / Partage iOS"
@@ -154,10 +154,10 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
               ]}
               onPress={() => setActiveTab("qr")}
             >
-              <Ionicons
-                name="qr-code-outline"
+              <IconQrcode
                 size={16}
                 color={activeTab === "qr" ? "#ffffff" : "#9ca3af"}
+                stroke={2}
               />
               <Text
                 style={[
@@ -176,10 +176,10 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
               ]}
               onPress={() => setActiveTab("links")}
             >
-              <Feather
-                name="copy"
+              <IconCopy
                 size={15}
                 color={activeTab === "links" ? "#ffffff" : "#9ca3af"}
+                stroke={2}
               />
               <Text
                 style={[
@@ -306,109 +306,99 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 14,
+    alignItems: "center",
+    marginBottom: 16,
   },
   headerTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    flex: 1,
+    gap: 12,
   },
   iconCircle: {
     width: 36,
     height: 36,
-    borderRadius: 12,
+    borderRadius: 18,
     backgroundColor: "#ed2553",
-    alignItems: "center",
     justifyContent: "center",
+    alignItems: "center",
   },
   headerTitle: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#ffffff",
+    color: "#f3f4f6",
   },
   headerSubtitle: {
     fontSize: 11,
     color: "#9ca3af",
-    marginTop: 1,
+    marginTop: 2,
   },
   closeBtn: {
-    padding: 6,
-    borderRadius: 12,
-    backgroundColor: "#252535",
+    padding: 4,
   },
   mangaBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#20202f",
-    paddingVertical: 8,
+    backgroundColor: "#202030",
     paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 12,
-    gap: 8,
     marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#2a2a3e",
+    gap: 8,
   },
   mangaId: {
     fontSize: 12,
     fontWeight: "800",
     color: "#ed2553",
-    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
   },
   mangaTitle: {
+    flex: 1,
     fontSize: 12,
     color: "#e5e7eb",
-    fontWeight: "600",
-    flex: 1,
+    fontWeight: "500",
   },
   airdropMainButton: {
     backgroundColor: "#ed2553",
     borderRadius: 14,
-    paddingVertical: 12,
+    paddingVertical: 14,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 14,
-    shadowColor: "#ed2553",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 6,
+    marginBottom: 16,
   },
   airdropBtnContent: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 10,
   },
   airdropBtnText: {
     color: "#ffffff",
-    fontSize: 13,
+    fontSize: 13.5,
     fontWeight: "700",
   },
   tabsContainer: {
     flexDirection: "row",
-    backgroundColor: "#20202e",
+    backgroundColor: "#11111a",
+    padding: 4,
     borderRadius: 12,
-    padding: 3,
     marginBottom: 16,
+    gap: 4,
   },
   tabBtn: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 7,
-    borderRadius: 10,
     gap: 6,
+    paddingVertical: 8,
+    borderRadius: 8,
   },
   tabBtnActive: {
-    backgroundColor: "#2d2d42",
+    backgroundColor: "#272738",
   },
   tabBtnText: {
     fontSize: 12,
-    fontWeight: "600",
     color: "#9ca3af",
+    fontWeight: "600",
   },
   tabBtnTextActive: {
     color: "#ffffff",
@@ -416,66 +406,57 @@ const styles = StyleSheet.create({
   },
   qrContainer: {
     alignItems: "center",
-    paddingVertical: 6,
+    paddingVertical: 10,
   },
   qrWhiteBox: {
     backgroundColor: "#ffffff",
-    padding: 12,
+    padding: 16,
     borderRadius: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
     marginBottom: 12,
   },
   qrHelpText: {
-    fontSize: 11,
+    fontSize: 11.5,
     color: "#9ca3af",
     textAlign: "center",
     lineHeight: 16,
-    paddingHorizontal: 10,
   },
   linksContainer: {
-    gap: 8,
+    gap: 10,
   },
   linkRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "#20202f",
-    padding: 10,
+    backgroundColor: "#202030",
+    padding: 12,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#29293c",
-    gap: 10,
   },
   linkInfo: {
     flex: 1,
+    marginRight: 10,
   },
   linkLabel: {
-    fontSize: 10,
-    fontWeight: "700",
+    fontSize: 11,
     color: "#9ca3af",
-    textTransform: "uppercase",
+    fontWeight: "600",
     marginBottom: 2,
   },
   linkVal: {
-    fontSize: 12,
-    color: "#e5e7eb",
-    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
+    fontSize: 12.5,
+    color: "#f3f4f6",
+    fontWeight: "500",
   },
   copyPill: {
-    backgroundColor: "#2c2c40",
-    paddingVertical: 5,
-    paddingHorizontal: 10,
+    backgroundColor: "#2d2d42",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 8,
   },
   copyPillActive: {
-    backgroundColor: "#10b981",
+    backgroundColor: "#52c41a",
   },
   copyPillText: {
-    fontSize: 11,
+    fontSize: 11.5,
     fontWeight: "700",
     color: "#ffffff",
   },

@@ -7,7 +7,7 @@ import {
   Pressable,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
-import { Feather } from "@expo/vector-icons";
+import { IconArrowLeft, IconMessageCircle } from "@tabler/icons-react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { format } from "date-fns";
@@ -37,47 +37,65 @@ export default function CommentsScreen() {
       .catch(() => setLoading(false));
   }, [id]);
 
-  const renderItem = ({ item }: { item: Comment }) => (
-    <View
-      style={[
-        styles.commentCard,
-        { backgroundColor: colors.page, borderColor: colors.tagBg },
-      ]}
-    >
-      <View style={styles.posterRow}>
-        <View style={styles.avatarWrapper}>
-          {item.poster?.avatar_url ? (
-            <SmartImage
-              uri={
-                item.poster.avatar_url.startsWith("http")
-                  ? item.poster.avatar_url
-                  : `https://i.nhentai.net/avatars/${item.poster.avatar_url}`
-              }
-              style={styles.avatar}
-              contentFit="cover"
-            />
-          ) : (
-            <View style={[styles.avatarPlaceholder, { backgroundColor: colors.accent }]}>
-              <Text style={styles.avatarInitial}>
-                {item.poster?.username?.charAt(0)?.toUpperCase() || "U"}
+  const renderItem = ({ item }: { item: Comment }) => {
+    const avatar =
+      typeof item.poster?.avatar_url === "string" && item.poster.avatar_url
+        ? item.poster.avatar_url.startsWith("http")
+          ? item.poster.avatar_url
+          : `https://i.nhentai.net/avatars/${item.poster.avatar_url}`
+        : "";
+
+    const dateStr = (() => {
+      if (!item.post_date) return "";
+      const ts = Number(item.post_date);
+      if (isNaN(ts)) return "";
+      try {
+        return format(new Date(ts * 1000), "dd/MM/yyyy HH:mm");
+      } catch {
+        return "";
+      }
+    })();
+
+    return (
+      <View
+        style={[
+          styles.commentCard,
+          { backgroundColor: colors.page, borderColor: colors.tagBg },
+        ]}
+      >
+        <View style={styles.posterRow}>
+          <View style={styles.avatarWrapper}>
+            {avatar ? (
+              <SmartImage
+                uri={avatar}
+                style={styles.avatar}
+                contentFit="cover"
+              />
+            ) : (
+              <View style={[styles.avatarPlaceholder, { backgroundColor: colors.accent }]}>
+                <Text style={styles.avatarInitial}>
+                  {item.poster?.username?.charAt(0)?.toUpperCase() || "U"}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.posterMeta}>
+            <Text style={[styles.username, { color: colors.txt }]}>
+              {item.poster?.username || "Anonyme"}
+            </Text>
+            {dateStr ? (
+              <Text style={[styles.dateText, { color: colors.sub }]}>
+                {dateStr}
               </Text>
-            </View>
-          )}
+            ) : null}
+          </View>
         </View>
 
-        <View style={styles.posterMeta}>
-          <Text style={[styles.username, { color: colors.txt }]}>
-            {item.poster?.username || "Anonyme"}
-          </Text>
-          <Text style={[styles.dateText, { color: colors.sub }]}>
-            {item.post_date ? format(new Date(item.post_date * 1000), "dd/MM/yyyy HH:mm") : ""}
-          </Text>
-        </View>
+        <Text style={[styles.commentBody, { color: colors.txt }]}>{item.body}</Text>
       </View>
-
-      <Text style={[styles.commentBody, { color: colors.txt }]}>{item.body}</Text>
-    </View>
-  );
+    );
+  };
 
   return (
     <View
@@ -92,7 +110,7 @@ export default function CommentsScreen() {
       {/* Header */}
       <View style={[styles.header, { borderBottomColor: colors.tagBg }]}>
         <IconBtn onPress={() => router.back()} size={40}>
-          <Feather name="arrow-left" size={22} color={colors.txt} />
+          <IconArrowLeft size={22} color={colors.txt} stroke={2} />
         </IconBtn>
         <Text style={[styles.headerTitle, { color: colors.txt }]}>
           Commentaires (#{id})
@@ -109,7 +127,7 @@ export default function CommentsScreen() {
         </View>
       ) : comments.length === 0 ? (
         <View style={styles.centerContainer}>
-          <Feather name="message-square" size={48} color={colors.sub} style={{ opacity: 0.5 }} />
+          <IconMessageCircle size={48} color={colors.sub} stroke={1.5} style={{ opacity: 0.5 }} />
           <Text style={[styles.emptyTitle, { color: colors.txt }]}>
             Aucun commentaire
           </Text>

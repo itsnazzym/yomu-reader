@@ -1,8 +1,8 @@
 import React from "react";
 import { StyleSheet, Text, View, TouchableOpacity, Pressable } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import { IconBookmark, IconBook2 } from "@tabler/icons-react-native";
 import { useRouter } from "expo-router";
-import { Gallery, Tag } from "@/lib/api/types";
+import { Gallery } from "@/lib/api/types";
 import { useTheme } from "@/lib/ThemeContext";
 import { CardPressable } from "@/components/ui/CardPressable";
 import SmartImage from "@/components/SmartImage";
@@ -17,12 +17,12 @@ export interface BookCardProps {
 
 // Pastel category tint colors for chips
 const TAG_TYPE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  artist: { bg: "rgba(236, 72, 153, 0.15)", text: "#f472b6", border: "rgba(236, 72, 153, 0.3)" },
-  group: { bg: "rgba(168, 85, 247, 0.15)", text: "#c084fc", border: "rgba(168, 85, 247, 0.3)" },
-  parody: { bg: "rgba(124, 58, 237, 0.15)", text: "#a78bfa", border: "rgba(124, 58, 237, 0.3)" },
-  character: { bg: "rgba(6, 182, 212, 0.15)", text: "#22d3ee", border: "rgba(6, 182, 212, 0.3)" },
-  tag: { bg: "rgba(59, 130, 246, 0.12)", text: "#93c5fd", border: "rgba(59, 130, 246, 0.25)" },
-  language: { bg: "rgba(245, 158, 11, 0.15)", text: "#fbbf24", border: "rgba(245, 158, 11, 0.3)" },
+  artist: { bg: "rgba(236, 72, 153, 0.12)", text: "#f472b6", border: "rgba(236, 72, 153, 0.28)" },
+  group: { bg: "rgba(168, 85, 247, 0.12)", text: "#c084fc", border: "rgba(168, 85, 247, 0.28)" },
+  parody: { bg: "rgba(124, 58, 237, 0.12)", text: "#a78bfa", border: "rgba(124, 58, 237, 0.28)" },
+  character: { bg: "rgba(6, 182, 212, 0.12)", text: "#22d3ee", border: "rgba(6, 182, 212, 0.28)" },
+  tag: { bg: "rgba(59, 130, 246, 0.10)", text: "#93c5fd", border: "rgba(59, 130, 246, 0.22)" },
+  language: { bg: "rgba(245, 158, 11, 0.12)", text: "#fbbf24", border: "rgba(245, 158, 11, 0.28)" },
 };
 
 export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
@@ -30,163 +30,153 @@ export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
   const router = useRouter();
   const { isFavorite, toggleFavorite } = useFavorites();
 
-  const fav = isFavorite(gallery.id);
+  const galleryId = gallery?.id ? Number(gallery.id) : 0;
+  const fav = galleryId ? isFavorite(galleryId) : false;
 
   // Extract language badge
   const lang = (() => {
-    if (!gallery.tags) return null;
-    const lTag = gallery.tags.find((t) => t.type === "language" && t.name !== "translated");
-    if (!lTag) return null;
-    const name = lTag.name.toLowerCase();
+    if (!Array.isArray(gallery?.tags)) return null;
+    const lTag = gallery.tags.find((t) => t?.type === "language" && t?.name !== "translated");
+    if (!lTag || !lTag.name) return null;
+    const name = String(lTag.name).toLowerCase();
     if (name === "english" || name === "en") return "EN";
     if (name === "japanese" || name === "jp") return "JP";
     if (name === "chinese" || name === "cn") return "CN";
+    if (name === "french" || name === "fr" || name === "français" || name === "francais") return "FR";
+    if (name === "spanish" || name === "es" || name === "español") return "ES";
+    if (name === "german" || name === "de" || name === "deutsch") return "DE";
+    if (name === "russian" || name === "ru") return "RU";
+    if (name === "italian" || name === "it" || name === "italiano") return "IT";
+    if (name === "korean" || name === "ko") return "KO";
     return name.slice(0, 2).toUpperCase();
   })();
 
-  // Extract release date/year
-  const dateStr = gallery.upload_date
-    ? new Date(gallery.upload_date * 1000).toLocaleDateString("fr-FR", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      })
-    : null;
-
   // Real title formatting
   const title =
-    gallery.title?.english ||
-    gallery.title?.pretty ||
-    gallery.title?.japanese ||
-    `Gallery #${gallery.id}`;
+    gallery?.title?.english ||
+    gallery?.title?.pretty ||
+    gallery?.title?.japanese ||
+    `Gallery #${galleryId || 0}`;
 
   const coverUrl =
-    gallery.images?.cover?.url ||
-    gallery.images?.thumbnail?.url ||
-    (gallery.media_id ? `https://t3.nhentai.net/galleries/${gallery.media_id}/thumb.webp` : "");
+    gallery?.images?.cover?.url ||
+    gallery?.images?.thumbnail?.url ||
+    (gallery?.media_id ? `https://t3.nhentai.net/galleries/${gallery.media_id}/thumb.webp` : "");
 
   const handleCardPress = () => {
     if (onPress) {
       onPress();
-    } else {
+    } else if (galleryId > 0) {
       router.push({
         pathname: "/book/[id]",
-        params: { id: String(gallery.id) },
+        params: { id: String(galleryId) },
       });
     }
   };
 
   const handleFavoritePress = (e: any) => {
     e?.stopPropagation?.();
-    toggleFavorite(gallery);
+    lightTap();
+    if (gallery && galleryId > 0) toggleFavorite(gallery);
   };
 
-  // Tag d'aperçu cliquable : recherche par tag + retour haptique léger,
-  // sans déclencher l'ouverture de la carte (stopPropagation).
-  const handleTagPress = (e: any, name: string) => {
+  const handleTagPress = (e: any, name: string, type?: string) => {
     e?.stopPropagation?.();
     lightTap();
     router.push({
       pathname: "/",
-      params: { tag: name },
+      params: { tag: name, type: type || "tag" },
     });
   };
 
-  // Filter preview tags (artist, group, parody, or popular tag)
-  const tagChips = (gallery.tags || [])
-    .filter((t) => t.type === "artist" || t.type === "group" || t.type === "parody" || t.type === "tag" || t.type === "character")
+  // Filter preview tags
+  const tagChips = (Array.isArray(gallery?.tags) ? gallery.tags : [])
+    .filter((t) => t && t.name && (t.type === "artist" || t.type === "group" || t.type === "parody" || t.type === "tag" || t.type === "character"))
     .slice(0, 3);
 
-  const extraTagsCount = Math.max(0, (gallery.tags?.length || 0) - tagChips.length);
+  const extraTagsCount = Math.max(0, (gallery?.tags?.length || 0) - tagChips.length);
+  const numPages = gallery?.num_pages || gallery?.images?.pages?.length || 0;
 
   return (
     <CardPressable
       onPress={handleCardPress}
-      radius={16}
-      activeOpacity={0.82}
+      radius={14}
+      activeOpacity={0.85}
       style={[
         styles.card,
         {
           width: cardWidth,
-          backgroundColor: "#161622",
-          borderColor: "#28283a",
+          backgroundColor: "#14141e",
+          borderColor: "#232332",
         },
       ]}
     >
-      {/* Cover Image Container */}
+      {/* Cover Image Container (B6 Tankōbon Ratio 1:1.414) */}
       <View style={styles.imageContainer}>
         <SmartImage
           uri={coverUrl}
+          recyclingKey={`cover_${galleryId}_${coverUrl}`}
           style={styles.image}
           contentFit="cover"
         />
 
-        {/* Top Badges (NEW Badge & Bookmark) */}
-        <View style={styles.topBadgeRow}>
-          <View style={[styles.newBadge, { backgroundColor: colors.accent }]}>
-            <Text style={styles.newBadgeText}>NEW</Text>
-          </View>
-
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={handleFavoritePress}
-            style={[
-              styles.favBtn,
-              { backgroundColor: fav ? colors.accent : "rgba(18, 18, 28, 0.78)" },
-            ]}
-          >
-            <Feather
-              name="bookmark"
-              size={13}
-              color={fav ? "#fff" : "rgba(255,255,255,0.85)"}
-            />
-          </TouchableOpacity>
+        {/* Archive Stamp ID Badge (Top-Left) */}
+        <View style={styles.archiveStamp}>
+          <Text style={styles.archiveStampText}>#{galleryId}</Text>
         </View>
 
-        {/* Bottom Pages Badge */}
-        <View style={styles.bottomBadgeRow}>
-          <View style={[styles.pageBadge, { backgroundColor: "rgba(10, 10, 18, 0.82)" }]}>
-            <Feather name="file-text" size={10} color="#fff" style={{ marginRight: 3 }} />
-            <Text style={styles.pageText}>
-              {gallery.num_pages || gallery.images?.pages?.length || "?"}p
-            </Text>
+        {/* Discrete Bookmark Notch (Top-Right) */}
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={handleFavoritePress}
+          style={[
+            styles.bookmarkNotch,
+            fav && { backgroundColor: colors.accent },
+          ]}
+        >
+          <IconBookmark
+            size={12}
+            color={fav ? "#fff" : "rgba(255,255,255,0.75)"}
+            stroke={fav ? 2.5 : 1.8}
+            fill={fav ? "#fff" : "none"}
+          />
+        </TouchableOpacity>
+
+        {/* Bottom Technical Spec Bar */}
+        <View style={styles.specBar}>
+          <View style={styles.specBadge}>
+            <IconBook2 size={10} color="#d1d5db" stroke={1.8} style={{ marginRight: 3 }} />
+            <Text style={styles.specText}>{numPages}p</Text>
           </View>
+          {lang && (
+            <View style={[styles.specBadge, styles.langBadge]}>
+              <Text style={styles.langText}>{lang}</Text>
+            </View>
+          )}
         </View>
       </View>
 
-      {/* Card Info Area (Matching NHApp) */}
+      {/* Card Info Area (Matte Info Tab) */}
       <View style={styles.info}>
         <Text style={styles.title} numberOfLines={2}>
           {title}
         </Text>
 
-        {/* Language, Pages & Date Meta */}
-        <View style={styles.metaRow}>
-          <Text style={styles.metaText}>
-            {lang ? `${lang} · ` : ""}
-            {gallery.num_pages ? `${gallery.num_pages} стр.` : ""}
-            {dateStr ? ` · ${dateStr}` : ""}
-          </Text>
-        </View>
-
-        {/* Tag Chips Preview with Aesthetic Category Colors */}
+        {/* Tag Chips Preview */}
         {tagChips.length > 0 ? (
           <View style={styles.tagsRow}>
-            {tagChips.map((t) => {
+            {tagChips.map((t, idx) => {
               const themeStyle = TAG_TYPE_COLORS[t.type] || TAG_TYPE_COLORS.tag;
               return (
                 <Pressable
-                  key={t.name}
-                  onPress={(e) => handleTagPress(e, t.name)}
+                  key={`${t.type}-${t.id || t.name || idx}`}
+                  onPress={(e) => handleTagPress(e, t.name, t.type)}
                   style={[
                     styles.tagChip,
                     { backgroundColor: themeStyle.bg, borderColor: themeStyle.border },
                   ]}
                 >
-                  <Text
-                    style={[styles.tagChipText, { color: themeStyle.text }]}
-                    numberOfLines={1}
-                  >
+                  <Text style={[styles.tagChipText, { color: themeStyle.text }]} numberOfLines={1}>
                     {t.name}
                   </Text>
                 </Pressable>
@@ -206,113 +196,119 @@ export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 16,
+    borderRadius: 14,
     overflow: "hidden",
     borderWidth: 1,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   imageContainer: {
     width: "100%",
-    aspectRatio: 0.72,
+    aspectRatio: 0.707, // Format B6 Tankōbon Japonais (1:1.414)
     position: "relative",
-    backgroundColor: "#11111a",
+    backgroundColor: "#0d0d14",
   },
   image: {
     width: "100%",
     height: "100%",
   },
-  topBadgeRow: {
+  archiveStamp: {
     position: "absolute",
     top: 6,
     left: 6,
-    right: 6,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  newBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    backgroundColor: "rgba(9, 9, 14, 0.88)",
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    borderWidth: 0.8,
     borderRadius: 5,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
   },
-  newBadgeText: {
-    color: "#fff",
+  archiveStampText: {
+    color: "#e5e7eb",
     fontSize: 9,
-    fontWeight: "900",
-    letterSpacing: 0.5,
+    fontWeight: "800",
+    letterSpacing: 0.3,
   },
-  favBtn: {
+  bookmarkNotch: {
+    position: "absolute",
+    top: 6,
+    right: 6,
     width: 24,
     height: 24,
     borderRadius: 12,
+    backgroundColor: "rgba(9, 9, 14, 0.85)",
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    borderWidth: 0.8,
     alignItems: "center",
     justifyContent: "center",
   },
-  bottomBadgeRow: {
+  specBar: {
     position: "absolute",
     bottom: 6,
     left: 6,
+    right: 6,
+    flexDirection: "row",
+    gap: 4,
   },
-  pageBadge: {
+  specBadge: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
+    backgroundColor: "rgba(9, 9, 14, 0.88)",
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    borderWidth: 0.8,
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
   },
-  pageText: {
-    color: "#fff",
-    fontSize: 10,
+  specText: {
+    color: "#e5e7eb",
+    fontSize: 9.5,
     fontWeight: "700",
+  },
+  langBadge: {
+    backgroundColor: "rgba(9, 9, 14, 0.9)",
+  },
+  langText: {
+    color: "#fbbf24",
+    fontSize: 9,
+    fontWeight: "900",
   },
   info: {
     padding: 8,
+    gap: 5,
+    borderTopWidth: 1,
+    borderTopColor: "#1e1e2c",
   },
   title: {
     fontSize: 11.5,
     fontWeight: "700",
-    lineHeight: 15,
-    minHeight: 30,
     color: "#f3f4f6",
-  },
-  metaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 4,
-  },
-  metaText: {
-    fontSize: 9.5,
-    color: "#9ca3af",
-    fontWeight: "500",
+    lineHeight: 15,
   },
   tagsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 4,
-    marginTop: 6,
+    gap: 3,
   },
   tagChip: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    borderWidth: 1,
-    maxWidth: 75,
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 4,
+    borderWidth: 0.8,
+    maxWidth: 78,
   },
   tagChipText: {
-    fontSize: 9,
-    fontWeight: "700",
+    fontSize: 9.5,
+    fontWeight: "600",
   },
   extraTagChip: {
-    backgroundColor: "#202030",
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: 6,
+    paddingHorizontal: 4,
+    paddingVertical: 1.5,
+    borderRadius: 4,
+    backgroundColor: "#1e1e2c",
   },
   extraTagText: {
     color: "#9ca3af",
-    fontSize: 9,
+    fontSize: 8.5,
     fontWeight: "700",
   },
 });
-
-export default BookCard;

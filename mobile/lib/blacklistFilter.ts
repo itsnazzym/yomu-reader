@@ -46,8 +46,10 @@ export async function removeBlacklistTag(tag: string) {
 }
 
 export function isGalleryBlacklisted(gallery: Gallery): boolean {
-  if (!cachedTags.length || !gallery || !gallery.tags) return false;
-  const tagNames = gallery.tags.map((t) => t.name.toLowerCase());
+  if (!cachedTags.length || !gallery || !Array.isArray(gallery.tags)) return false;
+  const tagNames = gallery.tags
+    .map((t) => (t?.name ? String(t.name).toLowerCase() : ""))
+    .filter(Boolean);
   return cachedTags.some((blacklisted) => tagNames.includes(blacklisted));
 }
 

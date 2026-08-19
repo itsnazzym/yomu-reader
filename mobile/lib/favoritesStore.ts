@@ -50,14 +50,16 @@ export function getFavorites(): Gallery[] {
   return favoritesList;
 }
 
-export function isFavorite(id: number): boolean {
-  return favoritesList.some((g) => g.id === id);
+export function isFavorite(id: number | string): boolean {
+  const numId = Number(id);
+  return favoritesList.some((g) => Number(g.id) === numId);
 }
 
 export async function toggleFavorite(gallery: Gallery) {
-  const exists = favoritesList.some((g) => g.id === gallery.id);
+  const targetId = Number(gallery.id);
+  const exists = favoritesList.some((g) => Number(g.id) === targetId);
   if (exists) {
-    favoritesList = favoritesList.filter((g) => g.id !== gallery.id);
+    favoritesList = favoritesList.filter((g) => Number(g.id) !== targetId);
   } else {
     // Un favori ajouté via l'app est un signet LOCAL (source "local").
     favoritesList = [{ ...gallery, source: "local" }, ...favoritesList];
@@ -66,8 +68,9 @@ export async function toggleFavorite(gallery: Gallery) {
   notify();
 }
 
-export async function removeFavorite(id: number) {
-  favoritesList = favoritesList.filter((g) => g.id !== id);
+export async function removeFavorite(id: number | string) {
+  const targetId = Number(id);
+  favoritesList = favoritesList.filter((g) => Number(g.id) !== targetId);
   await AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(favoritesList));
   notify();
 }
@@ -117,7 +120,7 @@ export function useFavorites() {
 
   return {
     favorites: favs,
-    isFavorite: (id: number) => favs.some((g) => g.id === id),
+    isFavorite: (id: number | string) => favs.some((g) => Number(g.id) === Number(id)),
     toggleFavorite,
     removeFavorite,
     importFavorites,

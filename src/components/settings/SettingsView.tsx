@@ -368,10 +368,19 @@ export const SettingsView: React.FC = () => {
               <Icon name="key" size={18} className="text-cyan-400" />
               <span>Clé API / Token d'Accès nHentai (Optionnel)</span>
             </label>
+            <a
+              href="https://nhentai.net/api/v2/user/keys"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-950/60 border border-cyan-500/40 text-cyan-300 hover:text-white hover:bg-cyan-900/60 text-xs font-bold transition-all cursor-pointer"
+            >
+              <Icon name="open_in_new" size={14} />
+              <span>Générer sur nHentai.net</span>
+            </a>
           </div>
 
           <p className="text-xs text-gray-400">
-            Si vous possédez une clé API ou un token personnel nHentai, collez-le ici pour l'injecter dans les requêtes.
+            Si vous possédez une clé API ou un token personnel nHentai, collez-le ici pour l'injecter automatiquement dans les requêtes et synchroniser vos données.
           </p>
 
           <input
