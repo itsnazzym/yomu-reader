@@ -76,6 +76,13 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [resetSuccess, setResetSuccess] = useState(false);
+  // Android WebView inside an animating Modal often lays out at 0×0;
+  // Turnstile then paints an empty checkbox. Mount after onShow.
+  const [modalShown, setModalShown] = useState(false);
+
+  useEffect(() => {
+    if (!visible) setModalShown(false);
+  }, [visible]);
 
   // Load captcha on open or mode switch
   useEffect(() => {
@@ -315,7 +322,13 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      onShow={() => setModalShown(true)}
+    >
       <KeyboardAvoidingView
         style={styles.backdrop}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -556,7 +569,7 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
               )}
 
               {/* Captcha Block for Web / v2 endpoints */}
-              {mode !== "apikey" && captchaInfo?.site_key && (
+              {mode !== "apikey" && captchaInfo?.site_key && modalShown && (
                 <View style={styles.captchaSection}>
                   <View style={styles.captchaHeader}>
                     <IconShield size={14} color={colors.accent} stroke={2} />

@@ -1,11 +1,13 @@
 /**
- * CAPTCHA widget (Turnstile / hCaptcha) — loads a REAL nhentai.net page
- * in the WebView so the origin matches the Turnstile site key's allowed
- * domains, then injects the widget via JS after the page loads.
+ * CAPTCHA widget (Turnstile / hCaptcha).
  *
- * Using inline HTML (`source={{ html, baseUrl }}`) does NOT work because
- * Android WebView sets `window.location` to `about:blank` even with a
- * baseUrl, causing Cloudflare Turnstile to silently reject the widget.
+ * Loads a real nhentai.net document so `window.location.origin` matches the
+ * site key, then replaces the page with the widget. Inline HTML + baseUrl
+ * cannot be used: Android WebView reports `about:blank` and Turnstile
+ * refuses to render.
+ *
+ * Do not inject global `display:none` / `visibility:hidden` — Turnstile
+ * treats a hidden host as error 600010 and shows an empty checkbox.
  */
 import React, { useRef, useState, useEffect, useCallback } from "react";
 import {
@@ -18,83 +20,138 @@ import {
 } from "react-native";
 import { WebView, WebViewMessageEvent } from "react-native-webview";
 import { IconRefresh, IconAlertTriangle } from "@tabler/icons-react-native";
+import { NHENTAI_ORIGIN } from "./nhentaiCaptchaOrigin";
 
 const ANDROID_CHROME_UA =
   "Mozilla/5.0 (Linux; Android 14; Pixel 8 Build/AD1A.240905.004) " +
   "AppleWebKit/537.36 (KHTML, like Gecko) " +
   "Chrome/130.0.6723.102 Mobile Safari/537.36";
 
-/** Injected BEFORE page content loads — hides the real page instantly. */
-const HIDE_PAGE_JS = `
-(function(){
-  var s = document.createElement('style');
-  s.textContent = '*, body, html, #app, #content, header, footer, nav, main, .container { display:none !important; visibility:hidden !important; }';
-  (document.head || document.documentElement).appendChild(s);
-  document.documentElement.style.cssText = 'background:#161622 !important;';
-})();
-true;
-`;
+const WIDGET_HEIGHT = 72;
 
-/** Builds the JS that clears the page and renders Turnstile. */
+function escapeJs(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
 function buildTurnstileInjectJS(siteKey: string, provider: string): string {
   const isHcaptcha = provider.toLowerCase().includes("hcaptcha");
+  const key = escapeJs(siteKey);
   const scriptUrl = isHcaptcha
-    ? "https://js.hcaptcha.com/1/api.js?onload=__captchaReady&render=explicit"
-    : "https://challenges.cloudflare.com/turnstile/v0/api.js?onload=__captchaReady&render=explicit";
+    ? "https://js.hcaptcha.com/1/api.js?render=explicit"
+    : "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
 
   return `
 (function(){
-  try {
-    // 1. Nuke page content
-    document.head.innerHTML = '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">';
-    document.body.innerHTML = '';
-    document.documentElement.style.cssText = 'margin:0;padding:0;background:#161622;height:100%;';
-    document.body.style.cssText = 'margin:0;padding:8px 0 0 0;background:#161622;display:flex;justify-content:center;align-items:flex-start;height:100%;overflow:hidden;';
+  if (window.__nhCaptchaInjected) return;
+  window.__nhCaptchaInjected = true;
 
-    // 2. Create widget container
+  function post(obj) {
+    try { window.ReactNativeWebView.postMessage(JSON.stringify(obj)); } catch (e) {}
+  }
+
+  function stripSheets() {
+    var nodes = document.querySelectorAll('style, link[rel="stylesheet"]');
+    for (var i = 0; i < nodes.length; i++) {
+      try { nodes[i].parentNode.removeChild(nodes[i]); } catch (e) {}
+    }
+  }
+
+  function prepareHost() {
+    stripSheets();
+    var html = document.documentElement;
+    html.style.cssText = 'margin:0;padding:0;width:100%;height:100%;background:#161622;overflow:visible;';
+    if (!document.head) {
+      html.appendChild(document.createElement('head'));
+    }
+    document.head.innerHTML =
+      '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">';
+    if (!document.body) {
+      html.appendChild(document.createElement('body'));
+    }
+    document.body.innerHTML = '';
+    document.body.style.cssText =
+      'margin:0;padding:0;width:100%;height:100%;background:#161622;display:flex;justify-content:center;align-items:center;overflow:visible;visibility:visible;opacity:1;';
     var root = document.createElement('div');
     root.id = 'captcha-root';
-    root.style.cssText = 'display:flex;justify-content:center;align-items:center;min-width:300px;min-height:65px;';
+    root.style.cssText =
+      'width:300px;max-width:100%;min-width:150px;height:65px;min-height:65px;display:block;visibility:visible;opacity:1;overflow:visible;';
     document.body.appendChild(root);
+    return root;
+  }
 
-    // 3. Bridge functions
-    function post(obj) {
-      try { window.ReactNativeWebView.postMessage(JSON.stringify(obj)); } catch(e) {}
+  function waitVisible(el, cb, tries) {
+    var n = tries == null ? 0 : tries;
+    var r = el.getBoundingClientRect();
+    if (r.width >= 20 && r.height >= 20) {
+      cb();
+      return;
     }
+    if (n > 40) {
+      post({ type: 'nh-captcha-error', error: 'Widget sans taille' });
+      return;
+    }
+    setTimeout(function() { waitVisible(el, cb, n + 1); }, 50);
+  }
 
-    // 4. Callback when SDK is ready
-    window.__captchaReady = function() {
-      post({ type: 'nh-captcha-ready' });
+  function renderWidget() {
+    var sdk = ${isHcaptcha ? "window.hcaptcha" : "window.turnstile"};
+    var root = document.getElementById('captcha-root');
+    if (!sdk || typeof sdk.render !== 'function' || !root) {
+      post({ type: 'nh-captcha-error', error: 'SDK not available' });
+      return;
+    }
+    waitVisible(root, function() {
       try {
-        var sdk = ${isHcaptcha ? "window.hcaptcha" : "window.turnstile"};
-        if (!sdk || typeof sdk.render !== 'function') {
-          post({ type: 'nh-captcha-error', error: 'SDK not available' });
-          return;
-        }
-        sdk.render(${isHcaptcha ? "root" : "'#captcha-root'"}, {
-          sitekey: '${siteKey}',
+        sdk.render(${isHcaptcha ? "root" : "root"}, {
+          sitekey: '${key}',
           theme: 'dark',
           size: 'normal',
+          appearance: 'always',
           callback: function(token) { post({ type: 'nh-captcha', token: token }); },
           'expired-callback': function() { post({ type: 'nh-captcha', token: '' }); },
-          'error-callback': function(err) { post({ type: 'nh-captcha-error', error: String(err || 'challenge error') }); }
+          'error-callback': function(err) {
+            post({ type: 'nh-captcha-error', error: String(err || 'challenge error') });
+          }
         });
-      } catch(e) {
+        post({ type: 'nh-captcha-ready' });
+      } catch (e) {
         post({ type: 'nh-captcha-error', error: e.message || 'render error' });
       }
-    };
+    });
+  }
 
-    // 5. Load SDK script
-    var s = document.createElement('script');
-    s.src = '${scriptUrl}';
-    s.onerror = function() {
-      post({ type: 'nh-captcha-error', error: 'Script load failed' });
-    };
-    document.body.appendChild(s);
-  } catch(e) {
+  function boot() {
     try {
-      window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'nh-captcha-error', error: e.message }));
-    } catch(_) {}
+      prepareHost();
+      var sdk = ${isHcaptcha ? "window.hcaptcha" : "window.turnstile"};
+      if (sdk && typeof sdk.render === 'function') {
+        renderWidget();
+        return;
+      }
+      var done = false;
+      function once() {
+        if (done) return;
+        done = true;
+        renderWidget();
+      }
+      var s = document.createElement('script');
+      s.src = '${scriptUrl}';
+      s.async = true;
+      s.onload = once;
+      s.onerror = function() { post({ type: 'nh-captcha-error', error: 'Script load failed' }); };
+      document.head.appendChild(s);
+      setTimeout(function() {
+        if (!done && (${isHcaptcha ? "window.hcaptcha" : "window.turnstile"})) once();
+      }, 2500);
+    } catch (e) {
+      post({ type: 'nh-captcha-error', error: e.message || 'inject error' });
+    }
+  }
+
+  if (!document.body) {
+    setTimeout(boot, 50);
+  } else {
+    boot();
   }
 })();
 true;
@@ -133,6 +190,15 @@ export function CaptchaEmbed({
     injectedRef.current = false;
   }, [siteKey, provider, resetKey, internalKey]);
 
+  useEffect(() => {
+    if (!isLoading || hasError) return;
+    const t = setTimeout(() => {
+      setIsLoading(false);
+      setHasError("Le captcha n'a pas chargé");
+    }, 15000);
+    return () => clearTimeout(t);
+  }, [isLoading, hasError, resetKey, internalKey]);
+
   const handleRetry = useCallback(() => {
     setIsLoading(true);
     setHasError(null);
@@ -144,8 +210,7 @@ export function CaptchaEmbed({
   const onMessage = useCallback(
     (e: WebViewMessageEvent) => {
       try {
-        const raw = e.nativeEvent.data;
-        const d = JSON.parse(raw) as {
+        const d = JSON.parse(e.nativeEvent.data) as {
           type?: string;
           token?: string;
           error?: string;
@@ -171,12 +236,13 @@ export function CaptchaEmbed({
     [onToken, onClear, onError]
   );
 
-  /** Inject Turnstile JS once after the real page finishes loading. */
   const handleLoadEnd = useCallback(() => {
     if (injectedRef.current) return;
     injectedRef.current = true;
     const js = buildTurnstileInjectJS(siteKey, provider);
-    webViewRef.current?.injectJavaScript(js);
+    setTimeout(() => {
+      webViewRef.current?.injectJavaScript(js);
+    }, 80);
   }, [siteKey, provider]);
 
   if (!siteKey) {
@@ -188,31 +254,31 @@ export function CaptchaEmbed({
   }
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} collapsable={false}>
       <WebView
         ref={webViewRef}
         key={`captcha-${resetKey}-${internalKey}`}
+        collapsable={false}
         originWhitelist={["*"]}
-        source={{ uri: "https://nhentai.net/" }}
-        injectedJavaScriptBeforeContentLoaded={HIDE_PAGE_JS}
+        source={{ uri: `${NHENTAI_ORIGIN}/login/` }}
         userAgent={Platform.OS === "android" ? ANDROID_CHROME_UA : undefined}
         onMessage={onMessage}
-        onLoadStart={() => setIsLoading(true)}
         onLoadEnd={handleLoadEnd}
         onError={() => {
           setIsLoading(false);
           setHasError("Impossible de contacter nhentai.net");
         }}
         onHttpError={(e) => {
-          if (e.nativeEvent.statusCode >= 400) {
+          if (e.nativeEvent.statusCode >= 500) {
             setIsLoading(false);
             setHasError(`Erreur serveur (${e.nativeEvent.statusCode})`);
           }
         }}
         style={styles.web}
         scrollEnabled={false}
-        nestedScrollEnabled={false}
+        nestedScrollEnabled={true}
         javaScriptEnabled={true}
+        javaScriptCanOpenWindowsAutomatically={true}
         domStorageEnabled={true}
         sharedCookiesEnabled={true}
         thirdPartyCookiesEnabled={true}
@@ -220,19 +286,22 @@ export function CaptchaEmbed({
         showsHorizontalScrollIndicator={false}
         showsVerticalScrollIndicator={false}
         setSupportMultipleWindows={false}
-        cacheEnabled={true}
+        cacheEnabled={false}
         startInLoadingState={false}
+        androidLayerType={Platform.OS === "android" ? "software" : undefined}
+        injectedJavaScriptForMainFrameOnly={true}
+        injectedJavaScriptBeforeContentLoadedForMainFrameOnly={true}
+        mediaPlaybackRequiresUserAction={false}
+        allowsInlineMediaPlayback={true}
       />
 
-      {/* Loading overlay */}
       {isLoading && (
-        <View style={styles.loadingOverlay}>
+        <View style={styles.loadingOverlay} pointerEvents="none">
           <ActivityIndicator size="small" color={accent} />
           <Text style={styles.loadingTxt}>Vérification de sécurité...</Text>
         </View>
       )}
 
-      {/* Error overlay with retry */}
       {hasError && !isLoading && (
         <View style={styles.errorOverlay}>
           <IconAlertTriangle size={16} color="#f87171" stroke={2} />
@@ -256,20 +325,17 @@ export function CaptchaEmbed({
 const styles = StyleSheet.create({
   container: {
     width: "100%",
-    height: 80,
-    borderRadius: 12,
-    overflow: "hidden",
+    height: WIDGET_HEIGHT,
     backgroundColor: "#161622",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
     justifyContent: "center",
     alignItems: "center",
     position: "relative",
   },
   web: {
     width: "100%",
-    height: 80,
+    height: WIDGET_HEIGHT,
     backgroundColor: "#161622",
+    opacity: 0.99,
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -315,11 +381,8 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   fallback: {
-    height: 80,
-    borderRadius: 12,
+    height: WIDGET_HEIGHT,
     backgroundColor: "#161622",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
     justifyContent: "center",
     alignItems: "center",
     opacity: 0.7,
