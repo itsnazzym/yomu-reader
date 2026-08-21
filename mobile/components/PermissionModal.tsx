@@ -62,6 +62,8 @@ export function PermissionModal({
                 onPress={openAppSettings}
                 radius={12}
                 style={[styles.grantBtn, { backgroundColor: colors.accent }]}
+                accessibilityRole="button"
+                accessibilityLabel="Ouvrir les paramètres"
               >
                 <View style={styles.btnContent}>
                   <IconSettings size={16} color="#fff" stroke={2} />
@@ -73,6 +75,8 @@ export function PermissionModal({
                 onPress={onGrant}
                 radius={12}
                 style={[styles.grantBtn, { backgroundColor: colors.accent }]}
+                accessibilityRole="button"
+                accessibilityLabel="Accorder l'autorisation"
               >
                 <View style={styles.btnContent}>
                   <IconCircleCheck size={16} color="#fff" stroke={2.5} />
@@ -81,7 +85,12 @@ export function PermissionModal({
               </CardPressable>
             )}
 
-            <Pressable onPress={onDismiss} style={styles.dismissBtn}>
+            <Pressable
+              onPress={onDismiss}
+              style={styles.dismissBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Plus tard"
+            >
               <Text style={[styles.dismissText, { color: colors.sub }]}>
                 Plus tard
               </Text>

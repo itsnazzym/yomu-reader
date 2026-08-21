@@ -6,6 +6,8 @@ import {
   formatFilenamePreview,
   openAuthWindow,
   onCookiesCaptured,
+  onSecretsUpdated,
+  isElectron,
 } from "../../utils/ipc";
 import { Icon } from "../common/Icon";
 
@@ -20,8 +22,8 @@ export const SettingsView: React.FC = () => {
   const [namingPattern, setNamingPattern] = useState(settings.naming_pattern);
   const [previewName, setPreviewName] = useState("");
   const [newBlacklistTag, setNewBlacklistTag] = useState("");
-  const [cookieInput, setCookieInput] = useState(settings.cookies || "");
-  const [apiKeyInput, setApiKeyInput] = useState(settings.api_key || "");
+  const [cookieInput, setCookieInput] = useState(isElectron() ? "" : settings.cookies || "");
+  const [apiKeyInput, setApiKeyInput] = useState(isElectron() ? "" : settings.api_key || "");
   const [isSavedNotice, setIsSavedNotice] = useState(false);
 
   const sampleGallery = {
@@ -57,12 +59,21 @@ export const SettingsView: React.FC = () => {
   }, [namingPattern, settings.default_format]);
 
   useEffect(() => {
-    const unlisten = onCookiesCaptured((cookies: string) => {
-      setCookieInput(cookies);
-      updateSettings({ cookies });
+    const unlistenCaptured = onCookiesCaptured(() => {
+      setCookieInput("");
+      updateSettings({ hasSecureCookies: true });
       triggerSaved();
     });
-    return () => unlisten();
+    const unlistenSecrets = onSecretsUpdated((status) => {
+      updateSettings({
+        hasSecureCookies: status.hasCookies,
+        hasSecureApiKey: status.hasApiKey,
+      });
+    });
+    return () => {
+      unlistenCaptured();
+      unlistenSecrets();
+    };
   }, []);
 
   const triggerSaved = () => {
@@ -343,21 +354,45 @@ export const SettingsView: React.FC = () => {
           </div>
 
           <p className="text-xs text-gray-400">
-            La fenêtre de connexion permet de vous connecter à votre compte et de résoudre le Turnstile Cloudflare automatiquement. Vos cookies de session seront automatiquement capturés.
+            La fenêtre de connexion permet de vous connecter à votre compte et de résoudre le Turnstile Cloudflare automatiquement. Sur Electron, les cookies sont stockés dans le coffre système (`safeStorage`) et ne restent pas dans le renderer.
           </p>
 
-          <div>
+          {isElectron() && settings.hasSecureCookies && (
+            <div className="text-[11px] px-3 py-2 rounded-lg bg-emerald-950/50 border border-emerald-500/30 text-emerald-300">
+              Session enregistrée dans le coffre système. Saisissez de nouvelles valeurs seulement pour les remplacer.
+            </div>
+          )}
+
+          <div className="space-y-2">
             <textarea
               rows={2}
               value={cookieInput}
               onChange={(e) => {
                 setCookieInput(e.target.value);
-                updateSettings({ cookies: e.target.value });
-                triggerSaved();
+                if (!isElectron()) {
+                  updateSettings({ cookies: e.target.value });
+                  triggerSaved();
+                }
               }}
-              placeholder="Cookies de session (ex: sessionid=...; cf_clearance=...; csrftoken=...)"
+              placeholder={
+                isElectron() && settings.hasSecureCookies
+                  ? "Cookies déjà enregistrés — coller ici pour remplacer"
+                  : "Cookies de session (ex: sessionid=...; cf_clearance=...; csrftoken=...)"
+              }
               className="w-full bg-[#0d0d12] border border-[#2b2b3b] focus:border-[#ed2553] text-xs text-gray-300 p-3 rounded-xl outline-none font-mono resize-none"
             />
+            {isElectron() && (
+              <button
+                onClick={() => {
+                  updateSettings({ cookies: cookieInput });
+                  setCookieInput("");
+                  triggerSaved();
+                }}
+                className="px-3 py-1.5 rounded-lg bg-[#20202e] hover:bg-[#ed2553] text-xs font-bold text-gray-200 hover:text-white transition-colors cursor-pointer"
+              >
+                Enregistrer les cookies dans le coffre
+              </button>
+            )}
           </div>
         </div>
 
@@ -380,20 +415,46 @@ export const SettingsView: React.FC = () => {
           </div>
 
           <p className="text-xs text-gray-400">
-            Si vous possédez une clé API ou un token personnel nHentai, collez-le ici pour l'injecter automatiquement dans les requêtes et synchroniser vos données.
+            Si vous possédez une clé API ou un token personnel nHentai, collez-le ici. Sur Electron, la clé est chiffrée via `safeStorage` et n'est plus renvoyée au renderer.
           </p>
 
-          <input
-            type="password"
-            value={apiKeyInput}
-            onChange={(e) => {
-              setApiKeyInput(e.target.value);
-              updateSettings({ api_key: e.target.value });
-              triggerSaved();
-            }}
-            placeholder="Ex: nhk_xxxxxxxxxxxxxxxxxxxxxxxx"
-            className="w-full bg-[#0d0d12] border border-[#2b2b3b] focus:border-cyan-500 text-xs text-cyan-300 px-3.5 py-2.5 rounded-xl outline-none font-mono"
-          />
+          {isElectron() && settings.hasSecureApiKey && (
+            <div className="text-[11px] px-3 py-2 rounded-lg bg-cyan-950/40 border border-cyan-500/30 text-cyan-300">
+              Clé API déjà enregistrée dans le coffre système.
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <input
+              type="password"
+              value={apiKeyInput}
+              onChange={(e) => {
+                setApiKeyInput(e.target.value);
+                if (!isElectron()) {
+                  updateSettings({ api_key: e.target.value });
+                  triggerSaved();
+                }
+              }}
+              placeholder={
+                isElectron() && settings.hasSecureApiKey
+                  ? "Clé déjà enregistrée — coller ici pour remplacer"
+                  : "Ex: nhk_xxxxxxxxxxxxxxxxxxxxxxxx"
+              }
+              className="w-full bg-[#0d0d12] border border-[#2b2b3b] focus:border-cyan-500 text-xs text-cyan-300 px-3.5 py-2.5 rounded-xl outline-none font-mono"
+            />
+            {isElectron() && (
+              <button
+                onClick={() => {
+                  updateSettings({ api_key: apiKeyInput });
+                  setApiKeyInput("");
+                  triggerSaved();
+                }}
+                className="px-3 py-1.5 rounded-lg bg-[#20202e] hover:bg-cyan-700 text-xs font-bold text-gray-200 hover:text-white transition-colors cursor-pointer"
+              >
+                Enregistrer la clé dans le coffre
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Section 7: Résolution DNS & DoH Personnalisée (Bypass FAI & Anti-Traqueurs) */}

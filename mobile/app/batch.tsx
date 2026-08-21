@@ -30,7 +30,6 @@ import {
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/lib/ThemeContext";
-import { CardPressable } from "@/components/ui/CardPressable";
 import { IconBtn } from "@/components/ui/IconBtn";
 import SmartImage from "@/components/SmartImage";
 import {
@@ -44,11 +43,9 @@ import {
   pauseAllQueue,
   resumeAllQueue,
   requeueItem,
-  setMaxConcurrent,
   QueueItem,
 } from "@/lib/downloadQueueStore";
 import { searchGalleries, getGallery } from "@/lib/api/nhentai";
-import { Gallery } from "@/lib/api/types";
 import {
   resolveLocalByGalleryId,
   verifyLocalGallery,
@@ -124,7 +121,7 @@ export default function BatchScreen() {
         fullQuery += ` language:${queryLanguage}`;
       }
       const maxPagesToFetch = Math.max(1, Math.min(5, parseInt(queryPages, 10) || 1));
-      const foundGalleries: Array<{ id: number; title: string; cover?: string }> = [];
+      const foundGalleries: { id: number; title: string; cover?: string }[] = [];
 
       for (let p = 1; p <= maxPagesToFetch; p++) {
         setFetchStatusText(`Chargement page ${p}/${maxPagesToFetch}...`);
@@ -246,7 +243,7 @@ export default function BatchScreen() {
     setIsFetchingBatch(true);
     setFetchStatusText(`Récupération métadonnées (0/${uniqueIds.length})...`);
 
-    const batchList: Array<{ id: number; title: string; cover?: string }> = [];
+    const batchList: { id: number; title: string; cover?: string }[] = [];
 
     for (let i = 0; i < uniqueIds.length; i++) {
       const id = uniqueIds[i];

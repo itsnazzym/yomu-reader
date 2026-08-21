@@ -13,6 +13,9 @@
     "start": "concurrently -k \"vite\" \"wait-on http://localhost:1420 && electron .\"",
     "electron": "electron .",
     "proxy": "node proxy/nhentai-mirror.mjs",
+    "check:electron": "node --check electron/main.cjs && node --check electron/preload.cjs",
+    "test:electron": "node --test electron/lib/archiveReader.test.cjs electron/lib/secretVault.test.cjs electron/lib/secretsContract.test.cjs",
+    "test:proxy": "node --test proxy/nhentai-mirror.test.mjs",
     "dist:win": "tsc && vite build && electron-builder --win",
     "tauri": "tauri"
   },
@@ -57,6 +60,7 @@
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.3",
     "xml2js": "^0.6.2",
+    "yauzl": "^3.4.0",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
@@ -74,7 +78,9 @@
     "wait-on": "^9.1.0"
   },
   "allowScripts": {
+    "electron": true,
     "electron-winstaller@5.4.0": true,
-    "esbuild@0.28.2": true
+    "esbuild@0.28.2": true,
+    "fsevents": false
   }
 }

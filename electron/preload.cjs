@@ -25,6 +25,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   stopQuickShareServer: () => ipcRenderer.invoke("stop-quick-share-server"),
   getQuickShareStatus: () => ipcRenderer.invoke("get-quick-share-status"),
   getLocalDownloadedFiles: (params) => ipcRenderer.invoke("get-local-downloaded-files", params),
+  getSecretStatus: () => ipcRenderer.invoke("get-secret-status"),
+  setSecrets: (params) => ipcRenderer.invoke("set-secrets", params),
+  migrateSecrets: (params) => ipcRenderer.invoke("migrate-secrets", params),
+  clearSecrets: () => ipcRenderer.invoke("clear-secrets"),
   logTerminal: (text) => ipcRenderer.invoke("log-terminal", { text }),
   onDownloadProgress: (callback) => {
     const handler = (_event, payload) => callback(payload);
@@ -35,6 +39,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
     const handler = (_event, cookies) => callback(cookies);
     ipcRenderer.on("cookies-captured", handler);
     return () => ipcRenderer.removeListener("cookies-captured", handler);
+  },
+  onSecretsUpdated: (callback) => {
+    const handler = (_event, status) => callback(status);
+    ipcRenderer.on("secrets-updated", handler);
+    return () => ipcRenderer.removeListener("secrets-updated", handler);
   },
   onCloudflareChallengeNeeded: (callback) => {
     const handler = () => callback();

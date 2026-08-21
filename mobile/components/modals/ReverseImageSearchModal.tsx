@@ -48,7 +48,7 @@ export function ReverseImageSearchModal({
     try {
       const res = await searchMangaByImage(imageUrl.trim());
       setResults(res.matches);
-    } catch (e) {
+    } catch {
       setResults([]);
     } finally {
       setLoading(false);

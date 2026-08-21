@@ -2,13 +2,23 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useState, useEffect } from "react";
 import { Gallery } from "./api/types";
 
-const FAVORITES_KEY = "@nhentai_favorites_v1";
+export const FAVORITES_STORAGE_KEY = "@nhentai_favorites_v1";
 
 let favoritesList: Gallery[] = [];
+let favoritesInitPromise: Promise<void> | null = null;
+let favoritesWritePromise: Promise<void> = Promise.resolve();
 const listeners = new Set<() => void>();
 
 function notify() {
   for (const l of listeners) l();
+}
+
+function persistFavorites(): Promise<void> {
+  const serialized = JSON.stringify(favoritesList);
+  favoritesWritePromise = favoritesWritePromise
+    .catch(() => {})
+    .then(() => AsyncStorage.setItem(FAVORITES_STORAGE_KEY, serialized));
+  return favoritesWritePromise;
 }
 
 /** Un titre « Gallery #id » = données pauvres (ancien proxy / API v2 non mappée). */
@@ -19,9 +29,10 @@ function isPlaceholderTitle(g: Gallery): boolean {
   return t.pretty === placeholder || t.english === placeholder;
 }
 
-export async function initFavorites() {
+async function loadFavoritesFromStorage(): Promise<void> {
   try {
-    const raw = await AsyncStorage.getItem(FAVORITES_KEY);
+    await favoritesWritePromise.catch(() => {});
+    const raw = await AsyncStorage.getItem(FAVORITES_STORAGE_KEY);
     if (raw) {
       favoritesList = JSON.parse(raw);
       // Migration : inférer la source des anciens favoris (sans champ source).
@@ -34,11 +45,18 @@ export async function initFavorites() {
         return { ...g, source: isPlaceholderTitle(g) ? "cloud" : "local" };
       });
       if (migrated) {
-        await AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(favoritesList));
+        await persistFavorites();
       }
       notify();
     }
   } catch {}
+}
+
+export function initFavorites(forceReload = false): Promise<void> {
+  if (forceReload || !favoritesInitPromise) {
+    favoritesInitPromise = loadFavoritesFromStorage();
+  }
+  return favoritesInitPromise;
 }
 
 /** Vrai si le store contient encore des favoris « Gallery #id » non enrichis. */
@@ -56,6 +74,7 @@ export function isFavorite(id: number | string): boolean {
 }
 
 export async function toggleFavorite(gallery: Gallery) {
+  await initFavorites();
   const targetId = Number(gallery.id);
   const exists = favoritesList.some((g) => Number(g.id) === targetId);
   if (exists) {
@@ -64,18 +83,20 @@ export async function toggleFavorite(gallery: Gallery) {
     // Un favori ajouté via l'app est un signet LOCAL (source "local").
     favoritesList = [{ ...gallery, source: "local" }, ...favoritesList];
   }
-  await AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(favoritesList));
+  await persistFavorites();
   notify();
 }
 
 export async function removeFavorite(id: number | string) {
+  await initFavorites();
   const targetId = Number(id);
   favoritesList = favoritesList.filter((g) => Number(g.id) !== targetId);
-  await AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(favoritesList));
+  await persistFavorites();
   notify();
 }
 
 export async function importFavorites(importedList: Gallery[]) {
+  await initFavorites();
   // Fusion idempotente avec enrichissement, en préservant les données locales :
   // - un favori du site absent localement est AJOUTÉ (source "cloud") ;
   // - un favori existant dont le titre est un placeholder (« Gallery #id »,
@@ -102,7 +123,16 @@ export async function importFavorites(importedList: Gallery[]) {
   }
 
   favoritesList = [...byId.values()];
-  await AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(favoritesList));
+  await persistFavorites();
+  notify();
+}
+
+export async function removeCloudFavorites(): Promise<void> {
+  await initFavorites();
+  const localOnly = favoritesList.filter((gallery) => gallery.source !== "cloud");
+  if (localOnly.length === favoritesList.length) return;
+  favoritesList = localOnly;
+  await persistFavorites();
   notify();
 }
 

@@ -12,6 +12,22 @@ npm run build      # production build
 npm start          # serve production build
 ```
 
+## Optional mirror
+
+Server-side gallery requests use the direct nHentai v2 API by default. To enable
+the Photon fallback, set `NHENTAI_MIRROR_URL` to an origin only:
+
+```bash
+NHENTAI_MIRROR_URL=https://mirror.example.com
+```
+
+The value must use HTTPS, with HTTP accepted only for loopback development
+(`localhost`, `127.0.0.1`, or `[::1]`). Credentials, paths, queries, and
+fragments are rejected. If the setting is missing or invalid, the web app safely
+skips the mirror and falls back to direct API data (or zero/unavailable live
+statistics when the direct service cannot provide them). Do not expose this
+server-only setting with a `NEXT_PUBLIC_` prefix.
+
 ## Editing content
 
 **All copy lives in one file:** [`src/lib/site-data.ts`](src/lib/site-data.ts).

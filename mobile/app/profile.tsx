@@ -4,12 +4,10 @@ import {
   View,
   Text,
   ScrollView,
-  Image,
   TextInput,
   Pressable,
   ActivityIndicator,
   Alert,
-  Dimensions,
   Modal,
 } from "react-native";
 import {
@@ -33,6 +31,7 @@ import {
 } from "@tabler/icons-react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Image } from "expo-image";
 import { useTheme } from "@/lib/ThemeContext";
 import { useAccount, UserComment } from "@/lib/accountStore";
 import { getFavorites } from "@/lib/favoritesStore";
@@ -43,26 +42,66 @@ import { SignInModal } from "@/components/modals/SignInModal";
 import SmartImage from "@/components/SmartImage";
 import { lightTap } from "@/lib/haptics";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
+function generatedAvatarUrl(username?: string): string {
+  const cleanName = encodeURIComponent(username || "User");
+  return `https://ui-avatars.com/api/?name=${cleanName}&background=c5878d&color=fff&bold=true&size=256`;
+}
+
+function uniqueUrls(urls: string[]): string[] {
+  return [...new Set(urls.filter(Boolean))];
+}
+
+export function resolveAvatarCandidates(url?: string, username?: string): string[] {
+  if (!url || url.trim() === "") {
+    return [generatedAvatarUrl(username)];
+  }
+
+  const clean = url.trim();
+  if (clean.startsWith("//")) {
+    return resolveAvatarCandidates(`https:${clean}`, username);
+  }
+
+  if (/^https?:\/\//i.test(clean)) {
+    try {
+      const parsed = new URL(clean);
+      const host = parsed.hostname.toLowerCase();
+
+      if (host === "imgur.com" || host.endsWith(".imgur.com")) {
+        const segments = parsed.pathname.split("/").filter(Boolean);
+        const fileName = segments[segments.length - 1] || "";
+        const isAlbum = segments[0] === "a" || segments[0] === "gallery";
+        const isImage = /\.(?:jpe?g|png|gif|webp|gifv)$/i.test(fileName);
+
+        if (!isAlbum && fileName) {
+          const normalizedName = fileName.replace(/\.gifv$/i, ".gif");
+          const directUrl = `https://i.imgur.com/${normalizedName}${parsed.search}`;
+          if (isImage) return uniqueUrls([directUrl, clean]);
+
+          return uniqueUrls([
+            `${directUrl}.gif`,
+            `${directUrl}.png`,
+            `${directUrl}.jpg`,
+            clean,
+          ]);
+        }
+      }
+
+      if (host === "nhentai.net") {
+        return [`https://i0.wp.com/nhentai.net/${parsed.pathname.replace(/^\/+/, "")}${parsed.search}`];
+      }
+
+      return [clean];
+    } catch {
+      return [clean];
+    }
+  }
+
+  const path = clean.startsWith("/") ? clean.slice(1) : clean;
+  return [`https://i0.wp.com/nhentai.net/${path}`];
+}
 
 export function resolveAvatarUrl(url?: string, username?: string): string {
-  if (!url || url.trim() === "") {
-    const cleanName = encodeURIComponent(username || "User");
-    return `https://ui-avatars.com/api/?name=${cleanName}&background=c5878d&color=fff&bold=true&size=256`;
-  }
-  const clean = url.trim();
-  if (clean.startsWith("http://") || clean.startsWith("https://")) {
-    if (clean.includes("nhentai.net")) {
-      const path = clean.replace(/^https?:\/\/nhentai\.net\/?/, "");
-      return `https://i0.wp.com/nhentai.net/${path}`;
-    }
-    return clean;
-  }
-  if (clean.startsWith("//")) {
-    return `https:${clean}`;
-  }
-  const path = clean.startsWith("/") ? clean.slice(1) : clean;
-  return `https://i0.wp.com/nhentai.net/${path}`;
+  return resolveAvatarCandidates(url, username)[0] || generatedAvatarUrl(username);
 }
 
 export default function ProfileScreen() {
@@ -88,6 +127,7 @@ export default function ProfileScreen() {
   const [newAvatarInput, setNewAvatarInput] = useState("");
   const [savingAvatar, setSavingAvatar] = useState(false);
   const [favorites, setFavorites] = useState<Gallery[]>([]);
+  const [avatarCandidateIndex, setAvatarCandidateIndex] = useState(0);
 
   // Password change form state
   const [showPasswordForm, setShowPasswordForm] = useState(false);
@@ -152,8 +192,11 @@ export default function ProfileScreen() {
   };
 
   const handleSaveAvatar = async (urlToSave?: string) => {
-    const targetUrl = (urlToSave || newAvatarInput).trim();
-    if (!targetUrl) return;
+    const rawUrl = (urlToSave || newAvatarInput).trim();
+    if (!rawUrl) return;
+    // Keep the URL entered by the user. In particular, an extensionless
+    // Imgur asset needs the GIF/PNG/JPG candidates on the next render.
+    const targetUrl = rawUrl;
     setSavingAvatar(true);
     try {
       const res = await updateAvatar(targetUrl);
@@ -202,8 +245,13 @@ export default function ProfileScreen() {
   const recentFavorites = favorites.slice(0, 15);
   const username = profile?.username || session.username || "Membre nHentai";
   const email = profile?.email || "Non renseigné / Privé";
-  const displayAvatarUrl = resolveAvatarUrl(profile?.avatar_url, username);
+  const avatarCandidates = resolveAvatarCandidates(profile?.avatar_url, username);
+  const displayAvatarUrl = avatarCandidates[avatarCandidateIndex];
   const userComments: UserComment[] = comments || [];
+
+  useEffect(() => {
+    setAvatarCandidateIndex(0);
+  }, [profile?.avatar_url, username]);
 
   return (
     <View
@@ -271,7 +319,20 @@ export default function ProfileScreen() {
                 }}
                 style={styles.avatarWrap}
               >
-                <Image source={{ uri: displayAvatarUrl }} style={styles.avatarImg} />
+                {displayAvatarUrl ? (
+                  <Image
+                    source={{ uri: displayAvatarUrl }}
+                    style={styles.avatarImg}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                    transition={150}
+                    onError={() => setAvatarCandidateIndex((index) => index + 1)}
+                  />
+                ) : (
+                  <View style={styles.avatarFallback}>
+                    <IconUser size={28} color="#9ca3af" stroke={1.6} />
+                  </View>
+                )}
                 <View style={[styles.avatarEditBadge, { backgroundColor: colors.accent }]}>
                   <IconPhoto size={11} color="#fff" stroke={2.5} />
                 </View>
@@ -741,6 +802,14 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
+    backgroundColor: "#202030",
+  },
+  avatarFallback: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: "#202030",
   },
   avatarEditBadge: {

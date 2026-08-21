@@ -74,7 +74,7 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
         }),
       ]).start();
     }
-  }, [visible, options]);
+  }, [visible, options, opacity, slideY]);
 
   const navigateToSubmenu = (menu: "language" | "pages" | "date") => {
     submenuSlide.setValue(30);
@@ -121,49 +121,39 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
   // Tri façon nhentai.net : un mode « Recent | Popular », et une période
   // (Today / Week / All time) visible seulement en mode Popular.
   const popularPeriods = [
-    { key: "popular-today", label: "Today" },
-    { key: "popular-week", label: "Week" },
-    { key: "popular", label: "All time" },
+    { key: "popular-today", label: "Aujourd'hui" },
+    { key: "popular-week", label: "Cette semaine" },
+    { key: "popular", label: "Tout" },
   ] as const;
   const sortMode: "recent" | "popular" =
     currentSort === "recent" ? "recent" : "popular";
 
   const languages = [
-    { key: "all", label: "All languages" },
-    { key: "english", label: "🇬🇧 English" },
-    { key: "japanese", label: "🇯🇵 Japanese" },
-    { key: "chinese", label: "🇨🇳 Chinese" },
-    { key: "french", label: "🇫🇷 Français" },
-    { key: "spanish", label: "🇪🇸 Español" },
-    { key: "german", label: "🇩🇪 Deutsch" },
-    { key: "korean", label: "🇰🇷 한국어" },
+    { key: "all", label: "Toutes les langues" },
+    { key: "english", label: "Anglais" },
+    { key: "japanese", label: "Japonais" },
+    { key: "chinese", label: "Chinois" },
+    { key: "french", label: "Français" },
+    { key: "spanish", label: "Espagnol" },
+    { key: "german", label: "Allemand" },
+    { key: "korean", label: "Coréen" },
   ];
 
   const pageRanges = [
-    { key: "all", label: "All page counts" },
+    { key: "all", label: "Tous les nombres de pages" },
     { key: "pages:<20", label: "Court (< 20 pages)" },
-    { key: "pages:20-50", label: "Moyen (20 - 50 pages)" },
-    { key: "pages:50-100", label: "Long (50 - 100 pages)" },
-    { key: "pages:>100", label: "Volume XL (> 100 pages)" },
+    { key: "pages:20-50", label: "Moyen (20–50 pages)" },
+    { key: "pages:50-100", label: "Long (50–100 pages)" },
+    { key: "pages:>100", label: "Très long (> 100 pages)" },
   ];
 
   const dateFilters = [
-    { key: "all", label: "All time (Historique complet)" },
-    { key: "uploaded:today", label: "Aujourd'hui (24h)" },
+    { key: "all", label: "Toutes les dates" },
+    { key: "uploaded:today", label: "Aujourd'hui (24 h)" },
     { key: "uploaded:thisweek", label: "Cette semaine" },
     { key: "uploaded:thismonth", label: "Ce mois-ci" },
     { key: "uploaded:thisyear", label: "Cette année" },
   ];
-
-  const handleApply = () => {
-    onChange({
-      sort: currentSort,
-      language: currentLang,
-      pageRange: currentPageRange,
-      dateFilter: currentDateFilter,
-    });
-    onClose();
-  };
 
   const selectSort = (key: FilterOptions["sort"]) => {
     setCurrentSort(key);
@@ -178,17 +168,17 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
 
   const getLangLabel = () => {
     const found = languages.find((l) => l.key === currentLang);
-    return found ? found.label : "All languages";
+    return found ? found.label : "Toutes les langues";
   };
 
   const getPageLabel = () => {
     const found = pageRanges.find((p) => p.key === currentPageRange);
-    return found ? found.label : "All page counts";
+    return found ? found.label : "Tous les nombres de pages";
   };
 
   const getDateLabel = () => {
     const found = dateFilters.find((d) => d.key === currentDateFilter);
-    return found ? found.label : "All time";
+    return found ? found.label : "Toutes les dates";
   };
 
   return (
@@ -197,7 +187,12 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
         <Animated.View
           style={[
             styles.menuContainer,
-            { opacity, transform: [{ translateY: slideY }] },
+            {
+              backgroundColor: colors.page,
+              borderColor: colors.tagBg,
+              opacity,
+              transform: [{ translateY: slideY }],
+            },
           ]}
           onStartShouldSetResponder={() => true}
         >
@@ -205,16 +200,18 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
           {activeSubmenu === "none" && (
             <View>
               {/* Header Navigation Options */}
-              <View style={styles.topOptionsGroup}>
+              <View style={[styles.topOptionsGroup, { borderBottomColor: colors.tagBg }]}>
                 {/* Language Row */}
                 <TouchableOpacity
                   activeOpacity={0.7}
                   onPress={() => navigateToSubmenu("language")}
                   style={styles.menuOptionRow}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Langue : ${getLangLabel()}`}
                 >
                   <View style={styles.optionLeft}>
-                    <IconWorld size={16} color="#c5878d" stroke={1.8} style={styles.optionIcon} />
-                    <Text style={styles.optionTitle}>Language: {getLangLabel()}</Text>
+                    <IconWorld size={16} color={colors.accent} stroke={1.8} style={styles.optionIcon} />
+                    <Text style={styles.optionTitle}>Langue : {getLangLabel()}</Text>
                   </View>
                   <IconChevronRight size={16} color="#6b7280" stroke={2} />
                 </TouchableOpacity>
@@ -224,9 +221,11 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
                   activeOpacity={0.7}
                   onPress={() => navigateToSubmenu("pages")}
                   style={styles.menuOptionRow}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Pages${currentPageRange !== "all" ? ` : ${getPageLabel()}` : ""}`}
                 >
                   <View style={styles.optionLeft}>
-                    <IconFileText size={16} color="#c5878d" stroke={1.8} style={styles.optionIcon} />
+                    <IconFileText size={16} color={colors.accent} stroke={1.8} style={styles.optionIcon} />
                     <Text style={styles.optionTitle}>
                       Pages {currentPageRange !== "all" ? `(${getPageLabel()})` : ""}
                     </Text>
@@ -239,11 +238,13 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
                   activeOpacity={0.7}
                   onPress={() => navigateToSubmenu("date")}
                   style={styles.menuOptionRow}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Filtre de date${currentDateFilter !== "all" ? ` : ${getDateLabel()}` : ""}`}
                 >
                   <View style={styles.optionLeft}>
-                    <IconCalendar size={16} color="#c5878d" stroke={1.8} style={styles.optionIcon} />
+                    <IconCalendar size={16} color={colors.accent} stroke={1.8} style={styles.optionIcon} />
                     <Text style={styles.optionTitle}>
-                      Date filter {currentDateFilter !== "all" ? `(${getDateLabel()})` : ""}
+                      Date de mise en ligne {currentDateFilter !== "all" ? `(${getDateLabel()})` : ""}
                     </Text>
                   </View>
                   <IconChevronRight size={16} color="#6b7280" stroke={2} />
@@ -252,7 +253,7 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
 
               {/* SORT Section */}
               <View style={styles.sortSection}>
-                <Text style={styles.sortHeader}>SORT</Text>
+                <Text style={styles.sortHeader}>TRI</Text>
 
                 {/* Mode : Recent | Popular */}
                 <View style={styles.sortModeRow}>
@@ -271,19 +272,23 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
                         }
                         style={[
                           styles.sortModePill,
+                          { borderColor: colors.tagBg },
                           isActive && {
-                            backgroundColor: "rgba(197, 135, 141, 0.15)",
-                            borderColor: "#c5878d",
+                            backgroundColor: colors.accent + "26",
+                            borderColor: colors.accent,
                           },
                         ]}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isActive }}
+                        accessibilityLabel={mode === "recent" ? "Récents" : "Populaires"}
                       >
                         <Text
                           style={[
                             styles.sortModeText,
-                            isActive && { color: "#c5878d", fontWeight: "800" },
+                            isActive && { color: colors.accent, fontWeight: "800" },
                           ]}
                         >
-                          {mode === "recent" ? "Recent" : "Popular"}
+                          {mode === "recent" ? "Récentes" : "Populaires"}
                         </Text>
                       </TouchableOpacity>
                     );
@@ -302,16 +307,20 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
                           onPress={() => selectSort(period.key)}
                           style={[
                             styles.periodPill,
+                            { borderColor: colors.tagBg },
                             isSelected && {
-                              backgroundColor: "rgba(197, 135, 141, 0.15)",
-                              borderColor: "#c5878d",
+                              backgroundColor: colors.accent + "26",
+                              borderColor: colors.accent,
                             },
                           ]}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: isSelected }}
+                          accessibilityLabel={`Période : ${period.label}`}
                         >
                           <Text
                             style={[
                               styles.periodText,
-                              isSelected && { color: "#c5878d", fontWeight: "800" },
+                              isSelected && { color: colors.accent, fontWeight: "800" },
                             ]}
                           >
                             {period.label}
@@ -323,11 +332,13 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
                 )}
                 {/* Reset Filters Option (if active) */}
                 {hasActiveFilters && (
-                  <View style={styles.resetWrap}>
+                  <View style={[styles.resetWrap, { borderTopColor: colors.tagBg }]}>
                     <TouchableOpacity
                       activeOpacity={0.7}
                       onPress={handleReset}
                       style={styles.resetBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel="Réinitialiser les filtres"
                     >
                       <IconRotateClockwise size={16} color={colors.accent} stroke={2} />
                       <Text style={styles.resetBtnText}>Réinitialiser les filtres</Text>
@@ -344,10 +355,12 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
               <TouchableOpacity
                 activeOpacity={0.7}
                 onPress={navigateBack}
-                style={styles.submenuHeader}
+                style={[styles.submenuHeader, { borderBottomColor: colors.tagBg }]}
+                accessibilityRole="button"
+                accessibilityLabel="Retour aux filtres"
               >
-                <IconArrowLeft size={16} color="#c5878d" stroke={2} />
-                <Text style={styles.submenuTitle}>Select Language</Text>
+                <IconArrowLeft size={16} color={colors.accent} stroke={2} />
+                <Text style={styles.submenuTitle}>Choisir une langue</Text>
               </TouchableOpacity>
 
               <ScrollView style={{ maxHeight: 280 }} keyboardShouldPersistTaps="handled">
@@ -367,18 +380,21 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
                     }}
                     style={[
                       styles.submenuItem,
-                      currentLang === l.key && { backgroundColor: "rgba(197, 135, 141, 0.15)" },
+                      currentLang === l.key && { backgroundColor: colors.accent + "26" },
                     ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: currentLang === l.key }}
+                    accessibilityLabel={l.label}
                   >
                     <Text
                       style={[
                         styles.submenuItemText,
-                        currentLang === l.key && { color: "#c5878d", fontWeight: "700" },
+                        currentLang === l.key && { color: colors.accent, fontWeight: "700" },
                       ]}
                     >
                       {l.label}
                     </Text>
-                    {currentLang === l.key && <IconCheck size={16} color="#c5878d" stroke={2.5} />}
+                    {currentLang === l.key && <IconCheck size={16} color={colors.accent} stroke={2.5} />}
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -391,10 +407,12 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
               <TouchableOpacity
                 activeOpacity={0.7}
                 onPress={navigateBack}
-                style={styles.submenuHeader}
+                style={[styles.submenuHeader, { borderBottomColor: colors.tagBg }]}
+                accessibilityRole="button"
+                accessibilityLabel="Retour aux filtres"
               >
-                <IconArrowLeft size={16} color="#c5878d" stroke={2} />
-                <Text style={styles.submenuTitle}>Filter by Page Count</Text>
+                <IconArrowLeft size={16} color={colors.accent} stroke={2} />
+                <Text style={styles.submenuTitle}>Filtrer par nombre de pages</Text>
               </TouchableOpacity>
 
               <ScrollView style={{ maxHeight: 280 }} keyboardShouldPersistTaps="handled">
@@ -414,18 +432,21 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
                     }}
                     style={[
                       styles.submenuItem,
-                      currentPageRange === p.key && { backgroundColor: "rgba(197, 135, 141, 0.15)" },
+                      currentPageRange === p.key && { backgroundColor: colors.accent + "26" },
                     ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: currentPageRange === p.key }}
+                    accessibilityLabel={p.label}
                   >
                     <Text
                       style={[
                         styles.submenuItemText,
-                        currentPageRange === p.key && { color: "#c5878d", fontWeight: "700" },
+                        currentPageRange === p.key && { color: colors.accent, fontWeight: "700" },
                       ]}
                     >
                       {p.label}
                     </Text>
-                    {currentPageRange === p.key && <IconCheck size={16} color="#c5878d" stroke={2.5} />}
+                    {currentPageRange === p.key && <IconCheck size={16} color={colors.accent} stroke={2.5} />}
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -438,10 +459,12 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
               <TouchableOpacity
                 activeOpacity={0.7}
                 onPress={navigateBack}
-                style={styles.submenuHeader}
+                style={[styles.submenuHeader, { borderBottomColor: colors.tagBg }]}
+                accessibilityRole="button"
+                accessibilityLabel="Retour aux filtres"
               >
-                <IconArrowLeft size={16} color="#c5878d" stroke={2} />
-                <Text style={styles.submenuTitle}>Filter by Upload Date</Text>
+                <IconArrowLeft size={16} color={colors.accent} stroke={2} />
+                <Text style={styles.submenuTitle}>Filtrer par date de mise en ligne</Text>
               </TouchableOpacity>
 
               <ScrollView style={{ maxHeight: 280 }} keyboardShouldPersistTaps="handled">
@@ -461,18 +484,21 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
                     }}
                     style={[
                       styles.submenuItem,
-                      currentDateFilter === d.key && { backgroundColor: "rgba(197, 135, 141, 0.15)" },
+                      currentDateFilter === d.key && { backgroundColor: colors.accent + "26" },
                     ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: currentDateFilter === d.key }}
+                    accessibilityLabel={d.label}
                   >
                     <Text
                       style={[
                         styles.submenuItemText,
-                        currentDateFilter === d.key && { color: "#c5878d", fontWeight: "700" },
+                        currentDateFilter === d.key && { color: colors.accent, fontWeight: "700" },
                       ]}
                     >
                       {d.label}
                     </Text>
-                    {currentDateFilter === d.key && <IconCheck size={16} color="#c5878d" stroke={2.5} />}
+                    {currentDateFilter === d.key && <IconCheck size={16} color={colors.accent} stroke={2.5} />}
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -495,8 +521,6 @@ const styles = StyleSheet.create({
   },
   menuContainer: {
     width: 290,
-    backgroundColor: "#161622",
-    borderColor: "#28283a",
     borderWidth: 1,
     borderRadius: 18,
     paddingVertical: 8,

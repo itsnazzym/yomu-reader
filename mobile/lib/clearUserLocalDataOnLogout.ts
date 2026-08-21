@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { removeCloudFavorites } from "./favoritesStore";
 
 const KEYS: string[] = [
-  "bookFavorites",
   "bookFavoritesOnline.v1",
   "searchHistory",
   "@online.imported.cache",
@@ -16,7 +16,10 @@ const KEYS: string[] = [
 
 export async function clearUserLocalDataOnLogout(): Promise<void> {
   try {
-    await AsyncStorage.multiRemove(KEYS);
+    await Promise.all([
+      AsyncStorage.multiRemove(KEYS),
+      removeCloudFavorites(),
+    ]);
   } catch (e) {
     console.warn("[auth] Failed to clear user local data:", e);
   }

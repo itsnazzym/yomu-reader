@@ -9,6 +9,10 @@ import {
   getSearchHistory,
 } from "@/lib/recommendationEngine";
 import type { Gallery, Tag } from "@/lib/api/types";
+import {
+  ApiError,
+  shouldClearTokensAfterRefreshError,
+} from "@/lib/api/v2/client";
 
 const FAVORITES_KEY = "@nhentai_favorites_v1";
 const HISTORY_KEY = "@nhentai_reading_history_v1";
@@ -46,6 +50,25 @@ function seedEmpty(): void {
   __mockSet(HISTORY_KEY, []);
   __mockSet(BLACKLIST_KEY, []);
 }
+
+test("seuls les rejets explicites de refresh invalident les jetons", () => {
+  assert.equal(
+    shouldClearTokensAfterRefreshError(
+      new ApiError("Unauthorized", 401, { detail: "Refresh token revoked" })
+    ),
+    true
+  );
+  assert.equal(
+    shouldClearTokensAfterRefreshError(
+      new ApiError("Server unavailable", 503, { detail: "Temporary outage" })
+    ),
+    false
+  );
+  assert.equal(
+    shouldClearTokensAfterRefreshError(new Error("network timeout")),
+    false
+  );
+});
 
 test("cycle complet : signaux, exclusion, classement et compteur de tag", async () => {
   seedEmpty();
@@ -328,3 +351,55 @@ test("l'historique de recherche se déduplique et ignore les entrées courtes", 
   assert.equal(searches.length, 1, "dédup insensible à la casse");
   assert.equal(searches[0].toLowerCase(), "milf", "dernière requête conservée");
 });
+
+test("la file d'écriture persiste dans l'ordre", async () => {
+  const { createWriteQueue } = await import("@/lib/persistQueue");
+  const q = createWriteQueue();
+  const order: number[] = [];
+  await Promise.all([
+    q.enqueue(async () => {
+      await new Promise((r) => setTimeout(r, 15));
+      order.push(1);
+    }),
+    q.enqueue(async () => {
+      order.push(2);
+    }),
+  ]);
+  assert.deepEqual(order, [1, 2]);
+});
+
+test("isCompleteDownload refuse les fichiers trop petits ou au mauvais magic", async () => {
+  const { isCompleteDownload, isValidImageMagic } = await import("@/lib/imageIntegrity");
+  assert.equal(isValidImageMagic([0xff, 0xd8, 0xff, 0xdb]), true);
+  assert.equal(isValidImageMagic([0x00, 0x00, 0x00, 0x00]), false);
+  assert.equal(isCompleteDownload({ size: 10, headerBytes: [0xff, 0xd8, 0xff] }), false);
+  assert.equal(
+    isCompleteDownload({ size: 400, expectedSize: 500, headerBytes: [0xff, 0xd8, 0xff] }),
+    false
+  );
+  assert.equal(
+    isCompleteDownload({ size: 400, expectedSize: 400, headerBytes: [0xff, 0xd8, 0xff] }),
+    true
+  );
+});
+
+test("coupure puis reprise : page complète sautée, .part tronqué relancé", async () => {
+  const { isCompleteDownload } = await import("@/lib/imageIntegrity");
+  const jpeg = [0xff, 0xd8, 0xff, 0xdb];
+  assert.equal(
+    isCompleteDownload({ size: 12_000, expectedSize: 12_000, headerBytes: jpeg }),
+    true,
+    "page déjà écrite et validée"
+  );
+  assert.equal(
+    isCompleteDownload({ size: 1_800, expectedSize: 12_000, headerBytes: jpeg }),
+    false,
+    "fichier .part plus court que Content-Length"
+  );
+  assert.equal(
+    isCompleteDownload({ size: 80, headerBytes: jpeg }),
+    false,
+    "morceau sous le seuil MIN_IMAGE_BYTES"
+  );
+});
+

@@ -5,7 +5,7 @@ import { Icon } from "./Icon";
 interface CloudflareGateModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess?: (cookies: string) => void;
+  onSuccess?: () => void;
 }
 
 export const CloudflareGateModal: React.FC<CloudflareGateModalProps> = ({
@@ -23,10 +23,10 @@ export const CloudflareGateModal: React.FC<CloudflareGateModalProps> = ({
       return;
     }
 
-    const unsubscribe = onCookiesCaptured((cookies: string) => {
+    const unsubscribe = onCookiesCaptured(() => {
       setSolvedSuccess(true);
       setIsSolving(false);
-      onSuccess?.(cookies);
+      onSuccess?.();
       setTimeout(() => {
         onClose();
       }, 1500);

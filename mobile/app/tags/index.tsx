@@ -52,6 +52,21 @@ type ActiveTab =
   | "groups"
   | "languages";
 
+const CATEGORY_TYPE_MAP: Record<string, string> = {
+  tags: "tag",
+  parodies: "parody",
+  characters: "character",
+  artists: "artist",
+  groups: "group",
+  languages: "language",
+  tag: "tag",
+  parody: "parody",
+  character: "character",
+  artist: "artist",
+  group: "group",
+  language: "language",
+};
+
 export default function TagsScreen() {
   const { colors } = useTheme();
   const router = useRouter();
@@ -96,21 +111,6 @@ export default function TagsScreen() {
     { key: "languages", label: "Langues", icon: IconWorld },
   ];
 
-  const categoryTypeMap: Record<string, string> = {
-    tags: "tag",
-    parodies: "parody",
-    characters: "character",
-    artists: "artist",
-    groups: "group",
-    languages: "language",
-    tag: "tag",
-    parody: "parody",
-    character: "character",
-    artist: "artist",
-    group: "group",
-    language: "language",
-  };
-
   const filteredItems = useMemo(() => {
     let baseList: TaxonomyItem[] = [];
 
@@ -144,36 +144,36 @@ export default function TagsScreen() {
   }, [activeTab, searchFilter, favoriteList]);
 
   // Clic sur le tag -> lance directement la recherche sur la page d'accueil
-  const handleSelectTag = (tag: TaxonomyItem) => {
+  const handleSelectTag = useCallback((tag: TaxonomyItem) => {
     lightTap();
-    const type = categoryTypeMap[tag.category] || "tag";
+    const type = CATEGORY_TYPE_MAP[tag.category] || "tag";
     router.push({
       pathname: "/",
       params: { tag: tag.name, type },
     });
-  };
+  }, [router]);
 
   // Clic sur le bouton + -> ajoute le tag en plus à la recherche existante
-  const handleAppendTag = (tag: TaxonomyItem) => {
+  const handleAppendTag = useCallback((tag: TaxonomyItem) => {
     lightTap();
-    const type = categoryTypeMap[tag.category] || "tag";
+    const type = CATEGORY_TYPE_MAP[tag.category] || "tag";
     router.push({
       pathname: "/",
       params: { appendTag: tag.name, type },
     });
-  };
+  }, [router]);
 
   // Clic sur le cœur -> met en favoris instantanément
-  const handleToggleFavorite = (tag: TaxonomyItem) => {
+  const handleToggleFavorite = useCallback((tag: TaxonomyItem) => {
     lightTap();
-    const type = categoryTypeMap[tag.category] || "tag";
+    const type = CATEGORY_TYPE_MAP[tag.category] || "tag";
     toggleFav({
       type,
       name: tag.name,
       category: tag.category,
       count: tag.count,
     });
-  };
+  }, [toggleFav]);
 
   // Lancer une recherche combinant tous les favoris
   const handleSearchAllFavorites = () => {
@@ -213,7 +213,7 @@ export default function TagsScreen() {
 
   const toggleTagSelectionForCol = (tag: TaxonomyItem) => {
     lightTap();
-    const type = categoryTypeMap[tag.category] || "tag";
+    const type = CATEGORY_TYPE_MAP[tag.category] || "tag";
     const exists = selectedTagsForCol.some((t) => t.name === tag.name && t.type === type);
     if (exists) {
       setSelectedTagsForCol((prev) => prev.filter((t) => !(t.name === tag.name && t.type === type)));
@@ -231,7 +231,7 @@ export default function TagsScreen() {
         type: "tag",
       };
       const IconComp = meta.icon || IconTag;
-      const itemType = categoryTypeMap[item.category] || "tag";
+      const itemType = CATEGORY_TYPE_MAP[item.category] || "tag";
       const favorited = isFav(itemType, item.name);
 
       return (
@@ -294,7 +294,13 @@ export default function TagsScreen() {
         </View>
       );
     },
-    [colors.accent, favoriteList, isFav]
+    [
+      colors.accent,
+      handleAppendTag,
+      handleSelectTag,
+      handleToggleFavorite,
+      isFav,
+    ]
   );
 
   return (

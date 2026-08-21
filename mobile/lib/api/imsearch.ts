@@ -1,4 +1,3 @@
-import { getGallery } from "./nhentai";
 import type { Gallery } from "./types";
 
 export interface ImageSearchResult {
@@ -17,6 +16,8 @@ export async function searchMangaByImage(
   imageUri: string
 ): Promise<{ matches: ImageSearchResult[]; timeMs: number }> {
   const startTime = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20_000);
 
   try {
     const formData = new FormData();
@@ -33,6 +34,7 @@ export async function searchMangaByImage(
       headers: {
         Accept: "application/json",
       },
+      signal: controller.signal,
     });
 
     if (res.ok) {
@@ -56,6 +58,8 @@ export async function searchMangaByImage(
     }
   } catch (err) {
     console.warn("[imsearch] Primary engine failed, attempting fallback:", err);
+  } finally {
+    clearTimeout(timeout);
   }
 
   // Si le serveur dédié est indisponible ou hors-ligne, simuler la réponse ou renvoyer vide

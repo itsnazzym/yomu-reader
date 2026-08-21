@@ -1,7 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useState, useEffect } from "react";
+import { createInitOnce, createWriteQueue } from "./persistQueue";
 
-const STORAGE_KEY = "@nhentai_tag_collections_v1";
+export const TAG_COLLECTIONS_STORAGE_KEY = "@nhentai_tag_collections_v1";
 
 export interface TagCollectionItem {
   type: string;
@@ -52,14 +53,16 @@ const DEFAULT_COLLECTIONS: TagCollection[] = [
 
 let currentCollections: TagCollection[] = [...DEFAULT_COLLECTIONS];
 const listeners = new Set<() => void>();
+const writes = createWriteQueue();
 
 function notify() {
   for (const l of listeners) l();
 }
 
-export async function initTagCollections(): Promise<void> {
+async function loadCollections(): Promise<void> {
+  await writes.flush();
   try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    const raw = await AsyncStorage.getItem(TAG_COLLECTIONS_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
@@ -74,12 +77,11 @@ export async function initTagCollections(): Promise<void> {
   }
 }
 
+export const initTagCollections = createInitOnce(loadCollections);
+
 async function saveCollections(): Promise<void> {
-  try {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(currentCollections));
-  } catch (e) {
-    console.warn("[tagCollections] save error:", e);
-  }
+  const serialized = JSON.stringify(currentCollections);
+  return writes.enqueue(() => AsyncStorage.setItem(TAG_COLLECTIONS_STORAGE_KEY, serialized));
 }
 
 export async function createTagCollection(
@@ -91,6 +93,7 @@ export async function createTagCollection(
     excludeTags?: TagCollectionItem[];
   }
 ): Promise<TagCollection> {
+  await initTagCollections();
   const newCol: TagCollection = {
     id: `col_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     name: name.trim() || "Collection sans titre",
@@ -112,6 +115,7 @@ export async function updateTagCollection(
   id: string,
   patch: Partial<Omit<TagCollection, "id" | "createdAt">>
 ): Promise<void> {
+  await initTagCollections();
   currentCollections = currentCollections.map((col) => {
     if (col.id === id) {
       return {
@@ -127,6 +131,7 @@ export async function updateTagCollection(
 }
 
 export async function deleteTagCollection(id: string): Promise<void> {
+  await initTagCollections();
   currentCollections = currentCollections.filter((col) => col.id !== id);
   notify();
   await saveCollections();

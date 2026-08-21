@@ -15,7 +15,6 @@ import {
   IconBookmark,
   IconHeart,
   IconClock,
-  IconBox,
   IconTag,
   IconSparkles,
   IconCloudDownload,
@@ -116,7 +115,7 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
       style={[
         styles.container,
         {
-          backgroundColor: "#13131c",
+          backgroundColor: colors.menuBg,
           paddingTop: Math.max(insets.top, 24),
           paddingBottom: Math.max(insets.bottom, 20),
         },
@@ -125,7 +124,12 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
       {/* Brand Header */}
       <View style={styles.header}>
         <View style={styles.brandRow}>
-          <View style={[styles.brandIcon, { backgroundColor: "#1e1e2c", borderColor: "#28283a", borderWidth: 1 }]}>
+          <View
+            style={[
+              styles.brandIcon,
+              { backgroundColor: colors.page, borderColor: colors.tagBg, borderWidth: 1 },
+            ]}
+          >
             <IconBook2 size={20} color={colors.accent} stroke={1.8} />
           </View>
           <View style={{ flex: 1 }}>
@@ -148,7 +152,7 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
         <View style={styles.menuList}>
           {menuItems.map((item) => {
             const isActive = pathname?.startsWith(item.route);
-            const tint = isActive ? "#ffffff" : "#c4c6cf";
+            const tint = isActive ? colors.accent : colors.sub;
             const IconComp = item.icon;
 
             return (
@@ -159,9 +163,11 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
                 style={[
                   styles.menuItem,
                   {
-                    backgroundColor: isActive ? "#222232" : "transparent",
+                    backgroundColor: isActive ? colors.accent + "26" : "transparent",
                   },
                 ]}
+                accessibilityRole="button"
+                accessibilityLabel={item.label}
               >
                 <View style={styles.menuItemContent}>
                   <IconComp
@@ -199,13 +205,15 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
             activeOpacity={0.82}
             onPress={handleRandom}
             disabled={randomLoading}
-            style={[styles.luckyButton, { backgroundColor: "#c5878d" }]}
+            style={[styles.luckyButton, { backgroundColor: colors.accent }]}
+            accessibilityRole="button"
+            accessibilityLabel="Ouvrir une galerie au hasard"
           >
             <View style={styles.luckyButtonContent}>
               {randomLoading ? (
-                <ActivityIndicator size="small" color="#1c191a" />
+                <ActivityIndicator size="small" color={colors.bg} />
               ) : (
-                <IconArrowsShuffle size={17} color="#1c191a" stroke={2.2} />
+                <IconArrowsShuffle size={17} color={colors.bg} stroke={2.2} />
               )}
               <Text style={styles.luckyText}>I'M FEELING LUCKY</Text>
               <Text style={styles.sparkleFloral}>✧ ✦</Text>
@@ -217,14 +225,16 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
         <TouchableOpacity
           activeOpacity={0.82}
           onPress={handleDiscord}
-          style={styles.discordCard}
+          style={[styles.discordCard, { backgroundColor: colors.page, borderColor: colors.tagBg }]}
+          accessibilityRole="button"
+          accessibilityLabel="Rejoindre le serveur Discord"
         >
           <View style={styles.discordContent}>
-            <IconBrandDiscord size={20} color="#c5878d" stroke={1.8} />
+            <IconBrandDiscord size={20} color={colors.accent} stroke={1.8} />
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                 <Text style={styles.discordTitle}>Join Discord</Text>
-                <Text style={styles.discordSparkles}>✧ ✦ ⋆</Text>
+                <Text style={[styles.discordSparkles, { color: colors.accent }]}>✧ ✦ ⋆</Text>
               </View>
               <Text style={styles.discordSub}>
                 Get early builds, ask questions, share ideas
@@ -245,13 +255,15 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
               setIsSignInOpen(true);
             }
           }}
-          style={styles.signInBtn}
+          style={[styles.signInBtn, { backgroundColor: colors.page, borderColor: colors.tagBg }]}
+          accessibilityRole="button"
+          accessibilityLabel={isLoggedIn ? "Ouvrir mon profil" : "Se connecter"}
         >
           <View style={styles.signInContent}>
             {isLoggedIn ? (
               <IconUserCheck size={18} color="#52c41a" stroke={2} />
             ) : (
-              <IconLogin size={18} color="#c5878d" stroke={2} />
+              <IconLogin size={18} color={colors.accent} stroke={2} />
             )}
             <Text style={styles.signInText}>
               {isLoggedIn ? (session.username || "Mon Profil") : "Sign in"}
@@ -379,13 +391,11 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   discordCard: {
-    backgroundColor: "#1b1b26",
     borderRadius: 12,
     padding: 12,
     marginTop: 6,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: "#28283a",
   },
   discordContent: {
     flexDirection: "row",
@@ -399,7 +409,6 @@ const styles = StyleSheet.create({
   },
   discordSparkles: {
     fontSize: 10,
-    color: "#c5878d",
     letterSpacing: 1,
   },
   discordSub: {
@@ -413,12 +422,10 @@ const styles = StyleSheet.create({
     borderTopColor: "#20202e",
   },
   signInBtn: {
-    backgroundColor: "#1a1a24",
     borderRadius: 12,
     paddingVertical: 11,
     paddingHorizontal: 14,
     borderWidth: 1,
-    borderColor: "#28283a",
   },
   signInContent: {
     flexDirection: "row",

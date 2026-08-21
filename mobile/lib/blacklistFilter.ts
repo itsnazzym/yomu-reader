@@ -1,17 +1,20 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useState, useEffect } from "react";
 import { Gallery } from "./api/types";
+import { createInitOnce, createWriteQueue } from "./persistQueue";
 
 const BLACKLIST_KEY = "@nhentai_blacklist_tags";
 
 let cachedTags: string[] = [];
 const listeners = new Set<() => void>();
+const writes = createWriteQueue();
 
 function notify() {
   for (const l of listeners) l();
 }
 
-export async function initBlacklist(): Promise<string[]> {
+async function loadBlacklist(): Promise<void> {
+  await writes.flush();
   try {
     const raw = await AsyncStorage.getItem(BLACKLIST_KEY);
     if (raw) {
@@ -19,16 +22,19 @@ export async function initBlacklist(): Promise<string[]> {
     }
   } catch {}
   notify();
-  return cachedTags;
 }
+
+export const initBlacklist = createInitOnce(loadBlacklist);
 
 export function getBlacklistedTags(): string[] {
   return cachedTags;
 }
 
 export async function setBlacklistedTags(tags: string[]) {
+  await initBlacklist();
   cachedTags = tags.map((t) => t.trim().toLowerCase()).filter(Boolean);
-  await AsyncStorage.setItem(BLACKLIST_KEY, JSON.stringify(cachedTags));
+  const serialized = JSON.stringify(cachedTags);
+  await writes.enqueue(() => AsyncStorage.setItem(BLACKLIST_KEY, serialized));
   notify();
 }
 

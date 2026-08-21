@@ -1,37 +1,50 @@
 ---
 type: project
 created: 2026-08-17
-updated: 2026-08-17
+updated: 2026-08-22
 ---
 
 # Tech Decisions
 
-## Component metadata uses SemVer while toolkit releases use CalVer
-- Décision initiale de versioning du projet AG Kit.
+## Monorepo & Versioning
+- **AG Kit Versioning :** Component metadata uses SemVer while toolkit releases use CalVer.
+- **Monorepo Architecture :** Desktop (Electron 43 + React 19), Mobile (Expo SDK 52 + RN 0.76), Proxy (Node.js :8787), Web (Next.js App Router).
 
 ## Mobile — React Native (Expo SDK 52, Bridgeless/Fabric)
-- **Slider:** `SmoothSlider.tsx` (PanResponder) car `@react-native-community/slider` est buggué sur Fabric/Bridgeless Android.
-- **Pressable:** `TouchableOpacity` (pas `Pressable`) pour éviter les délais de reconciliation dans FlashList.
-- **Réseau:** `fetch` natif avec `nativeFetchJson` + déduplication `inFlightRequests` (pas Axios).
-- **Images:** CDN Photon Edge WordPress (`i0.wp.com`) pour bypass blocage DNS FAI (Orange/Free/SFR/Bouygues).
-- **Liste principale:** `@shopify/flash-list` avec `estimatedItemSize={240}` et `numColumns` dynamique.
-- **Navigation:** `expo-router` file-based routing + `react-native-drawer-layout` pour le drawer.
-- **Stockage local:** `@react-native-async-storage/async-storage` pour favoris, session, blacklist.
-- **Stores `useSyncExternalStore` :** le getter de snapshot doit renvoyer une NOUVELLE référence quand l'état change (comparaison par `Object.is`). Bug réel corrigé : `getDownloadQueueSnapshot()` renvoyait le même objet `state` (muté en place) → l'écran batch ne se re-rendait jamais (figé sur « Téléchargement... »). Correctif : snapshot mis en cache, recréé seulement si `items`/`maxConcurrent`/`isProcessing` changent.
-- **Thème:** `ThemeContext` avec `hue` (0-360°) pour générer couleur d'accent, palette 25 swatches.
-- **Lecture hors-ligne :** `downloaded.tsx` ouvre `/read?local=<dossier>` (paramètre `local` de `read.tsx`) qui lit `NHAppAndroid/<dossier>/metadata.json` du disque et rend les pages `file://` (webp ou jpg). Avant : un tap ouvrait `/book/[id]` (réseau) → aucune lecture hors-ligne possible. La couverture des cartes de la Bibliothèque Hors-Ligne utilise la page 1 locale (`images.pages[0].url`), pas l'URL réseau du proxy.
+- **Slider:** `SmoothSlider.tsx` (PanResponder) car `@react-native-community/slider` est instable sur Fabric/Bridgeless Android.
+- **Touchables:** `TouchableOpacity` (pas `Pressable`) pour éviter les délais de reconciliation et freezes dans FlashList.
+- **Réseau:** `fetch` natif via `nativeFetchJson` + déduplication `inFlightRequests` + cache mémoire (pas Axios).
+- **Images:** CDN Photon Edge WordPress (`i0.wp.com`) pour bypass blocage DNS FAI (Orange/Free/SFR/Bouygues) sur hôtes `*.nhentai.net`.
+- **Liste principale:** `@shopify/flash-list` avec `estimatedItemSize={240}` et `numColumns` dynamique (2 sur téléphone, 3 sur tablette).
+- **Navigation:** `expo-router` file-based routing + `react-native-drawer-layout` pour le drawer tactile (`swipeEdgeWidth={35}`).
+- **Stockage & Atomicité:** `@react-native-async-storage/async-storage` combiné à `persistQueue.ts` (file d'écriture séquentielle pour éviter les corruptions lors d'écritures concurrentes).
+- **Stores `useSyncExternalStore` :** Snapshot DOIT renvoyer une nouvelle référence (`Object.is`) lors d'une mutation (ex. `getDownloadQueueSnapshot`).
+- **Thème & Design:** `ThemeContext` avec teinte `hue` réglable (0-360°), fond noir pur OLED `#12121a` et palette 25 teintes.
 
-## Miroir proxy local (nhentai.net bloqué sur le réseau de l'utilisateur)
-- **Problème :** `nhentai.net` + `i3/t3.nhentai.net` injoignables (erreur SSL, même depuis l'hôte) ; les CDN des miroirs (`zrocdn.xyz`, `i{n}.nhentaimg.com`) sont joignables depuis l'hôte mais PAS depuis l'émulateur Android (TLS Cloudflare).
-- **Solution :** `proxy/nhentai-mirror.mjs` (racine repo, `npm run proxy`, port 8787). Scrape l'HTML server-rendered de miroirs (cheerio) et sert du JSON au format nhentai (v1/v2). L'app mobile l'utilise en 3e palier après v2/v1 (`FALLBACK_API_BASE`, `10.0.2.2:8787` sur émulateur).
-- **Bascule automatique :** `nhentai.to` → `nhentai.xxx`. Quarantaine avec backoff (30s→120s) sur échec réseau, HTTP 429/5xx, challenge Cloudflare ou coquille JS. Détection de challenge affinée : `challenge-platform` est injecté par Cloudflare sur TOUTES ses pages (même valides) → ne pas s'y fier seul ; vérifier `just a moment` / `challenge-form` / `cf_chl_opt` / `challenge-running`.
-- **⚠️ IDs différents entre miroirs :** `nhentai.xxx/g/177013` ≠ `nhentai.to/g/177013` (même ID, contenu différent). Conséquence : un 404 n'entraîne PAS de bascule (renvoyer un autre contenu sous le même ID serait trompeur). La navigation reste cohérente car liste et détail viennent du même miroir.
-- **Images :** réécriture d'URL des CDN miroirs vers `/img?u=...` (pass-through + cache mémoire, `Cache-Control` 1 jour) ; l'hôte est déduit du `Host` header de la requête, donc `10.0.2.2:8787` côté émulateur comme `localhost:8787` côté web.
-- **Téléchargements en lot :** le worker (`mobile/lib/downloadQueueStore.ts`) passe par `getGallery()` (cascade → miroir) puis télécharge les pages via les URLs proxifiées `p.url` (`/img`). Extension de fichier déduite de l'URL (`detectPageExt`), pas du champ `t`. Le proxy `/img` supporte `Range` (206 + `Accept-Ranges`/`Content-Range`) pour les téléchargements reprenables d'expo-file-system (`createDownloadResumable`).
-- **App mobile :** résolveurs d'URL acceptent les URLs déjà résolues (`url`/`urlThumb`) ; `SmartImage` ne transforme que les hôtes `*.nhentai.net`.
+## Moteur de Recommandation Local Multi-Signaux (`recommendationEngine.ts`)
+- **Pondération des signaux :** Favoris récents (poids fort 3x) > Termes de recherche explicites > Historique de lecture.
+- **Déduplication & Normalisation :** Extraction stricte des artistes (`artist:`), parodies (`parody:`), exclusion des opérateurs techniques (pages, date) et stripping des tags parasites.
+- **Protection Cold-Start :** Aucun appel réseau inutile si l'utilisateur n'a aucun signal enregistré.
+- **Exclusion des doublons :** Les galeries déjà affichées dans la session courante sont mémorisées et exclues lors des actualisations.
 
-## Cloud Sync nHentai Officiel
-- Méthode préférée : Cookie `sessionid` extrait du navigateur → inject dans headers `fetch`.
-- Endpoint : `https://nhentai.net/api/v2/favorites?page=X`.
-- Fallback si 401/403 : parse HTML `/favorites/` et extraire les IDs via regex `/g/(\d+)/`.
-- Merge sans doublons via `Map<number, Gallery>` dans `importFavorites()`.
+## Sauvegarde & Restauration Universelle (`backupStore.ts`)
+- **Format JSON v2 :** Export/Import complet des favoris, de l'historique de lecture, des tags favoris, des collections de tags et des préférences de lecture.
+- **Validation stricte :** `isValidBackupData()` vérifie les types scalaires, timestamps ISO et structures d'objets pour prévenir les injections ou corruptions.
+- **Partage natif :** Utilisation de `expo-sharing` (`Sharing.shareAsync`) pour l'export de fichiers JSON avec repli automatique vers `expo-clipboard` si non disponible.
+
+## Intégrité Binaire des Fichiers Téléchargés (`imageIntegrity.ts`)
+- **Validation Magic Bytes :** Vérification des signatures binaires (JPEG `FF D8 FF`, PNG `89 50 4E 47`, WebP `RIFF...WEBP`).
+- **Seuil de taille minimale :** Rejet des payloads HTML d'erreur (ex. pages 403 Cloudflare ou fichiers 0 octet) avant archivage ou lecture.
+
+## Miroir Proxy Local Photon (`proxy/nhentai-mirror.mjs`)
+- **Solveur PoW SHA-256 :** Résolution dynamique des défis cryptographiques (`action=create_api_key`, etc.) par calcul local de nonce en ~10ms.
+- **Support HTTP 206 (Partial Content) :** Prise en charge des en-têtes `Range`, `Accept-Ranges` et `Content-Range` sur l'endpoint `/img` pour permettre la reprise des téléchargements via `createDownloadResumable`.
+- **Résolution des Tags par ID :** Endpoint `/api/tags/ids` avec cache mémoire pour mapper instantanément les IDs numériques des favoris v2 vers leurs noms textuels.
+- **Failover Intelligent :** Basculement automatique de `nhentai.to` vers `nhentai.xxx` avec mise en quarantaine et backoff exponentiel.
+- **Règle des IDs :** Les IDs diffèrent entre miroirs (`nhentai.xxx/g/123` ≠ `nhentai.to/g/123`) → un 404 ne provoque PAS de bascule vers un autre miroir pour préserver la cohérence des données.
+
+## Cloud Sync & Authentification Moderne
+- **Authentification v2 :** Support des jetons `X-Refresh-Token`, des clés API `X-Api-Key` et de l'ancien cookie `X-Sessionid`.
+- **Synchro reprenable :** Sauvegarde de l'état `syncProgress = {lastPage, maxPages, fetchedCount, failedPages}` après chaque page réussie.
+- **Rate Limiting Respectueux :** Espacement de 5s par page pour respecter le quota officiel de 15 req/min et backoff dynamique sur 429 (`retryAfter`).
+- **Planification Auto-Sync :** `scheduleAutoSync` via `setTimeout` chaîné (PAS de `setInterval`) décalé de 30 min après la fin réelle de la synchronisation.

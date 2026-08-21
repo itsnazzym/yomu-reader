@@ -33,7 +33,7 @@ export function OnboardingModal() {
         StyleSheet.absoluteFill,
         styles.rootOverlay,
         {
-          backgroundColor: "#09090e",
+          backgroundColor: colors.bg,
         },
       ]}
     >
@@ -48,7 +48,7 @@ export function OnboardingModal() {
       >
         {/* Header Row */}
         <View style={styles.headerRow}>
-          <Text style={styles.stepIndicator}>
+          <Text style={[styles.stepIndicator, { color: colors.sub }]}>
             Étape {currentStep + 1} sur {totalSteps}
           </Text>
 
@@ -56,10 +56,12 @@ export function OnboardingModal() {
           <TouchableOpacity
             activeOpacity={0.7}
             onPress={complete}
-            style={styles.skipBtn}
+            style={[styles.skipBtn, { backgroundColor: colors.page, borderColor: colors.tagBg }]}
+            accessibilityRole="button"
+            accessibilityLabel="Passer la présentation"
           >
-            <Text style={styles.skipBtnText}>Passer</Text>
-            <IconChevronRight size={14} color="#9ca3af" stroke={2} />
+            <Text style={[styles.skipBtnText, { color: colors.sub }]}>Passer</Text>
+            <IconChevronRight size={14} color={colors.sub} stroke={2} />
           </TouchableOpacity>
         </View>
 
@@ -70,7 +72,9 @@ export function OnboardingModal() {
               key={i}
               style={[
                 styles.progressSegment,
-                i <= currentStep && { backgroundColor: colors.accent },
+                {
+                  backgroundColor: i <= currentStep ? colors.accent : colors.tagBg,
+                },
               ]}
             />
           ))}
@@ -89,15 +93,17 @@ export function OnboardingModal() {
         </ScrollView>
 
         {/* Footer Controls */}
-        <View style={styles.footerRow}>
+        <View style={[styles.footerRow, { borderTopColor: colors.tagBg }]}>
           {currentStep > 0 ? (
             <TouchableOpacity
               activeOpacity={0.7}
               onPress={prevStep}
               style={styles.backBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Étape précédente"
             >
-              <IconArrowLeft size={16} color="#9ca3af" stroke={2} />
-              <Text style={styles.backBtnText}>Retour</Text>
+              <IconArrowLeft size={16} color={colors.sub} stroke={2} />
+              <Text style={[styles.backBtnText, { color: colors.sub }]}>Retour</Text>
             </TouchableOpacity>
           ) : (
             <View style={{ width: 80 }} />
@@ -107,6 +113,8 @@ export function OnboardingModal() {
             activeOpacity={0.85}
             onPress={nextStep}
             style={[styles.nextBtn, { backgroundColor: colors.accent }]}
+            accessibilityRole="button"
+            accessibilityLabel={currentStep === totalSteps - 1 ? "Terminer la présentation" : "Continuer"}
           >
             <View style={styles.nextBtnInner}>
               <Text style={styles.nextBtnText}>
@@ -144,7 +152,6 @@ const styles = StyleSheet.create({
   stepIndicator: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#6b7280",
   },
   skipBtn: {
     flexDirection: "row",
@@ -152,10 +159,8 @@ const styles = StyleSheet.create({
     gap: 2,
     paddingVertical: 6,
     paddingHorizontal: 10,
-    backgroundColor: "#161622",
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#232332",
   },
   skipBtnText: {
     fontSize: 12,
@@ -171,7 +176,6 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 3.5,
     borderRadius: 2,
-    backgroundColor: "#1c1c28",
   },
   scrollFlex: {
     flex: 1,
@@ -186,7 +190,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: "#1c1c28",
   },
   backBtn: {
     flexDirection: "row",

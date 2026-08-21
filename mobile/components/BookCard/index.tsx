@@ -106,13 +106,13 @@ export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
         styles.card,
         {
           width: cardWidth,
-          backgroundColor: "#14141e",
-          borderColor: "#232332",
+          backgroundColor: colors.page,
+          borderColor: colors.tagBg,
         },
       ]}
     >
       {/* Cover Image Container (B6 Tankōbon Ratio 1:1.414) */}
-      <View style={styles.imageContainer}>
+      <View style={[styles.imageContainer, { backgroundColor: colors.bg }]}>
         <SmartImage
           uri={coverUrl}
           recyclingKey={`cover_${galleryId}_${coverUrl}`}
@@ -133,6 +133,9 @@ export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
             styles.bookmarkNotch,
             fav && { backgroundColor: colors.accent },
           ]}
+            accessibilityRole="button"
+            accessibilityLabel={fav ? `Retirer ${title} des favoris` : `Ajouter ${title} aux favoris`}
+            accessibilityState={{ selected: fav }}
         >
           <IconBookmark
             size={12}
@@ -157,7 +160,7 @@ export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
       </View>
 
       {/* Card Info Area (Matte Info Tab) */}
-      <View style={styles.info}>
+      <View style={[styles.info, { borderTopColor: colors.tagBg }]}>
         <Text style={styles.title} numberOfLines={2}>
           {title}
         </Text>
@@ -183,7 +186,7 @@ export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
               );
             })}
             {extraTagsCount > 0 && (
-              <View style={styles.extraTagChip}>
+              <View style={[styles.extraTagChip, { backgroundColor: colors.tagBg }]}>
                 <Text style={styles.extraTagText}>+{extraTagsCount}</Text>
               </View>
             )}
@@ -205,7 +208,6 @@ const styles = StyleSheet.create({
     width: "100%",
     aspectRatio: 0.707, // Format B6 Tankōbon Japonais (1:1.414)
     position: "relative",
-    backgroundColor: "#0d0d14",
   },
   image: {
     width: "100%",
@@ -276,7 +278,6 @@ const styles = StyleSheet.create({
     padding: 8,
     gap: 5,
     borderTopWidth: 1,
-    borderTopColor: "#1e1e2c",
   },
   title: {
     fontSize: 11.5,
@@ -304,7 +305,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     paddingVertical: 1.5,
     borderRadius: 4,
-    backgroundColor: "#1e1e2c",
   },
   extraTagText: {
     color: "#9ca3af",

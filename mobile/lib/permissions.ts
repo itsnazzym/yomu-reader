@@ -19,7 +19,7 @@ export async function checkStoragePermissions(): Promise<boolean> {
       );
       return readMedia;
     } catch {
-      return true;
+      return false;
     }
   }
 
@@ -33,7 +33,7 @@ export async function checkStoragePermissions(): Promise<boolean> {
     );
     return read && write;
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -57,7 +57,7 @@ export async function requestStoragePermissions(): Promise<boolean> {
       );
       return res === PermissionsAndroid.RESULTS.GRANTED;
     } catch {
-      return true;
+      return false;
     }
   }
 
@@ -77,7 +77,7 @@ export async function requestStoragePermissions(): Promise<boolean> {
 
     return readOk && writeOk;
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -100,7 +100,7 @@ export async function requestNotificationPermissions(): Promise<boolean> {
     );
     return res === PermissionsAndroid.RESULTS.GRANTED;
   } catch {
-    return true;
+    return false;
   }
 }
 

@@ -1,7 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useState, useEffect } from "react";
+import { createInitOnce, createWriteQueue } from "./persistQueue";
 
-const READER_SETTINGS_KEY = "@nhentai_reader_settings_v2";
+export const READER_SETTINGS_STORAGE_KEY = "@nhentai_reader_settings_v2";
 
 export interface ReaderSettings {
   defaultMode: "webtoon" | "pager";
@@ -49,14 +50,16 @@ const defaultSettings: ReaderSettings = {
 
 let currentSettings: ReaderSettings = { ...defaultSettings };
 const listeners = new Set<() => void>();
+const writes = createWriteQueue();
 
 function notify() {
   for (const l of listeners) l();
 }
 
-export async function initReaderSettings() {
+async function loadReaderSettings() {
+  await writes.flush();
   try {
-    const raw = await AsyncStorage.getItem(READER_SETTINGS_KEY);
+    const raw = await AsyncStorage.getItem(READER_SETTINGS_STORAGE_KEY);
     if (raw) {
       currentSettings = { ...defaultSettings, ...JSON.parse(raw) };
       notify();
@@ -64,12 +67,14 @@ export async function initReaderSettings() {
   } catch {}
 }
 
+export const initReaderSettings = createInitOnce(loadReaderSettings);
+
 export async function updateReaderSettings(patch: Partial<ReaderSettings>) {
+  await initReaderSettings();
   currentSettings = { ...currentSettings, ...patch };
   notify();
-  try {
-    await AsyncStorage.setItem(READER_SETTINGS_KEY, JSON.stringify(currentSettings));
-  } catch {}
+  const serialized = JSON.stringify(currentSettings);
+  await writes.enqueue(() => AsyncStorage.setItem(READER_SETTINGS_STORAGE_KEY, serialized));
 }
 
 export function getReaderSettings(): ReaderSettings {

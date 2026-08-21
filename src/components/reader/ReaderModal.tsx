@@ -48,13 +48,11 @@ const ReaderImage: React.FC<{
   );
 };
 
-export const ReaderModal: React.FC<ReaderModalProps> = ({
+const ReaderModalContent: React.FC<ReaderModalProps & { gallery: Gallery }> = ({
   gallery,
   initialPage = 0,
   onClose,
 }) => {
-  if (!gallery) return null;
-
   const [currentGallery, setCurrentGallery] = useState<Gallery>(gallery);
 
   useEffect(() => {
@@ -71,7 +69,7 @@ export const ReaderModal: React.FC<ReaderModalProps> = ({
   const [currentPage, setCurrentPage] = useState(initialPage);
   const [readingMode, setReadingMode] = useState<ReadingMode>("manga-rtl");
   const [zoomMode, setZoomMode] = useState<ZoomMode>("fit-height");
-  const [preloadCount, setPreloadCount] = useState<PreloadOption>("all");
+  const [preloadCount, setPreloadCount] = useState<PreloadOption>(3);
   const [preloadStatus, setPreloadStatus] = useState<"idle" | "loading" | "ready">("idle");
   const [brightness, setBrightness] = useState<number>(100);
   const [webtoonGap, setWebtoonGap] = useState<number>(8);
@@ -771,4 +769,9 @@ export const ReaderModal: React.FC<ReaderModalProps> = ({
       )}
     </div>
   );
+};
+
+export const ReaderModal: React.FC<ReaderModalProps> = (props) => {
+  if (!props.gallery) return null;
+  return <ReaderModalContent {...props} gallery={props.gallery} />;
 };

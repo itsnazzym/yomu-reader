@@ -3,6 +3,8 @@ import * as FileSystem from "expo-file-system";
 import { getGallery, resolvePageUrl } from "./api/nhentai";
 import { Gallery } from "./api/types";
 import { makeLocalId, sanitizeTitle, writeLocalManifest } from "./localLibrary";
+import { decodeBase64Header, isCompleteDownload } from "./imageIntegrity";
+import { createInitOnce, createWriteQueue } from "./persistQueue";
 
 const QUEUE_KEY = "@nhentai_download_queue";
 const CONCURRENCY_KEY = "@nhentai_download_concurrency";
@@ -36,24 +38,23 @@ let state: QueueState = {
 };
 
 const listeners = new Set<() => void>();
+const writes = createWriteQueue();
 
 function notify() {
   for (const l of listeners) l();
 }
 
-async function persistQueue() {
-  try {
-    const toSave = state.items.map((i) => ({
-      ...i,
-      status: i.status === "downloading" ? ("queued" as QueueItemStatus) : i.status,
-    }));
-    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(toSave));
-  } catch (err) {
-    console.warn("[downloadQueue] Error saving queue:", err);
-  }
+function persistQueue(): Promise<void> {
+  const toSave = state.items.map((i) => ({
+    ...i,
+    status: i.status === "downloading" ? ("queued" as QueueItemStatus) : i.status,
+  }));
+  const serialized = JSON.stringify(toSave);
+  return writes.enqueue(() => AsyncStorage.setItem(QUEUE_KEY, serialized));
 }
 
-export async function initDownloadQueue() {
+async function loadDownloadQueue() {
+  await writes.flush();
   try {
     const rawConc = await AsyncStorage.getItem(CONCURRENCY_KEY);
     if (rawConc) {
@@ -71,13 +72,13 @@ export async function initDownloadQueue() {
       }));
       notify();
     }
-    // Reprise automatique : les items en attente (queued, ou downloading
-    // ramenés à queued par le chargement) reprennent dès le démarrage.
     processQueue();
   } catch (e) {
     console.warn("[downloadQueue] Error loading queue:", e);
   }
 }
+
+export const initDownloadQueue = createInitOnce(loadDownloadQueue);
 
 export function subscribeDownloadQueue(listener: () => void) {
   listeners.add(listener);
@@ -109,7 +110,7 @@ export function setMaxConcurrent(val: number) {
 }
 
 export function enqueueGalleries(
-  galleries: Array<{ id: number; title: string; cover?: string }>
+  galleries: { id: number; title: string; cover?: string }[]
 ) {
   const existingIds = new Set(state.items.map((i) => i.id));
   const newItems: QueueItem[] = [];
@@ -160,6 +161,22 @@ export function resumeQueueItem(id: number) {
 
 export function removeQueueItem(id: number) {
   state.items = state.items.filter((item) => item.id !== id);
+  persistQueue();
+  notify();
+}
+
+/**
+ * Après suppression disque : retire les items **completed** dont le localId
+ * correspond. Les files queued/downloading/error/paused restent intactes.
+ */
+export function removeCompletedByLocalId(localId: string | string[]): void {
+  const ids = new Set(Array.isArray(localId) ? localId : [localId]);
+  if (ids.size === 0) return;
+  const next = state.items.filter(
+    (item) => !(item.status === "completed" && item.localId != null && ids.has(item.localId))
+  );
+  if (next.length === state.items.length) return;
+  state.items = next;
   persistQueue();
   notify();
 }
@@ -218,6 +235,29 @@ export function resumeAllQueue() {
 const activeWorkers = new Set<number>();
 
 /**
+ * Les téléchargements s'exécutent au premier plan dans l'app. La reprise se fait
+ * via fichiers `.part` + file persistée, pas via un service natif d'arrière-plan.
+ */
+async function isLocalImageComplete(uri: string, expectedSize?: number): Promise<boolean> {
+  const info = await FileSystem.getInfoAsync(uri);
+  if (!info.exists) return false;
+  let headerBytes: Uint8Array | null = null;
+  try {
+    const header = await FileSystem.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.Base64,
+      length: 16,
+      position: 0,
+    });
+    headerBytes = decodeBase64Header(header, 16);
+  } catch {}
+  return isCompleteDownload({
+    size: info.size ?? 0,
+    expectedSize,
+    headerBytes,
+  });
+}
+
+/**
  * Extension du fichier déduite de l'URL (y compris les URLs du proxy miroir,
  * où l'extension réelle est dans le paramètre u=). Priorité à l'URL, sinon le
  * type t de la page (j/p/w/g).
@@ -250,6 +290,9 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
 
     const total = gallery.images?.pages?.length || gallery.num_pages || 0;
     const pagesCopy = [...(gallery.images?.pages || [])];
+    if (!Number.isFinite(total) || total <= 0) {
+      throw new Error("La galerie ne contient aucune page téléchargeable.");
+    }
 
     updateItem(item.id, {
       totalPages: total,
@@ -266,20 +309,50 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
       const p = pagesCopy[i];
       const pageNum = (i + 1).toString().padStart(3, "0");
       const pageUrl = p?.url || resolvePageUrl(gallery.media_id, i, p);
+      if (!pageUrl) {
+        throw new Error(`URL manquante pour la page ${i + 1}.`);
+      }
       const ext = detectPageExt(pageUrl, p?.t);
       const fileUri = `${targetDir}Image${pageNum}.${ext}`;
+      const partUri = `${fileUri}.part`;
+      const resumeKey = `@nh_dl_resume_${item.id}_${pageNum}`;
 
-
-      const exists = (await FileSystem.getInfoAsync(fileUri)).exists;
-      if (!exists && pageUrl) {
-        const downloadRes = FileSystem.createDownloadResumable(pageUrl, fileUri, {
+      let fileInfo = await FileSystem.getInfoAsync(fileUri);
+      if (fileInfo.exists) {
+        const valid = await isLocalImageComplete(fileUri);
+        if (!valid) {
+          await FileSystem.deleteAsync(fileUri, { idempotent: true });
+          fileInfo = await FileSystem.getInfoAsync(fileUri);
+        }
+      }
+      if (!fileInfo.exists) {
+        await FileSystem.deleteAsync(partUri, { idempotent: true }).catch(() => {});
+        const downloadRes = FileSystem.createDownloadResumable(pageUrl, partUri, {
           headers: {
             Referer: "https://nhentai.net/",
             "User-Agent":
               "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
           },
         });
-        await downloadRes.downloadAsync();
+        try {
+          const savable = downloadRes.savable();
+          await AsyncStorage.setItem(resumeKey, JSON.stringify(savable));
+        } catch {}
+        const result = await downloadRes.downloadAsync();
+        await AsyncStorage.removeItem(resumeKey).catch(() => {});
+        if (!result || result.status < 200 || result.status >= 300) {
+          await FileSystem.deleteAsync(partUri, { idempotent: true });
+          throw new Error(`Téléchargement incomplet pour la page ${i + 1}.`);
+        }
+        const expectedSize = Number(
+          result.headers?.["Content-Length"] || result.headers?.["content-length"] || 0
+        );
+        const complete = await isLocalImageComplete(partUri, expectedSize || undefined);
+        if (!complete) {
+          await FileSystem.deleteAsync(partUri, { idempotent: true });
+          throw new Error(`Fichier incomplet ou corrompu pour la page ${i + 1}.`);
+        }
+        await FileSystem.moveAsync({ from: partUri, to: fileUri });
       }
 
       pagesCopy[i] = {

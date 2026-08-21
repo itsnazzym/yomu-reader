@@ -47,13 +47,13 @@ const ThumbnailImage: React.FC<{
   );
 };
 
-export const GalleryDetailModal: React.FC<GalleryDetailModalProps> = ({
+const GalleryDetailModalContent: React.FC<GalleryDetailModalProps & { gallery: Gallery }> = ({
   gallery,
   onClose,
   onTagClick,
   onRead,
 }) => {
-  const [currentGallery, setCurrentGallery] = useState<Gallery | null>(gallery);
+  const [currentGallery, setCurrentGallery] = useState<Gallery>(gallery);
 
   useEffect(() => {
     if (gallery) {
@@ -67,8 +67,6 @@ export const GalleryDetailModal: React.FC<GalleryDetailModalProps> = ({
       }
     }
   }, [gallery]);
-
-  if (!currentGallery) return null;
 
   const { queue, addToQueue } = useDownloadStore();
   const { isFavorite, toggleFavorite } = useFavoriteStore();
@@ -432,4 +430,9 @@ export const GalleryDetailModal: React.FC<GalleryDetailModalProps> = ({
       )}
     </div>
   );
+};
+
+export const GalleryDetailModal: React.FC<GalleryDetailModalProps> = (props) => {
+  if (!props.gallery) return null;
+  return <GalleryDetailModalContent {...props} gallery={props.gallery} />;
 };

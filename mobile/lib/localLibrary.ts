@@ -34,6 +34,8 @@ export interface LocalLibraryEntry {
   status: "complete" | "partial";
   gallery: Gallery;
   updatedAt: number;
+  /** Taille du dossier au scan (non persistée). */
+  sizeBytes: number;
 }
 
 export function libraryRoot(): string {
@@ -67,6 +69,18 @@ export function isValidLocalId(id: unknown): id is string {
   if (typeof id !== "string" || !id || id.length > 120) return false;
   if (id === "." || id === ".." || id.includes("/") || id.includes("\\")) return false;
   return true;
+}
+
+export function isValidLocalGalleryMetadata(value: unknown): value is Gallery {
+  if (!value || typeof value !== "object") return false;
+  const gallery = value as Partial<Gallery>;
+  if (!Number.isFinite(Number(gallery.id)) || Number(gallery.id) <= 0) return false;
+  if (!gallery.title || typeof gallery.title !== "object") return false;
+  if (!gallery.images || typeof gallery.images !== "object") return false;
+  if (!Array.isArray(gallery.images.pages) || gallery.images.pages.length === 0) return false;
+  return gallery.images.pages.every(
+    (page) => Boolean(page) && typeof page.url === "string" && page.url.startsWith("file://")
+  );
 }
 
 export async function writeLocalManifest(input: {
@@ -120,7 +134,11 @@ export async function listLocalLibrary(): Promise<LocalLibraryEntry[]> {
     if (!metaInfo.exists) continue; // sans métadonnées, rien à afficher
     let gallery: Gallery;
     try {
-      gallery = JSON.parse(await FileSystem.readAsStringAsync(metadataPath(localId)));
+      const parsed: unknown = JSON.parse(
+        await FileSystem.readAsStringAsync(metadataPath(localId))
+      );
+      if (!isValidLocalGalleryMetadata(parsed)) continue;
+      gallery = parsed;
     } catch {
       continue;
     }
@@ -135,6 +153,7 @@ export async function listLocalLibrary(): Promise<LocalLibraryEntry[]> {
       status: manifest?.status ?? "complete",
       gallery,
       updatedAt: manifest?.updatedAt ?? (metaInfo.modificationTime ?? 0),
+      sizeBytes: await measureDirBytes(`${libraryRoot()}${localId}/`),
     });
   }
 
@@ -159,7 +178,13 @@ export async function readLocalGallery(
   if (!metaInfo.exists) throw new Error("Dossier de la galerie introuvable");
   let gallery: Gallery;
   try {
-    gallery = JSON.parse(await FileSystem.readAsStringAsync(metadataPath(localId)));
+    const parsed: unknown = JSON.parse(
+      await FileSystem.readAsStringAsync(metadataPath(localId))
+    );
+    if (!isValidLocalGalleryMetadata(parsed)) {
+      throw new Error("Métadonnées de la galerie invalides");
+    }
+    gallery = parsed;
   } catch {
     throw new Error("Métadonnées de la galerie illisibles");
   }
@@ -189,7 +214,11 @@ export async function verifyLocalGallery(localId: string): Promise<LocalVerifyRe
 
   let gallery: Gallery;
   try {
-    gallery = JSON.parse(await FileSystem.readAsStringAsync(metadataPath(localId)));
+    const parsed: unknown = JSON.parse(
+      await FileSystem.readAsStringAsync(metadataPath(localId))
+    );
+    if (!isValidLocalGalleryMetadata(parsed)) return empty;
+    gallery = parsed;
   } catch {
     return empty;
   }
@@ -212,4 +241,55 @@ export async function verifyLocalGallery(localId: string): Promise<LocalVerifyRe
     .filter((f): f is string => f !== null);
 
   return { ok: missing.length === 0, expected, found: found.length, missing };
+}
+
+/** Somme récursive des fichiers d'un dossier (directories = 0 octet). */
+async function measureDirBytes(dirUri: string): Promise<number> {
+  let names: string[];
+  try {
+    names = await FileSystem.readDirectoryAsync(dirUri);
+  } catch {
+    return 0;
+  }
+  let total = 0;
+  for (const name of names) {
+    const child = `${dirUri}${name}`;
+    try {
+      const info = await FileSystem.getInfoAsync(child);
+      if (!info.exists) continue;
+      if (info.isDirectory) {
+        total += await measureDirBytes(`${child}/`);
+      } else {
+        total += info.size ?? 0;
+      }
+    } catch {}
+  }
+  return total;
+}
+
+/** Affichage header biblio : `1,4 Go` (virgule FR, non persisté). */
+export function formatLibrarySize(bytes: number): string {
+  if (!bytes || bytes <= 0) return "0 Ko";
+  const units = ["Octets", "Ko", "Mo", "Go", "To"] as const;
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  const label =
+    unit === 0 || value >= 10
+      ? String(Math.round(value))
+      : value.toFixed(1).replace(".", ",");
+  return `${label} ${units[unit]}`;
+}
+
+/**
+ * Supprime le dossier d'une galerie locale. Favoris et historique inchangés.
+ * La file de téléchargement est nettoyée côté appelant (localId completed).
+ */
+export async function deleteLocalGallery(localId: string): Promise<void> {
+  if (!isValidLocalId(localId)) throw new Error("Dossier invalide");
+  const dir = `${libraryRoot()}${localId}`;
+  await FileSystem.deleteAsync(dir, { idempotent: true });
 }

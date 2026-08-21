@@ -15,7 +15,6 @@ import { useTheme } from "@/lib/ThemeContext";
 import { useHistory, HistoryEntry } from "@/lib/historyStore";
 import SmartImage from "@/components/SmartImage";
 import { CardPressable } from "@/components/ui/CardPressable";
-import { IconBtn } from "@/components/ui/IconBtn";
 import { AnimatedEmptyState } from "@/components/ui/AnimatedEmptyState";
 
 export default function HistoryScreen() {

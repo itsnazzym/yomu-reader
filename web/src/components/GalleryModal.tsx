@@ -15,6 +15,35 @@ interface GalleryDetail {
   source: string;
 }
 
+interface GalleryRequestResult {
+  galleryId: number;
+  detail: GalleryDetail | null;
+  error: string | null;
+}
+
+function isGalleryDetail(value: unknown): value is GalleryDetail {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const gallery = value as Record<string, unknown>;
+  const title = gallery.title;
+
+  return (
+    typeof gallery.id === "number" &&
+    typeof gallery.media_id === "string" &&
+    typeof gallery.cover === "string" &&
+    typeof gallery.num_pages === "number" &&
+    typeof gallery.num_favorites === "number" &&
+    typeof gallery.upload_date === "number" &&
+    typeof gallery.source === "string" &&
+    Array.isArray(gallery.tags) &&
+    typeof title === "object" &&
+    title !== null &&
+    !Array.isArray(title) &&
+    typeof (title as Record<string, unknown>).english === "string" &&
+    typeof (title as Record<string, unknown>).japanese === "string" &&
+    typeof (title as Record<string, unknown>).pretty === "string"
+  );
+}
+
 // Pastel colors per tag type, matching the real app's BookCard chips
 const TAG_COLORS: Record<string, string> = {
   artist: "#f472b6",
@@ -48,31 +77,37 @@ export default function GalleryModal({
   galleryId: number;
   onClose: () => void;
 }) {
-  const [detail, setDetail] = useState<GalleryDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [result, setResult] = useState<GalleryRequestResult | null>(null);
+  const currentResult = result?.galleryId === galleryId ? result : null;
+  const detail = currentResult?.detail ?? null;
+  const error = currentResult?.error ?? null;
+  const loading = currentResult === null;
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    fetch(`/api/gallery/${galleryId}`)
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-      })
-      .then((data: GalleryDetail) => {
-        if (!cancelled) setDetail(data);
-      })
-      .catch((e: Error) => {
-        if (!cancelled) setError(e.message);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+    const controller = new AbortController();
+
+    async function loadGallery() {
+      try {
+        const response = await fetch(`/api/gallery/${galleryId}`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const data: unknown = await response.json();
+        if (!isGalleryDetail(data)) throw new Error("Invalid gallery response");
+        if (!controller.signal.aborted) {
+          setResult({ galleryId, detail: data, error: null });
+        }
+      } catch (requestError) {
+        if (controller.signal.aborted) return;
+        const message =
+          requestError instanceof Error ? requestError.message : "Gallery request failed";
+        setResult({ galleryId, detail: null, error: message });
+      }
+    }
+
+    void loadGallery();
+    return () => controller.abort();
   }, [galleryId]);
 
   // Close on Escape
@@ -144,7 +179,19 @@ export default function GalleryModal({
               {/* Cover + meta */}
               <div className="flex gap-5 px-5 pt-5">
                 <div className="relative aspect-[1/1.414] w-[130px] shrink-0 overflow-hidden rounded-xl border border-line bg-surface-4">
-                  <Image src={detail.cover} alt={detail.title.english} fill sizes="130px" className="object-cover" />
+                  {detail.cover ? (
+                    <Image
+                      src={detail.cover}
+                      alt={detail.title.english}
+                      fill
+                      sizes="130px"
+                      className="object-cover"
+                    />
+                  ) : (
+                    <span className="flex h-full items-center justify-center px-3 text-center text-[11px] text-faint-2">
+                      Cover unavailable
+                    </span>
+                  )}
                 </div>
                 <div className="flex min-w-0 flex-col gap-2 py-1">
                   <h3 className="text-[17px] font-semibold leading-[1.3] tracking-[-0.01em] text-ink">

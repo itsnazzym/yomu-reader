@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 
 interface FastScrollRailProps {
   totalPages: number;
@@ -15,6 +15,14 @@ export const FastScrollRail: React.FC<FastScrollRailProps> = ({
   const [isHovered, setIsHovered] = useState(false);
   const [dragPage, setDragPage] = useState<number | null>(null);
   const railRef = useRef<HTMLDivElement>(null);
+  const removeDragListenersRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    return () => {
+      removeDragListenersRef.current?.();
+      removeDragListenersRef.current = null;
+    };
+  }, []);
 
   const calculatePageFromY = (clientY: number) => {
     if (!railRef.current) return 1;
@@ -26,6 +34,7 @@ export const FastScrollRail: React.FC<FastScrollRailProps> = ({
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    removeDragListenersRef.current?.();
     const page = calculatePageFromY(e.clientY);
     setDragPage(page);
     onPageSelect(page - 1);
@@ -38,12 +47,16 @@ export const FastScrollRail: React.FC<FastScrollRailProps> = ({
 
     const handleMouseUp = () => {
       setDragPage(null);
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
+      removeDragListenersRef.current?.();
+      removeDragListenersRef.current = null;
     };
 
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
+    removeDragListenersRef.current = () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
   };
 
   const activePage = dragPage !== null ? dragPage : currentPage + 1;

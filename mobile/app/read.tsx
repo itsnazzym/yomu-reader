@@ -38,6 +38,12 @@ import { useReaderSettings } from "@/lib/readerSettingsStore";
 import { ThumbRail } from "@/components/reader/ThumbRail";
 import { lightTap } from "@/lib/haptics";
 
+export function parseReaderInitialPage(value?: string): number {
+  if (!value) return 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : 0;
+}
+
 export default function ReaderScreen() {
   const { id, initialPage, local, localId } = useLocalSearchParams<{
     id: string;
@@ -54,8 +60,8 @@ export default function ReaderScreen() {
   const [gallery, setGallery] = useState<Gallery | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(
-    initialPage ? parseInt(initialPage, 10) : 0
+  const [currentPage, setCurrentPage] = useState(() =>
+    parseReaderInitialPage(initialPage)
   );
   const [controlsVisible, setControlsVisible] = useState(true);
   const [readMode, setReadMode] = useState<"webtoon" | "pager">(
@@ -78,41 +84,58 @@ export default function ReaderScreen() {
   );
 
   useEffect(() => {
+    let cancelled = false;
     const rawLocal = typeof localId === "string" && localId ? localId : local;
-    if (rawLocal) {
-      setLoading(true);
-      setError(null);
-      readLocalGallery(rawLocal)
-        .then(({ gallery }) => {
-          setGallery(gallery);
-        })
-        .catch((err: any) => {
-          console.error("Local reader error:", err);
-          setError(err?.message || "Impossible d'ouvrir la galerie locale.");
-        })
-        .finally(() => {
-          setLoading(false);
-        });
-      return;
-    }
-
-    if (!id) return;
     setLoading(true);
     setError(null);
-    getGallery(id)
-      .then((g) => {
-        setGallery(g);
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error("Reader gallery fetch error:", err);
-        setError(err?.message || "Impossible de charger la galerie.");
-        setLoading(false);
-      });
+    setGallery(null);
+
+    async function loadGallery() {
+      try {
+        if (rawLocal) {
+          const result = await readLocalGallery(rawLocal);
+          if (!cancelled) setGallery(result.gallery);
+          return;
+        }
+
+        if (!id || !/^\d+$/.test(id) || Number(id) <= 0) {
+          if (!cancelled) setError("Identifiant de galerie invalide.");
+          return;
+        }
+
+        const remoteGallery = await getGallery(id);
+        if (!cancelled) setGallery(remoteGallery);
+      } catch (err) {
+        if (cancelled) return;
+        console.error(rawLocal ? "Local reader error:" : "Reader gallery fetch error:", err);
+        setError(
+          err instanceof Error
+            ? err.message
+            : rawLocal
+              ? "Impossible d'ouvrir la galerie locale."
+              : "Impossible de charger la galerie."
+        );
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void loadGallery();
+    return () => {
+      cancelled = true;
+    };
   }, [id, local, localId]);
 
-  const pages = gallery?.images?.pages || [];
+  useEffect(() => {
+    setCurrentPage(parseReaderInitialPage(initialPage));
+  }, [id, initialPage, local, localId]);
+
+  const pages = useMemo(() => gallery?.images?.pages ?? [], [gallery]);
   const totalPages = pages.length || gallery?.num_pages || 1;
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.max(0, Math.min(page, totalPages - 1)));
+  }, [totalPages]);
 
   // Pre-load next 2 pages and previous page
   useEffect(() => {
@@ -140,6 +163,14 @@ export default function ReaderScreen() {
       }
     }
   }, [controlsVisible, readerSettings.hideStatusBar]);
+
+  useEffect(() => {
+    return () => {
+      if (Platform.OS === "android") {
+        NavigationBar.setVisibilityAsync("visible").catch(() => {});
+      }
+    };
+  }, []);
 
   const handlePageChange = useCallback(
     (nextPage: number) => {

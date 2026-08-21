@@ -1,9 +1,12 @@
-// Real statistics fetched from the nHentai API at build/request time.
-// Primary path: the project's Photon mirror proxy (local, fast, unblocked).
-// Fallback: nHentai API v2 directly (works from the server).
+// Real statistics fetched from API v2 at build/request time, with an optional
+// server-configured Photon mirror fallback.
 
-const MIRROR = "http://localhost:8787";
-const DIRECT_V2 = "https://nhentai.net/api/v2";
+import { DIRECT_V2_BASE_URL, getMirrorBaseUrl } from "@/lib/server-config";
+import {
+  parseGalleryList,
+  parseGalleryTotal,
+  type GalleryMetrics,
+} from "@/lib/upstream-api";
 
 const TIMEOUT_MS = 8000;
 
@@ -15,7 +18,7 @@ export interface LiveStats {
   fetchedAt: string; // ISO timestamp
 }
 
-async function fetchJson(url: string): Promise<any> {
+async function fetchJson(url: string): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
@@ -37,34 +40,51 @@ async function fetchJson(url: string): Promise<any> {
   }
 }
 
-async function fetchPopularWeek(): Promise<any[]> {
+async function fetchPopularWeek(): Promise<GalleryMetrics[]> {
   // API v2 first: it carries real num_favorites / num_pages. The Photon proxy
   // mirrors the v1 format which zeroes out favorites.
   try {
-    const d = await fetchJson(`${DIRECT_V2}/search?query=*&page=1&sort=popular-week`);
-    if (Array.isArray(d?.result) && d.result.length) return d.result;
+    const galleries = parseGalleryList(
+      await fetchJson(`${DIRECT_V2_BASE_URL}/search?query=*&page=1&sort=popular-week`),
+    );
+    if (galleries?.length) return galleries;
   } catch {
     // fall through
   }
-  try {
-    const d = await fetchJson(`${MIRROR}/api/galleries/all?page=1&sort=popular-week`);
-    if (Array.isArray(d?.result) && d.result.length) return d.result;
-  } catch {
-    // fall through
+  const mirrorBaseUrl = getMirrorBaseUrl();
+  if (mirrorBaseUrl) {
+    try {
+      const galleries = parseGalleryList(
+        await fetchJson(`${mirrorBaseUrl}/api/galleries/all?page=1&sort=popular-week`),
+      );
+      if (galleries?.length) return galleries;
+    } catch {
+      // fall through
+    }
   }
   return [];
 }
 
-/** Total archive size: proxy reports num_pages for sort=recent (25/page). */
-async function fetchTotalPages(): Promise<number | null> {
+async function fetchTotalGalleries(): Promise<number | null> {
   try {
-    const d = await fetchJson(`${MIRROR}/api/galleries/all?page=1&sort=recent`);
-    const numPages = Number(d?.num_pages);
-    if (numPages > 0) return numPages * 25;
+    const total = parseGalleryTotal(
+      await fetchJson(`${DIRECT_V2_BASE_URL}/search?query=*&page=1&sort=recent`),
+    );
+    if (total) return total;
   } catch {
-    // fall through
+    // Try the configured mirror below.
   }
-  return null;
+
+  const mirrorBaseUrl = getMirrorBaseUrl();
+  if (!mirrorBaseUrl) return null;
+
+  try {
+    return parseGalleryTotal(
+      await fetchJson(`${mirrorBaseUrl}/api/galleries/all?page=1&sort=recent`),
+    );
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -72,13 +92,16 @@ async function fetchTotalPages(): Promise<number | null> {
  * it is refreshed with ISR so the numbers stay live without slowing the site.
  */
 export async function getLiveStats(): Promise<LiveStats> {
-  const [popular, totalPages] = await Promise.all([fetchPopularWeek(), fetchTotalPages()]);
+  const [popular, totalGalleries] = await Promise.all([
+    fetchPopularWeek(),
+    fetchTotalGalleries(),
+  ]);
 
-  const topFavorites = popular.reduce((sum, g) => sum + (Number(g.num_favorites) || 0), 0);
-  const topPages = popular.reduce((sum, g) => sum + (Number(g.num_pages) || 0), 0);
+  const topFavorites = popular.reduce((sum, gallery) => sum + gallery.numFavorites, 0);
+  const topPages = popular.reduce((sum, gallery) => sum + gallery.numPages, 0);
 
   return {
-    totalGalleries: totalPages ?? 0,
+    totalGalleries: totalGalleries ?? 0,
     topFavorites,
     topPages,
     sampled: popular.length,

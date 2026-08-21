@@ -23,6 +23,14 @@ await build({
           () => ({ path: path.join(here, "mockAsyncStorage.ts") })
         );
         b.onResolve(
+          { filter: /^expo-secure-store$/ },
+          () => ({ path: path.join(here, "mockSecureStore.ts") })
+        );
+        b.onResolve(
+          { filter: /^react-native$/ },
+          () => ({ path: path.join(here, "mockReactNative.ts") })
+        );
+        b.onResolve(
           { filter: /^@\/lib\/api\/nhentai$/ },
           () => ({ path: path.join(here, "mockNhentai.ts") })
         );

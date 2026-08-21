@@ -1,10 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useState, useEffect } from "react";
+import { createWriteQueue } from "./persistQueue";
 import {
   getAuthStorageReady,
   hasSession,
-  loadAccessToken,
-  loadRefreshToken,
   storeTokens,
   clearTokens,
   ApiError,
@@ -12,6 +11,7 @@ import {
 import {
   login as v2Login,
   logout as v2Logout,
+  refresh as v2Refresh,
 } from "./api/v2/auth";
 import {
   getMe,
@@ -21,6 +21,7 @@ import {
   getPowChallenge,
   solvePoW,
 } from "./api/v2/config";
+import type { PowProgress } from "./api/v2/config";
 import { syncOnlineFavoritesFullOnLaunch } from "./onlineFavoritesStartupSync";
 
 const ACCOUNT_KEY = "@nhentai_account_session_v1";
@@ -47,10 +48,7 @@ export interface UserProfile {
 export interface AccountSession {
   isLoggedIn: boolean;
   username?: string;
-  sessionId?: string;
   credentialType?: "refresh" | "apiKey" | "sessionid";
-  csrfToken?: string;
-  cfClearance?: string;
   lastSync?: string;
   cloudFavoritesCount?: number;
   profile?: UserProfile;
@@ -62,17 +60,64 @@ let sessionState: AccountSession = {
 };
 
 const listeners = new Set<() => void>();
+const writes = createWriteQueue();
 
 function notify() {
   for (const l of listeners) l();
 }
 
+function sanitizeAccountMetadata(value: unknown): AccountSession {
+  if (!value || typeof value !== "object") return { isLoggedIn: false };
+  const raw = value as Record<string, unknown>;
+  return {
+    isLoggedIn: Boolean(raw.isLoggedIn),
+    username: typeof raw.username === "string" ? raw.username : undefined,
+    credentialType:
+      raw.credentialType === "refresh" ||
+      raw.credentialType === "apiKey" ||
+      raw.credentialType === "sessionid"
+        ? raw.credentialType
+        : undefined,
+    lastSync: typeof raw.lastSync === "string" ? raw.lastSync : undefined,
+    cloudFavoritesCount:
+      typeof raw.cloudFavoritesCount === "number" ? raw.cloudFavoritesCount : undefined,
+    profile:
+      raw.profile && typeof raw.profile === "object"
+        ? (raw.profile as UserProfile)
+        : undefined,
+    comments: Array.isArray(raw.comments) ? (raw.comments as UserComment[]) : undefined,
+  };
+}
+
 export async function initAccountSession() {
+  await writes.flush();
   try {
     await getAuthStorageReady();
     const raw = await AsyncStorage.getItem(ACCOUNT_KEY);
     if (raw) {
-      sessionState = JSON.parse(raw);
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const legacyCredential =
+        typeof parsed.sessionId === "string" ? parsed.sessionId.trim() : "";
+      const legacyType =
+        parsed.credentialType === "apiKey" ||
+        parsed.credentialType === "sessionid" ||
+        parsed.credentialType === "refresh"
+          ? parsed.credentialType
+          : "refresh";
+      if (legacyCredential && !(await hasSession())) {
+        try {
+          if (legacyType === "refresh") {
+            const tokens = await v2Refresh(legacyCredential);
+            await storeTokens(tokens.access_token, tokens.refresh_token);
+          } else {
+            await storeTokens(legacyCredential, null);
+          }
+        } catch {
+          await clearTokens().catch(() => {});
+        }
+      }
+      sessionState = sanitizeAccountMetadata(parsed);
+      await writes.enqueue(() => AsyncStorage.setItem(ACCOUNT_KEY, JSON.stringify(sessionState)));
     }
     const isAuthed = await hasSession();
     if (isAuthed) {
@@ -89,10 +134,16 @@ export async function initAccountSession() {
             num_favorites: sessionState.cloudFavoritesCount || 0,
           };
         }
-      } catch {}
+      } catch (error) {
+        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+          await clearTokens().catch(() => {});
+          sessionState.isLoggedIn = false;
+        }
+      }
     } else {
       sessionState.isLoggedIn = false;
     }
+    await writes.enqueue(() => AsyncStorage.setItem(ACCOUNT_KEY, JSON.stringify(sessionState)));
     notify();
   } catch {}
 }
@@ -119,12 +170,12 @@ export function getAccountSession(): AccountSession {
 }
 
 export async function saveAccountSession(data: Partial<AccountSession>) {
-  sessionState = {
+  sessionState = sanitizeAccountMetadata({
     ...sessionState,
     ...data,
-    isLoggedIn: Boolean(data.sessionId || data.username || sessionState.sessionId || sessionState.isLoggedIn),
-  };
-  await AsyncStorage.setItem(ACCOUNT_KEY, JSON.stringify(sessionState));
+    isLoggedIn: data.isLoggedIn ?? sessionState.isLoggedIn,
+  });
+  await writes.enqueue(() => AsyncStorage.setItem(ACCOUNT_KEY, JSON.stringify(sessionState)));
   notify();
 }
 
@@ -133,7 +184,7 @@ export async function logoutAccount() {
     await v2Logout();
   } catch {}
   sessionState = { isLoggedIn: false };
-  await AsyncStorage.removeItem(ACCOUNT_KEY);
+  await writes.enqueue(() => AsyncStorage.removeItem(ACCOUNT_KEY));
   notify();
 }
 
@@ -145,7 +196,7 @@ export function isSyncInProgress(): boolean {
 
 export async function syncCloudFavorites(
   report?: (msg: string, current?: number, total?: number) => void
-): Promise<{ success: boolean; count: number; error?: string }> {
+): Promise<{ success: boolean; count: number; error?: string; partial?: boolean }> {
   if (syncInProgress) return { success: false, count: 0, error: "Synchro déjà en cours" };
   syncInProgress = true;
   setSyncProgressState({ active: true, msg: "Synchronisation...", current: 0, total: 0 });
@@ -164,7 +215,12 @@ export async function syncCloudFavorites(
       });
       return { success: true, count: res.count };
     } else {
-      return { success: false, count: 0, error: res.error || "Échec de synchronisation" };
+      return {
+        success: false,
+        count: res.count,
+        error: res.error || "Échec de synchronisation",
+        partial: res.partial,
+      };
     }
   } catch (err: any) {
     return { success: false, count: 0, error: err?.message || "Erreur inconnue" };
@@ -178,21 +234,19 @@ export async function loginWithCredentials(
   username: string,
   password: string,
   captchaResponse?: string,
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string, powProgress?: PowProgress) => void
 ): Promise<{ success: boolean; error?: string; count?: number }> {
   try {
     onProgress?.("Récupération du défi de sécurité...");
     const pow = await getPowChallenge("login");
 
     onProgress?.("Résolution du challenge cryptographique (PoW)...");
-    const nonce = await solvePoW(pow.challenge, pow.difficulty, (currNonce) => {
-      if (currNonce % 20000 === 0) {
-        onProgress?.(`Calcul cryptographique... (${currNonce} itérations)`);
-      }
+    const nonce = await solvePoW(pow.challenge, pow.difficulty, (progress) => {
+      onProgress?.("Calcul cryptographique...", progress);
     });
 
     onProgress?.("Authentification officielle nHentai API v2...");
-    const authResult = await v2Login({
+    await v2Login({
       username,
       password,
       pow_challenge: pow.challenge,
@@ -200,22 +254,17 @@ export async function loginWithCredentials(
       captcha_response: captchaResponse,
     });
 
-    let profile: UserProfile | undefined = undefined;
-    try {
-      const me = await getMe();
-      if (me) {
-        profile = {
-          id: me.id,
-          username: me.username,
-          email: me.email,
-          avatar_url: me.avatar_url,
-        };
-      }
-    } catch {}
+    const me = await getMe();
+    if (!me?.username) throw new Error("La session créée n'a pas pu être validée.");
+    const profile: UserProfile = {
+      id: me.id,
+      username: me.username,
+      email: me.email,
+      avatar_url: me.avatar_url,
+    };
 
     await saveAccountSession({
-      sessionId: authResult.access_token,
-      username: profile?.username || username,
+      username: profile.username || username,
       credentialType: "refresh",
       isLoggedIn: true,
       profile,
@@ -223,6 +272,7 @@ export async function loginWithCredentials(
 
     return { success: true };
   } catch (err: any) {
+    await clearTokens().catch(() => {});
     console.warn("[account] loginWithCredentials error:", err);
     const msg =
       err instanceof ApiError
@@ -252,6 +302,7 @@ export async function fetchUserProfile(): Promise<UserProfile | null> {
       await saveAccountSession({
         profile,
         username: me.username,
+        isLoggedIn: true,
       });
 
       return profile;
@@ -293,9 +344,7 @@ export async function updateUserAvatar(
       return { success: false, error: "Vous devez être connecté." };
     }
 
-    try {
-      await updateProfile({ avatar_url: avatarUrl });
-    } catch {}
+    await updateProfile({ avatar_url: avatarUrl });
 
     const updatedProfile: UserProfile = {
       ...(sessionState.profile || { username: sessionState.username || "User" }),
@@ -333,25 +382,39 @@ export function useAccount() {
     fetchUserProfile,
     changeUserPassword,
     loginWithSession: async (
-      sessionId: string,
+      credential: string,
       username?: string,
       credentialType: "refresh" | "apiKey" | "sessionid" = "refresh",
-      extra?: { cfClearance?: string; csrfToken?: string }
     ) => {
-      if (credentialType === "apiKey") {
-        await storeTokens(sessionId, sessionId);
-      } else {
-        await storeTokens(sessionId, sessionId);
+      try {
+        if (credentialType === "refresh") {
+          const tokens = await v2Refresh(credential);
+          await storeTokens(tokens.access_token, tokens.refresh_token);
+        } else {
+          await storeTokens(credential, null);
+        }
+
+        const me = await getMe();
+        if (!me?.username) {
+          throw new Error("Identifiant accepté, mais session non authentifiée.");
+        }
+        const profile: UserProfile = {
+          id: me.id,
+          username: me.username,
+          email: me.email,
+          avatar_url: me.avatar_url,
+        };
+        await saveAccountSession({
+          username: profile.username || username || "Membre nHentai",
+          credentialType,
+          isLoggedIn: true,
+          profile,
+        });
+        return profile;
+      } catch (error) {
+        await clearTokens().catch(() => {});
+        throw error;
       }
-      await saveAccountSession({
-        sessionId,
-        username: username || "Membre nHentai",
-        credentialType,
-        cfClearance: extra?.cfClearance,
-        csrfToken: extra?.csrfToken,
-        isLoggedIn: true,
-      });
-      void fetchUserProfile();
     },
     logout: logoutAccount,
     syncFavorites: syncCloudFavorites,

@@ -25,9 +25,22 @@ export interface WebViewLoginModalProps {
     sessionId: string;
     credentialType: "refresh" | "apiKey" | "sessionid";
     username?: string;
-    cfClearance?: string;
-    csrfToken?: string;
   }) => void;
+}
+
+function isAllowedLoginNavigation(rawUrl: string): boolean {
+  if (rawUrl === "about:blank") return true;
+  try {
+    const url = new URL(rawUrl);
+    return (
+      url.protocol === "https:" &&
+      (url.hostname === "nhentai.net" ||
+        url.hostname.endsWith(".nhentai.net") ||
+        url.hostname === "challenges.cloudflare.com")
+    );
+  } catch {
+    return false;
+  }
 }
 
 const INJECTED_AUTH_JS = `
@@ -38,10 +51,7 @@ const INJECTED_AUTH_JS = `
   }
 
   function checkSession() {
-    var cookies = document.cookie || '';
     var sessionid = getCookie('sessionid');
-    var cfClearance = getCookie('cf_clearance');
-    var csrfToken = getCookie('csrftoken') || getCookie('csrf_token');
     
     // Look for refresh_token in cookies or localStorage
     var refreshToken = getCookie('refresh_token');
@@ -101,27 +111,23 @@ const INJECTED_AUTH_JS = `
               sessionid: officialKey,
               credentialType: 'apiKey',
               username: username,
-              url: url,
-              cookies: cookies
+              url: url
             }));
           }
         })
         .catch(function() {});
     }
 
-    var isAuthed = Boolean(sessionid || refreshToken || (notOnLoginPage && hasUserNav));
+    var isAuthed = Boolean(sessionid || refreshToken);
 
     // Send payload to React Native
     window.ReactNativeWebView.postMessage(JSON.stringify({
       type: 'AUTH_UPDATE',
       isAuthed: isAuthed,
-      sessionid: sessionid || refreshToken || ('auth_' + Date.now()),
+      sessionid: sessionid || refreshToken,
       refreshToken: refreshToken,
-      cfClearance: cfClearance,
-      csrfToken: csrfToken,
       username: username,
-      url: url,
-      cookies: cookies
+      url: url
     }));
   }
 
@@ -151,40 +157,33 @@ export function WebViewLoginModal({
   const [hasCaptured, setHasCaptured] = useState(false);
 
   const handleMessage = (event: WebViewMessageEvent) => {
-    if (hasCaptured) return;
+    if (hasCaptured || !isAllowedLoginNavigation(event.nativeEvent.url)) return;
     try {
-      const data = JSON.parse(event.nativeEvent.data);
+      const data = JSON.parse(event.nativeEvent.data) as {
+        type?: string;
+        isAuthed?: boolean;
+        refreshToken?: string;
+        sessionid?: string;
+        username?: string;
+      };
       if (data && data.type === "AUTH_UPDATE" && data.isAuthed) {
-        setHasCaptured(true);
         const credType = data.refreshToken ? "refresh" : "sessionid";
         const primarySession = data.refreshToken || data.sessionid;
+        if (!primarySession) return;
+        setHasCaptured(true);
 
         onSuccess({
           sessionId: primarySession,
           credentialType: credType,
           username: data.username || undefined,
-          cfClearance: data.cfClearance || undefined,
-          csrfToken: data.csrfToken || undefined,
         });
       }
     } catch {}
   };
 
-  const handleManualConfirm = () => {
-    if (hasCaptured) return;
-    setHasCaptured(true);
-    onSuccess({
-      sessionId: "auth_" + Date.now(),
-      credentialType: "sessionid",
-      username: "Membre nHentai",
-    });
-  };
-
   const handleReload = () => {
     webViewRef.current?.reload();
   };
-
-  const isNotOnLogin = !currentUrl.includes("/login");
 
   return (
     <Modal
@@ -227,8 +226,8 @@ export function WebViewLoginModal({
         <View style={styles.banner}>
           <IconInfoCircle size={14} color="#60a5fa" stroke={1.8} />
           <Text style={styles.bannerText}>
-            Connectez-vous avec vos identifiants. La session et le captcha Cloudflare seront
-            automatiquement synchronisés.
+            Connectez-vous avec vos identifiants. Seule une session authentifiée vérifiable
+            sera transmise à l'application.
           </Text>
         </View>
 
@@ -254,9 +253,17 @@ export function WebViewLoginModal({
             domStorageEnabled={true}
             sharedCookiesEnabled={true}
             thirdPartyCookiesEnabled={true}
-            mixedContentMode="always"
+            mixedContentMode="never"
             setSupportMultipleWindows={false}
             allowsBackForwardNavigationGestures={true}
+            originWhitelist={[
+              "https://nhentai.net/*",
+              "https://*.nhentai.net/*",
+              "https://challenges.cloudflare.com/*",
+            ]}
+            onShouldStartLoadWithRequest={(request) =>
+              isAllowedLoginNavigation(request.url)
+            }
             injectedJavaScript={INJECTED_AUTH_JS}
             onMessage={handleMessage}
             onLoadStart={() => {
@@ -276,17 +283,6 @@ export function WebViewLoginModal({
           />
         </View>
 
-        {/* Floating Confirm Button when logged in */}
-        {isNotOnLogin && (
-          <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 14) }]}>
-            <Pressable
-              onPress={handleManualConfirm}
-              style={[styles.confirmBtn, { backgroundColor: colors.accent }]}
-            >
-              <Text style={styles.confirmBtnText}>Valider & Synchroniser le compte →</Text>
-            </Pressable>
-          </View>
-        )}
       </View>
     </Modal>
   );

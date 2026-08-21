@@ -3,7 +3,6 @@ import {
   StyleSheet,
   View,
   Text,
-  ActivityIndicator,
   useWindowDimensions,
   TouchableOpacity,
   ScrollView,

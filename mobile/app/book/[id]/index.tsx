@@ -7,9 +7,7 @@ import {
   Pressable,
   TouchableOpacity,
   ActivityIndicator,
-  Share,
   Animated,
-  Easing,
   useWindowDimensions,
   Modal,
 } from "react-native";
@@ -34,15 +32,16 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { lightTap } from "@/lib/haptics";
 import { format } from "date-fns";
 import { useTheme } from "@/lib/ThemeContext";
-import { getGallery, getComments } from "@/lib/api/nhentai";
+import { getGallery, getComments, getRelatedGalleryCards, RelatedCard } from "@/lib/api/nhentai";
 import { Gallery, Tag, Comment } from "@/lib/api/types";
 import SmartImage from "@/components/SmartImage";
 import { CardPressable } from "@/components/ui/CardPressable";
 import { IconBtn } from "@/components/ui/IconBtn";
 import { useFavorites } from "@/lib/favoritesStore";
+import { useHistory } from "@/lib/historyStore";
 import { useTagFavs } from "@/lib/tagFavoritesStore";
 import { enqueueGalleries } from "@/lib/downloadQueueStore";
-import { BookCard } from "@/components/BookCard";
+import { RelatedRow } from "@/components/RelatedRow";
 import { QuickShareModal } from "@/components/modals/QuickShareModal";
 
 export default function BookDetailScreen() {
@@ -52,10 +51,13 @@ export default function BookDetailScreen() {
   const { width } = useWindowDimensions();
   const { colors } = useTheme();
   const { isFavorite, toggleFavorite } = useFavorites();
+  const { history } = useHistory();
   const { isFav: isTagFav, toggleFav: toggleTagFav } = useTagFavs();
 
   const [gallery, setGallery] = useState<Gallery | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
+  const [related, setRelated] = useState<RelatedCard[]>([]);
+  const [relatedLoading, setRelatedLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isShareOpen, setIsShareOpen] = useState(false);
@@ -64,7 +66,7 @@ export default function BookDetailScreen() {
   // Fermeture animée avant navigation (même pattern que le panneau des
   // recommandations) : fondu de l'écran, puis navigation au callback de fin.
   const fadeOut = useRef(new Animated.Value(0)).current;
-  const navigatingRef = useRef(false);
+  const scrollRef = useRef<ScrollView>(null);
 
   // Si l'écran est démonté pendant l'animation (back), on stoppe le fondu :
   // le callback de fin reçoit finished=false et la navigation n'est pas lancée.
@@ -80,6 +82,9 @@ export default function BookDetailScreen() {
     if (!id) return;
     setLoading(true);
     setError(null);
+    setRelated([]);
+    setRelatedLoading(true);
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
 
     Promise.all([
       getGallery(id),
@@ -94,6 +99,17 @@ export default function BookDetailScreen() {
       })
       .finally(() => {
         setLoading(false);
+      });
+
+    getRelatedGalleryCards(id)
+      .then((cards) => {
+        setRelated(cards);
+      })
+      .catch(() => {
+        setRelated([]);
+      })
+      .finally(() => {
+        setRelatedLoading(false);
       });
   }, [id]);
 
@@ -206,6 +222,25 @@ export default function BookDetailScreen() {
     gallery.title?.japanese ||
     (typeof gallery.title === "string" ? gallery.title : `Gallery #${gallery.id}`);
 
+  const historyEntry = history.find(
+    (entry) => Number(entry.gallery?.id) === Number(gallery.id)
+  );
+  const historyTotal =
+    historyEntry?.totalPages ||
+    gallery.num_pages ||
+    gallery.images?.pages?.length ||
+    0;
+  const inProgress =
+    !!historyEntry && historyTotal > 0 && historyEntry.lastPage < historyTotal - 1;
+  const finished =
+    !!historyEntry && historyTotal > 0 && historyEntry.lastPage >= historyTotal - 1;
+  const readLabel = inProgress
+    ? `Continuer p. ${historyEntry.lastPage + 1}`
+    : finished
+      ? "Relire"
+      : "Lire Maintenant";
+  const readInitialPage = inProgress ? historyEntry.lastPage : 0;
+
   return (
     <View style={[styles.container, { backgroundColor: colors.bg }]}>
       {/* Top Floating App Bar */}
@@ -237,6 +272,7 @@ export default function BookDetailScreen() {
       </View>
 
       <ScrollView
+        ref={scrollRef}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
       >
@@ -289,13 +325,13 @@ export default function BookDetailScreen() {
         {/* Action Buttons Row */}
         <View style={styles.actionsContainer}>
           <CardPressable
-            onPress={() => handleRead(0)}
+            onPress={() => handleRead(readInitialPage)}
             radius={14}
             style={[styles.primaryReadBtn, { backgroundColor: colors.accent }]}
           >
             <View style={styles.btnInner}>
               <IconBook2 size={20} color="#fff" stroke={1.8} />
-              <Text style={styles.primaryReadBtnText}>Lire Maintenant</Text>
+              <Text style={styles.primaryReadBtnText}>{readLabel}</Text>
             </View>
           </CardPressable>
 
@@ -381,6 +417,12 @@ export default function BookDetailScreen() {
             </View>
           ))}
         </View>
+
+        <RelatedRow
+          items={related}
+          loading={relatedLoading}
+          excludeId={gallery.id}
+        />
 
         {/* Comments Preview */}
         {comments.length > 0 ? (

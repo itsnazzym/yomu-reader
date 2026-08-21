@@ -1,14 +1,19 @@
 import React, { useRef, useCallback } from "react";
 import {
   TouchableOpacity,
+  TouchableOpacityProps,
   StyleProp,
   StyleSheet,
   ViewStyle,
   Animated,
-  View,
 } from "react-native";
+import { useTheme } from "@/lib/ThemeContext";
 
-export interface IconBtnProps {
+export interface IconBtnProps
+  extends Pick<
+    TouchableOpacityProps,
+    "accessibilityLabel" | "accessibilityHint" | "accessibilityRole" | "hitSlop"
+  > {
   onPress?: () => void;
   children?: React.ReactNode;
   size?: number;
@@ -20,11 +25,17 @@ export interface IconBtnProps {
 export function IconBtn({
   onPress,
   children,
-  size = 40,
+  size = 44,
   style,
   disabled,
-  highlightColor = "rgba(197,135,141,0.18)",
+  highlightColor,
+  accessibilityLabel,
+  accessibilityHint,
+  accessibilityRole = "button",
+  hitSlop = 4,
 }: IconBtnProps) {
+  const { colors } = useTheme();
+  const effectiveHighlightColor = highlightColor ?? `${colors.accent}2E`;
   const scale = useRef(new Animated.Value(1)).current;
   const bgOpacity = useRef(new Animated.Value(0)).current;
 
@@ -67,6 +78,10 @@ export function IconBtn({
       onPress={onPress}
       onPressIn={onPressIn}
       onPressOut={onPressOut}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
+      accessibilityRole={accessibilityRole}
+      hitSlop={hitSlop}
       style={{ opacity: disabled ? 0.4 : 1 }}
     >
       <Animated.View
@@ -87,7 +102,7 @@ export function IconBtn({
             StyleSheet.absoluteFillObject,
             {
               borderRadius: size / 2,
-              backgroundColor: highlightColor,
+              backgroundColor: effectiveHighlightColor,
               opacity: bgOpacity,
             },
           ]}

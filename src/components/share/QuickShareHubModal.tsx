@@ -50,6 +50,7 @@ export const QuickShareHubModal: React.FC<QuickShareHubModalProps> = ({
 
   const [files, setFiles] = useState<FileItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [serverError, setServerError] = useState("");
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -73,12 +74,19 @@ export const QuickShareHubModal: React.FC<QuickShareHubModalProps> = ({
   }, [initialDirectory]);
 
   const handleToggleServer = async () => {
-    if (serverStatus.active) {
-      await stopQuickShareServer();
-    } else {
-      await startQuickShareServer(serverStatus.port || 45678);
+    setServerError("");
+    try {
+      if (serverStatus.active) {
+        await stopQuickShareServer();
+      } else {
+        await startQuickShareServer(serverStatus.port || 45678, initialDirectory);
+      }
+      await refreshStatusAndFiles();
+    } catch (error) {
+      setServerError(
+        error instanceof Error ? error.message : "Impossible de démarrer Quick Share."
+      );
     }
-    await refreshStatusAndFiles();
   };
 
   const handleCopyUrl = async () => {
@@ -164,7 +172,7 @@ export const QuickShareHubModal: React.FC<QuickShareHubModalProps> = ({
                   : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/30"
               }`}
             >
-              {serverStatus.active ? "Redémarrer" : "Démarrer Serveur"}
+              {serverStatus.active ? "Arrêter" : "Démarrer Serveur"}
             </button>
 
             <button
@@ -180,6 +188,11 @@ export const QuickShareHubModal: React.FC<QuickShareHubModalProps> = ({
             </button>
           </div>
         </div>
+        {serverError && (
+          <div className="px-5 py-2 bg-red-500/10 border-b border-red-500/20 text-xs text-red-300">
+            {serverError}
+          </div>
+        )}
 
         {/* Navigation Tabs */}
         <div className="px-5 pt-3 border-b border-[#202030] flex gap-2">
@@ -226,12 +239,18 @@ export const QuickShareHubModal: React.FC<QuickShareHubModalProps> = ({
             <div className="flex flex-col md:flex-row items-center gap-6 justify-center py-2 animate-in fade-in duration-150">
               {/* QR Code Container */}
               <div className="p-4 bg-white rounded-3xl shadow-xl shadow-black/50 shrink-0">
-                <QRCodeSvg
-                  value={serverStatus.url}
-                  size={200}
-                  fgColor="#0c0c12"
-                  bgColor="#ffffff"
-                />
+                {serverStatus.active && serverStatus.url ? (
+                  <QRCodeSvg
+                    value={serverStatus.url}
+                    size={200}
+                    fgColor="#0c0c12"
+                    bgColor="#ffffff"
+                  />
+                ) : (
+                  <div className="w-[200px] h-[200px] flex items-center justify-center text-center text-xs font-bold text-gray-500 px-5">
+                    Démarrez le serveur pour générer un QR code sécurisé.
+                  </div>
+                )}
               </div>
 
               {/* Instructions Side */}

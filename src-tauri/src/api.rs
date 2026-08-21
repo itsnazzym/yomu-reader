@@ -120,15 +120,24 @@ impl NhClient {
     }
 
     pub async fn download_image(&self, url: &str) -> Result<Vec<u8>, String> {
+        const MAX_IMAGE_BYTES: usize = 25 * 1024 * 1024;
         let mut retries = 3;
         while retries > 0 {
             match self.client.get(url).send().await {
                 Ok(resp) if resp.status().is_success() => {
-                    return resp
+                    if let Some(len) = resp.content_length() {
+                        if len > MAX_IMAGE_BYTES as u64 {
+                            return Err("Image trop volumineuse".to_string());
+                        }
+                    }
+                    let bytes = resp
                         .bytes()
                         .await
-                        .map(|b| b.to_vec())
-                        .map_err(|e| format!("Erreur lecture binaire image: {}", e));
+                        .map_err(|e| format!("Erreur lecture binaire image: {}", e))?;
+                    if bytes.len() > MAX_IMAGE_BYTES {
+                        return Err("Image trop volumineuse".to_string());
+                    }
+                    return Ok(bytes.to_vec());
                 }
                 Ok(resp) => {
                     retries -= 1;

@@ -42,8 +42,7 @@ export default function ApiKeysScreen() {
   const insets = useSafeAreaInsets();
   const { session, loginWithSession, fetchUserProfile } = useAccount();
 
-  const sessIdStr = String(session?.sessionId || "");
-  const isAuthed = Boolean(session?.isLoggedIn && sessIdStr && !/^auth_\d+$/.test(sessIdStr));
+  const isAuthed = Boolean(session?.isLoggedIn);
   const isApiKeyActive = Boolean(session?.isLoggedIn && session?.credentialType === "apiKey");
 
   const [keys, setKeys] = useState<ApiKeyItem[]>([]);
@@ -177,12 +176,7 @@ export default function ApiKeysScreen() {
 
   const renderKeyCard = (item: ApiKeyItem) => {
     const prefix = String(item.key_prefix || "");
-    const isCurrentActive =
-      isApiKeyActive &&
-      Boolean(
-        sessIdStr &&
-        (sessIdStr.startsWith(prefix) || (prefix && prefix.startsWith(sessIdStr.slice(0, 8))))
-      );
+    const isCurrentActive = false;
 
     return (
       <View
@@ -282,7 +276,7 @@ export default function ApiKeysScreen() {
                   Mode Clé API Actif
                 </Text>
                 <Text style={[styles.statusBannerSub, { color: colors.sub }]} numberOfLines={1}>
-                  Clé : {sessIdStr ? sessIdStr.slice(0, 10) : ""}… (Bypasse toutes les restrictions)
+                  Clé validée et conservée dans le stockage sécurisé Android
                 </Text>
               </View>
             </>

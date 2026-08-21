@@ -159,17 +159,61 @@ export async function getSiteConfig(): Promise<AppSiteConfig> {
 
 // ─── Pure JS PoW Solver ────────────────────────────────────────────────────────
 
+export interface PowProgress {
+  nonce: number;
+  elapsedMs: number;
+  attemptsPerSecond: number;
+  expectedAttempts: number;
+  remainingAttempts: number;
+  etaMs: number | null;
+  percent: number;
+}
+
+function expectedPowAttempts(difficulty: number): number {
+  const normalizedDifficulty = Math.max(0, Math.floor(Number(difficulty) || 0));
+  if (normalizedDifficulty >= 53) return Number.MAX_SAFE_INTEGER;
+  return Math.max(1, 2 ** normalizedDifficulty);
+}
+
 /**
  * Solve a Proof-of-Work challenge without blocking UI thread.
  * Synchronous pure-JS SHA-256 in batches of 2000, yielding with setTimeout(0).
+ * Progress is based on the observed hash rate and the expected work for the
+ * challenge difficulty. The ETA is statistical because a valid nonce can be
+ * found before or after the expected number of attempts.
  */
 export async function solvePoW(
   challenge: string,
   difficulty: number,
-  onProgress?: (nonce: number) => void
+  onProgress?: (progress: PowProgress) => void
 ): Promise<string> {
   const BATCH = 2_000;
   let nonce = 0;
+  const startedAt = Date.now();
+  const expectedAttempts = expectedPowAttempts(difficulty);
+
+  const reportProgress = () => {
+    const elapsedMs = Math.max(0, Date.now() - startedAt);
+    const attemptsPerSecond =
+      elapsedMs > 0 ? nonce / (elapsedMs / 1000) : 0;
+    const remainingAttempts = Math.max(0, expectedAttempts - nonce);
+    const etaMs =
+      attemptsPerSecond > 0
+        ? Math.round((remainingAttempts / attemptsPerSecond) * 1000)
+        : null;
+
+    onProgress?.({
+      nonce,
+      elapsedMs,
+      attemptsPerSecond,
+      expectedAttempts,
+      remainingAttempts,
+      etaMs,
+      percent: Math.min(99, (nonce / expectedAttempts) * 100),
+    });
+  };
+
+  reportProgress();
 
   while (true) {
     const end = nonce + BATCH;
@@ -180,7 +224,7 @@ export async function solvePoW(
       }
       nonce++;
     }
-    onProgress?.(nonce);
+    reportProgress();
     // Yield to event loop
     await new Promise<void>((r) => setTimeout(r, 0));
   }

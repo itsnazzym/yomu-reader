@@ -1,6 +1,6 @@
 use std::fs::{self, File};
-use std::io::{Write, Cursor};
-use std::path::{Path, PathBuf};
+use std::io::Write;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
@@ -9,6 +9,8 @@ use zip::write::{SimpleFileOptions, ZipWriter};
 use zip::CompressionMethod;
 use crate::api::NhClient;
 use crate::models::{Gallery, DownloadProgressPayload};
+
+const MAX_IMAGE_BYTES: usize = 25 * 1024 * 1024;
 
 pub fn sanitize_filename(name: &str) -> String {
     let forbidden_chars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
@@ -110,6 +112,31 @@ fn quick_xml_escape(raw: &str) -> String {
         .replace('\'', "&apos;")
 }
 
+struct TempDownloadDir(PathBuf);
+
+impl Drop for TempDownloadDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+fn append_page_files(
+    zip: &mut ZipWriter<File>,
+    files: &[(usize, String, PathBuf)],
+    options: SimpleFileOptions,
+) -> Result<(), String> {
+    for (page_num, ext, path) in files {
+        let filename = format!("{:03}.{}", page_num, ext);
+        zip.start_file(&filename, options)
+            .map_err(|e| format!("Erreur ajout fichier zip: {}", e))?;
+        let data = fs::read(path)
+            .map_err(|e| format!("Impossible de relire la page {}: {}", filename, e))?;
+        zip.write_all(&data)
+            .map_err(|e| format!("Erreur écriture zip: {}", e))?;
+    }
+    Ok(())
+}
+
 pub async fn download_gallery(
     app: AppHandle,
     client: Arc<NhClient>,
@@ -128,11 +155,14 @@ pub async fn download_gallery(
             .map_err(|e| format!("Impossible de créer le dossier de destination: {}", e))?;
     }
 
+    let tmp = TempDownloadDir(dest_dir.join(format!(".nh-partial-{}", gallery_id)));
+    fs::create_dir_all(&tmp.0)
+        .map_err(|e| format!("Impossible de créer le dossier temporaire: {}", e))?;
+
     let start_time = Instant::now();
     let mut downloaded_bytes: usize = 0;
-    let mut downloaded_images: Vec<(usize, String, Vec<u8>)> = Vec::new();
+    let mut downloaded_files: Vec<(usize, String, PathBuf)> = Vec::new();
 
-    // Initial progress emit
     let _ = app.emit("download-progress", DownloadProgressPayload {
         id: gallery_id,
         downloaded_pages: 0,
@@ -168,8 +198,15 @@ pub async fn download_gallery(
         );
 
         let img_bytes = client.download_image(&image_url).await?;
+        if img_bytes.len() > MAX_IMAGE_BYTES {
+            return Err(format!("Image trop volumineuse ({} octets)", img_bytes.len()));
+        }
         downloaded_bytes += img_bytes.len();
-        downloaded_images.push((page_num, ext.to_string(), img_bytes));
+        let page_path = tmp.0.join(format!("{:03}.{}", page_num, ext));
+        fs::write(&page_path, &img_bytes)
+            .map_err(|e| format!("Impossible d'écrire la page temporaire: {}", e))?;
+        downloaded_files.push((page_num, ext.to_string(), page_path));
+        drop(img_bytes);
 
         let elapsed = start_time.elapsed().as_secs_f64().max(0.1);
         let speed_kb_s = (downloaded_bytes as f64 / 1024.0) / elapsed;
@@ -186,11 +223,9 @@ pub async fn download_gallery(
             target_path: None,
         });
 
-        // Small delay to be polite to CDN
         tokio::time::sleep(std::time::Duration::from_millis(60)).await;
     }
 
-    // Now package the downloaded images
     let output_path: PathBuf = match format_type.as_str() {
         "zip" => {
             let zip_path = dest_dir.join(format!("{}.zip", base_name));
@@ -199,14 +234,7 @@ pub async fn download_gallery(
             let mut zip = ZipWriter::new(file);
             let options = SimpleFileOptions::default()
                 .compression_method(CompressionMethod::Deflated);
-
-            for (page_num, ext, bytes) in &downloaded_images {
-                let filename = format!("{:03}.{}", page_num, ext);
-                zip.start_file(filename, options)
-                    .map_err(|e| format!("Erreur ajout fichier zip: {}", e))?;
-                zip.write_all(bytes)
-                    .map_err(|e| format!("Erreur écriture zip: {}", e))?;
-            }
+            append_page_files(&mut zip, &downloaded_files, options)?;
             zip.finish().map_err(|e| format!("Erreur fermeture zip: {}", e))?;
             zip_path
         }
@@ -215,15 +243,14 @@ pub async fn download_gallery(
             fs::create_dir_all(&folder_path)
                 .map_err(|e| format!("Impossible de créer le dossier: {}", e))?;
 
-            for (page_num, ext, bytes) in &downloaded_images {
+            for (page_num, ext, path) in &downloaded_files {
                 let file_path = folder_path.join(format!("{:03}.{}", page_num, ext));
-                fs::write(&file_path, bytes)
+                fs::copy(path, &file_path)
                     .map_err(|e| format!("Impossible d'écrire l'image: {}", e))?;
             }
             folder_path
         }
         _ => {
-            // Default is CBZ
             let cbz_path = dest_dir.join(format!("{}.cbz", base_name));
             let file = File::create(&cbz_path)
                 .map_err(|e| format!("Impossible de créer le fichier CBZ: {}", e))?;
@@ -231,21 +258,13 @@ pub async fn download_gallery(
             let options = SimpleFileOptions::default()
                 .compression_method(CompressionMethod::Deflated);
 
-            // Add ComicInfo.xml metadata
             let comic_info = generate_comic_info_xml(&gallery);
             zip.start_file("ComicInfo.xml", options)
                 .map_err(|e| format!("Erreur ajout ComicInfo.xml: {}", e))?;
             zip.write_all(comic_info.as_bytes())
                 .map_err(|e| format!("Erreur écriture ComicInfo.xml: {}", e))?;
 
-            // Add all pages
-            for (page_num, ext, bytes) in &downloaded_images {
-                let filename = format!("{:03}.{}", page_num, ext);
-                zip.start_file(filename, options)
-                    .map_err(|e| format!("Erreur ajout image dans CBZ: {}", e))?;
-                zip.write_all(bytes)
-                    .map_err(|e| format!("Erreur écriture image dans CBZ: {}", e))?;
-            }
+            append_page_files(&mut zip, &downloaded_files, options)?;
             zip.finish().map_err(|e| format!("Erreur finalisation CBZ: {}", e))?;
             cbz_path
         }

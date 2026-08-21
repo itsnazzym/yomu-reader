@@ -36,8 +36,8 @@ export function StepWelcome() {
         <IconBook2 size={32} color={colors.accent} stroke={1.6} />
       </View>
 
-      <Text style={styles.title}>Bienvenue sur le Launcher</Text>
-      <Text style={styles.subtitle}>
+      <Text style={[styles.title, { color: colors.txt }]}>Bienvenue sur le Launcher</Text>
+      <Text style={[styles.subtitle, { color: colors.sub }]}>
         Votre lecteur haute performance pour explorer, lire et archiver vos mangas favoris en toute liberté.
       </Text>
 
@@ -46,13 +46,19 @@ export function StepWelcome() {
         {features.map((f, i) => {
           const IconComp = f.icon;
           return (
-            <View key={i} style={styles.featureRow}>
-              <View style={[styles.featureIconWrap, { backgroundColor: "#1c1c28" }]}>
+            <View
+              key={i}
+              style={[
+                styles.featureRow,
+                { backgroundColor: colors.page, borderColor: colors.tagBg },
+              ]}
+            >
+              <View style={[styles.featureIconWrap, { backgroundColor: colors.bg }]}>
                 <IconComp size={18} color={colors.accent} stroke={1.8} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.featureTitle}>{f.title}</Text>
-                <Text style={styles.featureDesc}>{f.desc}</Text>
+                <Text style={[styles.featureTitle, { color: colors.txt }]}>{f.title}</Text>
+                <Text style={[styles.featureDesc, { color: colors.sub }]}>{f.desc}</Text>
               </View>
             </View>
           );
@@ -80,13 +86,11 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 22,
     fontWeight: "900",
-    color: "#f3f4f6",
     textAlign: "center",
     letterSpacing: -0.3,
   },
   subtitle: {
     fontSize: 13,
-    color: "#9ca3af",
     textAlign: "center",
     lineHeight: 18,
     marginBottom: 8,
@@ -99,8 +103,6 @@ const styles = StyleSheet.create({
   featureRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#161622",
-    borderColor: "#28283a",
     borderWidth: 1,
     borderRadius: 14,
     padding: 12,
@@ -116,11 +118,9 @@ const styles = StyleSheet.create({
   featureTitle: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#f3f4f6",
   },
   featureDesc: {
     fontSize: 11,
-    color: "#9ca3af",
     marginTop: 1,
     lineHeight: 15,
   },

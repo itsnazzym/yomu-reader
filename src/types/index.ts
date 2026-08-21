@@ -101,6 +101,8 @@ export interface AppSettings {
   blacklisted_tags: string[];
   cookies?: string;
   api_key?: string;
+  hasSecureCookies?: boolean;
+  hasSecureApiKey?: boolean;
   language_filter?: string;
   dns_provider?: "adguard" | "cloudflare" | "google" | "quad9" | "system";
   enable_custom_dns?: boolean;

@@ -24,13 +24,18 @@ declare global {
       getCdnConfig?: () => Promise<import("../types").CdnConfig>;
       getGalleryComments?: (params: { galleryId: number; cookies?: string; apiKey?: string }) => Promise<import("../types").GalleryComment[]>;
       updateDnsSettings?: (params: { dns_provider: string; enable_custom_dns: boolean; enable_doh: boolean }) => Promise<{ success: boolean; error?: string }>;
-      startQuickShareServer?: (params?: { port?: number }) => Promise<{ active: boolean; port: number; ip: string; url: string }>;
+      startQuickShareServer?: (params?: { port?: number; directoryPath?: string }) => Promise<{ active: boolean; port: number; ip: string; url: string }>;
       stopQuickShareServer?: () => Promise<{ active: boolean }>;
       getQuickShareStatus?: () => Promise<{ active: boolean; port: number; ip: string; url: string; filesCount: number; activeTransfers: number; uptime: number }>;
       getLocalDownloadedFiles?: (params?: { directoryPath?: string }) => Promise<Array<{ id?: number; filename: string; title: string; artist?: string; size: number; sizeFormatted: string; pagesCount: number; format: string; mtime: number }>>;
+      getSecretStatus?: () => Promise<{ hasCookies: boolean; hasApiKey: boolean; encrypted: boolean }>;
+      setSecrets?: (params: { cookies?: string; apiKey?: string }) => Promise<{ hasCookies: boolean; hasApiKey: boolean; encrypted: boolean }>;
+      migrateSecrets?: (params: { cookies?: string; apiKey?: string }) => Promise<{ hasCookies: boolean; hasApiKey: boolean; encrypted: boolean }>;
+      clearSecrets?: () => Promise<{ hasCookies: boolean; hasApiKey: boolean; encrypted: boolean }>;
       logTerminal?: (text: string) => Promise<boolean>;
       onDownloadProgress: (callback: (payload: DownloadProgressPayload) => void) => () => void;
       onCookiesCaptured: (callback: (cookies: string) => void) => () => void;
+      onSecretsUpdated?: (callback: (status: { hasCookies: boolean; hasApiKey: boolean; encrypted: boolean }) => void) => () => void;
       onCloudflareChallengeNeeded?: (callback: () => void) => () => void;
     };
   }
@@ -281,6 +286,42 @@ export function onCookiesCaptured(
     return window.electronAPI.onCookiesCaptured(callback);
   }
   return () => {};
+}
+
+export function onSecretsUpdated(
+  callback: (status: { hasCookies: boolean; hasApiKey: boolean; encrypted: boolean }) => void
+): () => void {
+  if (isElectron() && window.electronAPI?.onSecretsUpdated) {
+    return window.electronAPI.onSecretsUpdated(callback);
+  }
+  return () => {};
+}
+
+export async function getSecretStatus(): Promise<{ hasCookies: boolean; hasApiKey: boolean; encrypted: boolean }> {
+  if (isElectron() && window.electronAPI?.getSecretStatus) {
+    return await window.electronAPI.getSecretStatus();
+  }
+  return { hasCookies: false, hasApiKey: false, encrypted: false };
+}
+
+export async function setSecrets(params: {
+  cookies?: string;
+  apiKey?: string;
+}): Promise<{ hasCookies: boolean; hasApiKey: boolean; encrypted: boolean }> {
+  if (isElectron() && window.electronAPI?.setSecrets) {
+    return await window.electronAPI.setSecrets(params);
+  }
+  return { hasCookies: Boolean(params.cookies), hasApiKey: Boolean(params.apiKey), encrypted: false };
+}
+
+export async function migrateSecrets(params: {
+  cookies?: string;
+  apiKey?: string;
+}): Promise<{ hasCookies: boolean; hasApiKey: boolean; encrypted: boolean }> {
+  if (isElectron() && window.electronAPI?.migrateSecrets) {
+    return await window.electronAPI.migrateSecrets(params);
+  }
+  return { hasCookies: Boolean(params.cookies), hasApiKey: Boolean(params.apiKey), encrypted: false };
 }
 
 export function onCloudflareChallengeNeeded(
@@ -631,9 +672,12 @@ export async function logToTerminal(text: string): Promise<void> {
   }
 }
 
-export async function startQuickShareServer(port?: number): Promise<{ active: boolean; port: number; ip: string; url: string }> {
+export async function startQuickShareServer(
+  port?: number,
+  directoryPath?: string
+): Promise<{ active: boolean; port: number; ip: string; url: string }> {
   if (isElectron() && window.electronAPI?.startQuickShareServer) {
-    return await window.electronAPI.startQuickShareServer({ port });
+    return await window.electronAPI.startQuickShareServer({ port, directoryPath });
   }
   return { active: true, port: 45678, ip: "127.0.0.1", url: "http://127.0.0.1:45678/" };
 }

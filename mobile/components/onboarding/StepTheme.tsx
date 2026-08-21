@@ -23,14 +23,14 @@ export function StepTheme() {
         <IconDroplet size={30} color={colors.accent} stroke={1.7} />
       </View>
 
-      <Text style={styles.title}>Couleur d'Accent & Thème</Text>
-      <Text style={styles.subtitle}>
+      <Text style={[styles.title, { color: colors.txt }]}>Couleur d'Accent & Thème</Text>
+      <Text style={[styles.subtitle, { color: colors.sub }]}>
         Personnalisez la couleur d'ambiance de l'interface. Vos modifications s'appliquent en direct.
       </Text>
 
       {/* Swatches Grid */}
-      <View style={styles.swatchesCard}>
-        <Text style={styles.cardLabel}>Teinte principale</Text>
+      <View style={[styles.swatchesCard, { backgroundColor: colors.page, borderColor: colors.tagBg }]}>
+        <Text style={[styles.cardLabel, { color: colors.sub }]}>Teinte principale</Text>
         <View style={styles.swatchesRow}>
           {SIGNATURE_HUES.map((s) => {
             const isSelected = Math.abs(hue - s.hue) < 15;
@@ -52,17 +52,17 @@ export function StepTheme() {
       </View>
 
       {/* OLED Mode Card */}
-      <View style={styles.toggleCard}>
+      <View style={[styles.toggleCard, { backgroundColor: colors.page, borderColor: colors.tagBg }]}>
         <View style={{ flex: 1, paddingRight: 10 }}>
-          <Text style={styles.toggleTitle}>Mode Noir Pur OLED</Text>
-          <Text style={styles.toggleSub}>
+          <Text style={[styles.toggleTitle, { color: colors.txt }]}>Mode Noir Pur OLED</Text>
+          <Text style={[styles.toggleSub, { color: colors.sub }]}>
             Fond 100% noir absolu pour économiser l'énergie sur écran AMOLED.
           </Text>
         </View>
         <Switch
           value={settings.oledMode}
           onValueChange={(val) => updateSettings({ oledMode: val })}
-          trackColor={{ false: "#28283a", true: colors.accent }}
+          trackColor={{ false: colors.tagBg, true: colors.accent }}
           thumbColor="#fff"
         />
       </View>
@@ -88,21 +88,17 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 22,
     fontWeight: "900",
-    color: "#f3f4f6",
     textAlign: "center",
     letterSpacing: -0.3,
   },
   subtitle: {
     fontSize: 13,
-    color: "#9ca3af",
     textAlign: "center",
     lineHeight: 18,
     marginBottom: 6,
   },
   swatchesCard: {
     width: "100%",
-    backgroundColor: "#161622",
-    borderColor: "#28283a",
     borderWidth: 1,
     borderRadius: 14,
     padding: 14,
@@ -111,7 +107,6 @@ const styles = StyleSheet.create({
   cardLabel: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#9ca3af",
   },
   swatchesRow: {
     flexDirection: "row",
@@ -135,8 +130,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "#161622",
-    borderColor: "#28283a",
     borderWidth: 1,
     borderRadius: 14,
     padding: 14,
@@ -144,11 +137,9 @@ const styles = StyleSheet.create({
   toggleTitle: {
     fontSize: 13.5,
     fontWeight: "700",
-    color: "#f3f4f6",
   },
   toggleSub: {
     fontSize: 11,
-    color: "#9ca3af",
     marginTop: 2,
     lineHeight: 15,
   },

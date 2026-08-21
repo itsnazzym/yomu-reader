@@ -8,7 +8,6 @@ import {
   Pressable,
   Switch,
   Alert,
-  Linking,
   ActivityIndicator,
 } from "react-native";
 import {
@@ -210,9 +209,6 @@ export default function SettingsScreen() {
   const infiniteScroll = readerSettings.infiniteScroll ?? true;
   const setInfiniteScroll = (val: boolean) => updateReaderSettings({ infiniteScroll: val });
 
-  const respectActiveTags = readerSettings.respectActiveTags ?? true;
-  const setRespectActiveTags = (val: boolean) => updateReaderSettings({ respectActiveTags: val });
-
   // Cache & Storage states
   const [cacheSizeBytes, setCacheSizeBytes] = useState<number>(0);
   const [clearingCache, setClearingCache] = useState(false);
@@ -293,7 +289,7 @@ export default function SettingsScreen() {
       style={[
         styles.container,
         {
-          backgroundColor: readerSettings.oledMode ? "#000000" : "#12121a",
+          backgroundColor: readerSettings.oledMode ? "#000000" : colors.bg,
           paddingTop: Math.max(insets.top, 12),
         },
       ]}
@@ -1076,7 +1072,7 @@ export default function SettingsScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.rowToggleTitle}>Proxy Photon nHentai</Text>
                 <Text style={styles.rowToggleSub}>
-                  Contourne le blocage DNS des FAI et accélère les images.
+                  DNS sécurisé DoH pour l'API, Photon pour les images : aucun réglage FAI requis.
                 </Text>
               </View>
               <View style={styles.onlineBadge}>

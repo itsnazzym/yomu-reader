@@ -92,13 +92,41 @@ export function getReleaseFiles(): ReleaseFile[] {
     .filter(Boolean) as ReleaseFile[];
 }
 
-/** Resolve a requested file name against release/ (prevents path traversal). */
+function isPathInside(parent: string, candidate: string): boolean {
+  const relative = path.relative(parent, candidate);
+  return relative === "" || (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`));
+}
+
+/** Resolve a requested file name against release/, including its real path. */
 export function resolveReleaseFile(fileName: string): string | null {
-  const safe = path.basename(fileName);
-  const full = path.resolve(RELEASE_DIR, safe);
-  if (!full.startsWith(path.resolve(RELEASE_DIR))) return null;
-  if (!fs.existsSync(full) || !fs.statSync(full).isFile()) return null;
-  return full;
+  if (!fileName || fileName !== path.basename(fileName)) return null;
+
+  try {
+    const releaseRoot = fs.realpathSync(RELEASE_DIR);
+    const candidate = path.resolve(releaseRoot, fileName);
+    if (!isPathInside(releaseRoot, candidate)) return null;
+
+    const linkInfo = fs.lstatSync(candidate);
+    if (linkInfo.isSymbolicLink() || !linkInfo.isFile()) return null;
+
+    const realCandidate = fs.realpathSync(candidate);
+    if (!isPathInside(releaseRoot, realCandidate) || !fs.statSync(realCandidate).isFile()) {
+      return null;
+    }
+    return realCandidate;
+  } catch {
+    return null;
+  }
+}
+
+export function createAttachmentDisposition(filePath: string): string {
+  const fileName = path.basename(filePath).replace(/[\u0000-\u001f\u007f]/g, "_");
+  const asciiName = fileName.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_") || "download";
+  const encodedName = encodeURIComponent(fileName).replace(
+    /['()*]/g,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `attachment; filename="${asciiName}"; filename*=UTF-8''${encodedName}`;
 }
 
 export const releaseVersion = "1.0.0";

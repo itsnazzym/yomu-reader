@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
-import { resolveReleaseFile } from "@/lib/releases";
+import { createAttachmentDisposition, resolveReleaseFile } from "@/lib/releases";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +26,7 @@ export async function GET(
     headers: {
       "Content-Type": "application/octet-stream",
       "Content-Length": String(info.size),
-      "Content-Disposition": `attachment; filename="${file}"`,
+      "Content-Disposition": createAttachmentDisposition(filePath),
       "Cache-Control": "public, max-age=3600",
     },
   });

@@ -25,18 +25,18 @@ import {
   IconLogin,
   IconShield,
   IconMail,
-  IconUserPlus,
-  IconRotateClockwise,
 } from "@tabler/icons-react-native";
 import { useTheme } from "@/lib/ThemeContext";
 import { CardPressable } from "@/components/ui/CardPressable";
 import { useAccount, detectCredentialType } from "@/lib/accountStore";
 import { CaptchaEmbed } from "@/components/auth/CaptchaEmbed";
+import { AuthPowProgressBar } from "@/components/auth/AuthPowProgressBar";
 import {
   getCaptchaInfo,
   getPowChallenge,
   solvePoW,
 } from "@/lib/api/v2/config";
+import type { PowProgress } from "@/lib/api/v2/config";
 import {
   register as v2Register,
   requestPasswordReset as v2Reset,
@@ -74,15 +74,9 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
   // Status & loading
   const [loading, setLoading] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
+  const [powProgress, setPowProgress] = useState<PowProgress | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [resetSuccess, setResetSuccess] = useState(false);
-  // Android WebView inside an animating Modal often lays out at 0×0;
-  // Turnstile then paints an empty checkbox. Mount after onShow.
-  const [modalShown, setModalShown] = useState(false);
-
-  useEffect(() => {
-    if (!visible) setModalShown(false);
-  }, [visible]);
 
   // Load captcha on open or mode switch
   useEffect(() => {
@@ -92,6 +86,7 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
     setResetSuccess(false);
     setCaptchaToken(null);
     setCaptchaKey((k) => k + 1);
+    setPowProgress(null);
 
     (async () => {
       try {
@@ -124,11 +119,17 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
     setCaptchaKey((k) => k + 1);
     setErrorMessage(null);
     setResetSuccess(false);
+    setPowProgress(null);
   };
 
   const switchMode = (m: AuthMode) => {
     setMode(m);
     resetForm();
+  };
+
+  const updateProgress = (message: string, progress?: PowProgress) => {
+    setSyncStatus(message);
+    setPowProgress(progress ?? null);
   };
 
   // 1. Direct Login with Credentials & PoW & Captcha
@@ -146,14 +147,14 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
 
     setLoading(true);
     setErrorMessage(null);
-    setSyncStatus("Calcul du défi de sécurité (PoW)...");
+    updateProgress("Calcul du défi de sécurité (PoW)...");
 
     try {
       const res = await loginWithCredentials(
         user,
         pass,
         captchaToken || undefined,
-        (msg) => setSyncStatus(msg)
+        (msg, progress) => updateProgress(msg, progress)
       );
 
       if (!res.success) {
@@ -163,12 +164,14 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
         return;
       }
 
-      setSyncStatus("Synchronisation des favoris cloud...");
-      const syncRes = await syncFavorites((msg) => setSyncStatus(msg));
+      updateProgress("Synchronisation des favoris cloud...");
+      const syncRes = await syncFavorites((msg) => updateProgress(msg));
 
       Alert.alert(
         "Connecté !",
-        `Bienvenue ${user} ! ${syncRes.count} favoris officiels synchronisés.`
+        syncRes.success
+          ? `Bienvenue ${user} ! ${syncRes.count} favoris officiels synchronisés.`
+          : `Bienvenue ${user} ! Connexion validée, mais la synchronisation des favoris a échoué : ${syncRes.error}`
       );
       resetForm();
       onSuccess?.();
@@ -184,6 +187,7 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
     } finally {
       setLoading(false);
       setSyncStatus(null);
+      setPowProgress(null);
     }
   };
 
@@ -207,13 +211,16 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
 
     setLoading(true);
     setErrorMessage(null);
-    setSyncStatus("Calcul du défi de sécurité...");
+    updateProgress("Calcul du défi de sécurité...");
 
     try {
       const pow = await getPowChallenge("register");
-      const nonce = await solvePoW(pow.challenge, pow.difficulty);
+      updateProgress("Calcul cryptographique...");
+      const nonce = await solvePoW(pow.challenge, pow.difficulty, (progress) => {
+        updateProgress("Calcul cryptographique...", progress);
+      });
 
-      setSyncStatus("Création du compte...");
+      updateProgress("Création du compte...");
       await v2Register({
         username: u,
         email: em,
@@ -239,6 +246,7 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
     } finally {
       setLoading(false);
       setSyncStatus(null);
+      setPowProgress(null);
     }
   };
 
@@ -256,13 +264,16 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
 
     setLoading(true);
     setErrorMessage(null);
-    setSyncStatus("Calcul du défi de sécurité...");
+    updateProgress("Calcul du défi de sécurité...");
 
     try {
       const pow = await getPowChallenge("reset");
-      const nonce = await solvePoW(pow.challenge, pow.difficulty);
+      updateProgress("Calcul cryptographique...");
+      const nonce = await solvePoW(pow.challenge, pow.difficulty, (progress) => {
+        updateProgress("Calcul cryptographique...", progress);
+      });
 
-      setSyncStatus("Envoi de l'email de réinitialisation...");
+      updateProgress("Envoi de l'email de réinitialisation...");
       await v2Reset({
         email: em,
         pow_challenge: pow.challenge,
@@ -270,8 +281,8 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
         captcha_response: captchaToken || undefined,
       });
 
-      setResetSuccess(true);
       resetForm();
+      setResetSuccess(true);
     } catch (err: any) {
       const msg =
         err instanceof ApiError
@@ -283,6 +294,7 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
     } finally {
       setLoading(false);
       setSyncStatus(null);
+      setPowProgress(null);
     }
   };
 
@@ -297,7 +309,7 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
     const detected = detectCredentialType(clean);
     setLoading(true);
     setErrorMessage(null);
-    setSyncStatus("Vérification de la clé API...");
+    updateProgress("Vérification de la clé API...");
 
     try {
       await loginWithSession(
@@ -306,10 +318,15 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
         detected.type
       );
 
-      setSyncStatus("Synchronisation des favoris cloud...");
-      const res = await syncFavorites((msg) => setSyncStatus(msg));
+      updateProgress("Synchronisation des favoris cloud...");
+      const res = await syncFavorites((msg) => updateProgress(msg));
 
-      Alert.alert("Connecté", `Clé API enregistrée ! ${res.count} favoris synchronisés.`);
+      Alert.alert(
+        "Connecté",
+        res.success
+          ? `Clé API validée ! ${res.count} favoris synchronisés.`
+          : `Clé API validée, mais la synchronisation a échoué : ${res.error}`
+      );
       resetForm();
       onSuccess?.();
       onClose();
@@ -318,37 +335,37 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
     } finally {
       setLoading(false);
       setSyncStatus(null);
+      setPowProgress(null);
     }
   };
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-      onShow={() => setModalShown(true)}
-    >
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <KeyboardAvoidingView
         style={styles.backdrop}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <View style={styles.card}>
+        <View style={[styles.card, { backgroundColor: colors.page, borderColor: colors.tagBg }]}>
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerLeft}>
               <IconCloud size={20} color={colors.accent} stroke={1.8} />
               <Text style={styles.headerTitle}>Compte nHentai</Text>
             </View>
-            <Pressable onPress={onClose} style={styles.closeBtn}>
-              <IconX size={20} color="#9ca3af" stroke={2} />
+            <Pressable
+              onPress={onClose}
+              style={[styles.closeBtn, { backgroundColor: colors.tagBg }]}
+              accessibilityRole="button"
+              accessibilityLabel="Fermer le compte"
+            >
+              <IconX size={20} color={colors.sub} stroke={2} />
             </Pressable>
           </View>
 
           {/* If already logged in */}
           {session.isLoggedIn ? (
             <View style={styles.loggedInBox}>
-              <View style={styles.userRow}>
+              <View style={[styles.userRow, { backgroundColor: colors.bg, borderColor: colors.tagBg }]}>
                 <View style={[styles.avatar, { backgroundColor: colors.accent }]}>
                   <IconUser size={22} color="#fff" stroke={2} />
                 </View>
@@ -368,7 +385,8 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
                 onPress={async () => {
                   setLoading(true);
                   try {
-                    const res = await syncFavorites((msg) => setSyncStatus(msg));
+                    updateProgress("Synchronisation des favoris cloud...");
+                    const res = await syncFavorites((msg) => updateProgress(msg));
                     if (res.success) {
                       Alert.alert("Cloud Synchronisé", `${res.count} favoris mis à jour avec le compte officiel.`);
                     } else {
@@ -377,6 +395,7 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
                   } finally {
                     setLoading(false);
                     setSyncStatus(null);
+                    setPowProgress(null);
                   }
                 }}
                 disabled={loading}
@@ -399,7 +418,9 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
                   logout();
                   Alert.alert("Déconnexion", "Compte déconnecté.");
                 }}
-                style={styles.logoutBtn}
+                style={[styles.logoutBtn, { backgroundColor: colors.tagBg }]}
+                accessibilityRole="button"
+                accessibilityLabel="Se déconnecter"
               >
                 <Text style={styles.logoutBtnText}>Se déconnecter</Text>
               </Pressable>
@@ -411,21 +432,33 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
               contentContainerStyle={{ gap: 10, paddingBottom: 6 }}
             >
               {/* Navigation tabs */}
-              <View style={styles.tabContainer}>
+              <View style={[styles.tabContainer, { backgroundColor: colors.bg }]}>
                 {(["login", "register", "reset", "apikey"] as AuthMode[]).map((m) => (
                   <Pressable
                     key={m}
                     onPress={() => switchMode(m)}
                     style={[
                       styles.tabBtn,
-                      mode === m && { backgroundColor: "#252538", borderColor: colors.accent },
+                      mode === m && { backgroundColor: colors.accent + "26", borderColor: colors.accent },
                     ]}
                   >
                     <Text
                       style={[
                         styles.tabText,
-                        mode === m && { color: "#f3f4f6", fontWeight: "800" },
+                        { color: mode === m ? colors.txt : colors.sub },
+                        mode === m && { fontWeight: "800" },
                       ]}
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected: mode === m }}
+                      accessibilityLabel={
+                        m === "login"
+                          ? "Connexion"
+                          : m === "register"
+                            ? "Inscription"
+                            : m === "reset"
+                              ? "Réinitialisation du mot de passe"
+                              : "Connexion par clé API"
+                      }
                     >
                       {m === "login"
                         ? "Connexion"
@@ -451,7 +484,7 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
               {mode !== "reset" && mode !== "apikey" && (
                 <View style={styles.inputGroup}>
                   <Text style={styles.inputLabel}>Identifiant</Text>
-                  <View style={styles.inputWrapper}>
+                  <View style={[styles.inputWrapper, { backgroundColor: colors.bg, borderColor: colors.tagBg }]}>
                     <IconUser size={16} color="#9ca3af" stroke={1.8} />
                     <TextInput
                       value={usernameInput}
@@ -470,7 +503,7 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
               {(mode === "register" || mode === "reset") && (
                 <View style={styles.inputGroup}>
                   <Text style={styles.inputLabel}>Adresse Email</Text>
-                  <View style={styles.inputWrapper}>
+                  <View style={[styles.inputWrapper, { backgroundColor: colors.bg, borderColor: colors.tagBg }]}>
                     <IconMail size={16} color="#9ca3af" stroke={1.8} />
                     <TextInput
                       value={emailInput}
@@ -490,7 +523,7 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
               {mode !== "reset" && mode !== "apikey" && (
                 <View style={styles.inputGroup}>
                   <Text style={styles.inputLabel}>Mot de passe</Text>
-                  <View style={styles.inputWrapper}>
+                  <View style={[styles.inputWrapper, { backgroundColor: colors.bg, borderColor: colors.tagBg }]}>
                     <IconLock size={16} color="#9ca3af" stroke={1.8} />
                     <TextInput
                       value={passwordInput}
@@ -506,6 +539,8 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
                     <Pressable
                       onPress={() => setShowPassword((p) => !p)}
                       style={styles.eyeBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
                     >
                       {showPassword ? (
                         <IconEyeOff size={16} color="#9ca3af" stroke={1.8} />
@@ -520,7 +555,7 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
               {mode === "register" && (
                 <View style={styles.inputGroup}>
                   <Text style={styles.inputLabel}>Confirmer le mot de passe</Text>
-                  <View style={styles.inputWrapper}>
+                  <View style={[styles.inputWrapper, { backgroundColor: colors.bg, borderColor: colors.tagBg }]}>
                     <IconLock size={16} color="#9ca3af" stroke={1.8} />
                     <TextInput
                       value={passwordConfirmInput}
@@ -540,7 +575,7 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
               {mode === "apikey" && (
                 <View style={styles.inputGroup}>
                   <Text style={styles.inputLabel}>Clé API nHentai (nhk_...)</Text>
-                  <View style={styles.inputWrapper}>
+                  <View style={[styles.inputWrapper, { backgroundColor: colors.bg, borderColor: colors.tagBg }]}>
                     <IconKey size={16} color="#9ca3af" stroke={1.8} />
                     <TextInput
                       value={apiKeyInput}
@@ -569,7 +604,7 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
               )}
 
               {/* Captcha Block for Web / v2 endpoints */}
-              {mode !== "apikey" && captchaInfo?.site_key && modalShown && (
+              {mode !== "apikey" && captchaInfo?.site_key && (
                 <View style={styles.captchaSection}>
                   <View style={styles.captchaHeader}>
                     <IconShield size={14} color={colors.accent} stroke={2} />
@@ -595,12 +630,15 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
               )}
 
               {/* Live status / progress / error */}
-              {syncStatus && (
-                <View style={styles.statusBox}>
-                  <ActivityIndicator size="small" color={colors.accent} />
-                  <Text style={styles.statusText}>{syncStatus}</Text>
-                </View>
-              )}
+              {syncStatus &&
+                (powProgress ? (
+                  <AuthPowProgressBar progress={powProgress} accent={colors.accent} />
+                ) : (
+                  <View style={[styles.statusBox, { backgroundColor: colors.tagBg }]}>
+                    <ActivityIndicator size="small" color={colors.accent} />
+                    <Text style={styles.statusText}>{syncStatus}</Text>
+                  </View>
+                ))}
 
               {errorMessage && (
                 <View style={styles.errorBox}>
@@ -663,10 +701,8 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 420,
     maxHeight: "92%",
-    backgroundColor: "#161622",
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: "#252538",
     padding: 18,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 10 },
@@ -693,11 +729,9 @@ const styles = StyleSheet.create({
   closeBtn: {
     padding: 6,
     borderRadius: 8,
-    backgroundColor: "#202030",
   },
   tabContainer: {
     flexDirection: "row",
-    backgroundColor: "#0e0e16",
     borderRadius: 12,
     padding: 3,
     gap: 4,
@@ -728,10 +762,8 @@ const styles = StyleSheet.create({
   inputWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#0f0f18",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#252538",
     paddingHorizontal: 12,
     height: 46,
     gap: 10,
@@ -747,11 +779,6 @@ const styles = StyleSheet.create({
   },
   captchaSection: {
     marginTop: 4,
-    backgroundColor: "#0f0f18",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#252538",
-    padding: 10,
     gap: 6,
   },
   captchaHeader: {
@@ -774,7 +801,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: "#202032",
     borderRadius: 10,
     padding: 10,
   },
@@ -837,11 +863,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    backgroundColor: "#0f0f18",
     padding: 12,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#252538",
   },
   avatar: {
     width: 44,
@@ -884,7 +908,6 @@ const styles = StyleSheet.create({
   logoutBtn: {
     height: 40,
     borderRadius: 10,
-    backgroundColor: "#202030",
     alignItems: "center",
     justifyContent: "center",
   },

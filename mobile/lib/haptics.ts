@@ -27,7 +27,17 @@ export function mediumImpact(): void {
   run(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
 }
 
+/** Sélection discrète (actions secondaires et contrôles). */
+export function selectionTap(): void {
+  run(() => Haptics.selectionAsync());
+}
+
 /** Notification de succès (copie réussie, action validée). */
 export function successFeedback(): void {
   run(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
+}
+
+/** Notification d'avertissement / échec non bloquant. */
+export function warningFeedback(): void {
+  run(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning));
 }

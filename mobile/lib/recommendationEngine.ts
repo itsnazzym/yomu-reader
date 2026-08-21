@@ -239,7 +239,8 @@ function extractSignalsFromSearch(
 async function buildProfile(): Promise<RecommendationProfile> {
   // Hydrate the stores here because this screen can be opened before their
   // hook-based initialisation has run.
-  await initFavorites();
+  await initFavorites(true);
+  await initHistory(true);
   const [history, searches] = await Promise.all([getReadHistory(), getSearchHistory()]);
 
   const favorites = getFavorites();
@@ -401,7 +402,7 @@ export async function generateRecommendations(
   const limitedQueries = uniqueQueries(queries).slice(0, 8);
   const maxQueries = Math.min(limitedQueries.length, 6);
 
-  await initBlacklist();
+  await initBlacklist(true);
   const blacklistedTags = getBlacklistedTags();
 
   for (let i = 0; i < maxQueries; i++) {

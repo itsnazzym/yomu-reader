@@ -10,6 +10,7 @@
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
 export const NH_HOST = "https://nhentai.net";
@@ -18,11 +19,21 @@ export const API_V2_BASE = `${NH_HOST}/api/v2`;
 const STATIC_API_KEY: string | undefined =
   process.env.EXPO_PUBLIC_NHENTAI_API_KEY || undefined;
 
-// Tokens in AsyncStorage
-const STORAGE_KEY_ACCESS = "@auth.v2.access_token";
-const STORAGE_KEY_REFRESH = "@auth.v2.refresh_token";
+const SECURE_STORAGE_KEY_ACCESS = "auth.v2.access_token";
+const SECURE_STORAGE_KEY_REFRESH = "auth.v2.refresh_token";
+const ASYNC_STORAGE_KEY_ACCESS = "@auth.v2.access_token";
+const ASYNC_STORAGE_KEY_REFRESH = "@auth.v2.refresh_token";
 const LEGACY_KEY_ACCESS = "@v2.access_token";
 const LEGACY_KEY_REFRESH = "@v2.refresh_token";
+const PLAINTEXT_TOKEN_KEYS = [
+  ASYNC_STORAGE_KEY_ACCESS,
+  ASYNC_STORAGE_KEY_REFRESH,
+  LEGACY_KEY_ACCESS,
+  LEGACY_KEY_REFRESH,
+];
+const REQUEST_TIMEOUT_MS = 12_000;
+const MAX_RATE_LIMIT_RETRIES = 3;
+const MAX_RETRY_AFTER_MS = 5 * 60 * 1000;
 
 let authStorageReadyPromise: Promise<void> | null = null;
 
@@ -34,22 +45,35 @@ export function getAuthStorageReady(): Promise<void> {
 }
 
 export async function migrateTokenKeysIfNeeded(): Promise<void> {
-  if (typeof window === "undefined" && Platform.OS === "web") return;
   try {
-    const [oldAccess, oldRefresh] = await AsyncStorage.multiGet([
-      LEGACY_KEY_ACCESS,
-      LEGACY_KEY_REFRESH,
-    ]);
-    const accessVal = oldAccess[1];
-    const refreshVal = oldRefresh[1];
-    if (accessVal || refreshVal) {
+    const plaintext = new Map(await AsyncStorage.multiGet(PLAINTEXT_TOKEN_KEYS));
+    const accessVal =
+      plaintext.get(ASYNC_STORAGE_KEY_ACCESS) || plaintext.get(LEGACY_KEY_ACCESS);
+    const refreshVal =
+      plaintext.get(ASYNC_STORAGE_KEY_REFRESH) || plaintext.get(LEGACY_KEY_REFRESH);
+
+    if (Platform.OS === "web") {
       const toSet: [string, string][] = [];
-      if (accessVal) toSet.push([STORAGE_KEY_ACCESS, accessVal]);
-      if (refreshVal) toSet.push([STORAGE_KEY_REFRESH, refreshVal]);
-      await AsyncStorage.multiSet(toSet);
+      if (accessVal) toSet.push([ASYNC_STORAGE_KEY_ACCESS, accessVal]);
+      if (refreshVal) toSet.push([ASYNC_STORAGE_KEY_REFRESH, refreshVal]);
+      if (toSet.length) await AsyncStorage.multiSet(toSet);
       await AsyncStorage.multiRemove([LEGACY_KEY_ACCESS, LEGACY_KEY_REFRESH]);
-      console.log("[auth] Migrated v2 tokens to @auth. prefix keys");
+      return;
     }
+
+    const [secureAccess, secureRefresh] = await Promise.all([
+      SecureStore.getItemAsync(SECURE_STORAGE_KEY_ACCESS),
+      SecureStore.getItemAsync(SECURE_STORAGE_KEY_REFRESH),
+    ]);
+    const writes: Promise<void>[] = [];
+    if (!secureAccess && accessVal) {
+      writes.push(SecureStore.setItemAsync(SECURE_STORAGE_KEY_ACCESS, accessVal));
+    }
+    if (!secureRefresh && refreshVal) {
+      writes.push(SecureStore.setItemAsync(SECURE_STORAGE_KEY_REFRESH, refreshVal));
+    }
+    await Promise.all(writes);
+    await AsyncStorage.multiRemove(PLAINTEXT_TOKEN_KEYS);
   } catch (e) {
     console.warn("[auth] Token key migration failed:", e);
   }
@@ -62,24 +86,49 @@ export function resolveUrl(path: string): string {
 
 export async function storeTokens(
   accessToken: string,
-  refreshToken: string
+  refreshToken?: string | null
 ): Promise<void> {
-  await AsyncStorage.multiSet([
-    [STORAGE_KEY_ACCESS, accessToken],
-    [STORAGE_KEY_REFRESH, refreshToken],
-  ]);
+  await getAuthStorageReady();
+  if (Platform.OS === "web") {
+    const writes: [string, string][] = [[ASYNC_STORAGE_KEY_ACCESS, accessToken]];
+    if (refreshToken) writes.push([ASYNC_STORAGE_KEY_REFRESH, refreshToken]);
+    await AsyncStorage.multiSet(writes);
+    if (!refreshToken) await AsyncStorage.removeItem(ASYNC_STORAGE_KEY_REFRESH);
+    return;
+  }
+
+  await SecureStore.setItemAsync(SECURE_STORAGE_KEY_ACCESS, accessToken);
+  if (refreshToken) {
+    await SecureStore.setItemAsync(SECURE_STORAGE_KEY_REFRESH, refreshToken);
+  } else {
+    await SecureStore.deleteItemAsync(SECURE_STORAGE_KEY_REFRESH);
+  }
 }
 
 export async function loadAccessToken(): Promise<string | null> {
-  return AsyncStorage.getItem(STORAGE_KEY_ACCESS);
+  await getAuthStorageReady();
+  return Platform.OS === "web"
+    ? AsyncStorage.getItem(ASYNC_STORAGE_KEY_ACCESS)
+    : SecureStore.getItemAsync(SECURE_STORAGE_KEY_ACCESS);
 }
 
 export async function loadRefreshToken(): Promise<string | null> {
-  return AsyncStorage.getItem(STORAGE_KEY_REFRESH);
+  await getAuthStorageReady();
+  return Platform.OS === "web"
+    ? AsyncStorage.getItem(ASYNC_STORAGE_KEY_REFRESH)
+    : SecureStore.getItemAsync(SECURE_STORAGE_KEY_REFRESH);
 }
 
 export async function clearTokens(): Promise<void> {
-  await AsyncStorage.multiRemove([STORAGE_KEY_ACCESS, STORAGE_KEY_REFRESH]);
+  if (Platform.OS === "web") {
+    await AsyncStorage.multiRemove(PLAINTEXT_TOKEN_KEYS);
+    return;
+  }
+  await Promise.all([
+    SecureStore.deleteItemAsync(SECURE_STORAGE_KEY_ACCESS),
+    SecureStore.deleteItemAsync(SECURE_STORAGE_KEY_REFRESH),
+    AsyncStorage.multiRemove(PLAINTEXT_TOKEN_KEYS),
+  ]);
 }
 
 export async function hasSession(): Promise<boolean> {
@@ -91,7 +140,8 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public readonly status: number,
-    public readonly body?: unknown
+    public readonly body?: unknown,
+    public readonly retryAfterMs?: number
   ) {
     super(message);
     this.name = "ApiError";
@@ -103,6 +153,26 @@ export interface RequestOptions {
   apiKey?: string;
   headers?: Record<string, string>;
   skipRefresh?: boolean;
+  timeoutMs?: number;
+}
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if ((error as Error)?.name === "AbortError") {
+      throw new Error(`Délai réseau dépassé (${Math.round(timeoutMs / 1000)} s)`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function buildHeaders(opts: RequestOptions): Promise<Record<string, string>> {
@@ -144,6 +214,28 @@ async function buildHeaders(opts: RequestOptions): Promise<Record<string, string
   return headers;
 }
 
+function parseRetryAfterMs(value: string | null): number | undefined {
+  if (!value) return undefined;
+
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) {
+    return Math.min(MAX_RETRY_AFTER_MS, Math.max(0, Math.round(seconds * 1000)));
+  }
+
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return undefined;
+  return Math.min(MAX_RETRY_AFTER_MS, Math.max(0, timestamp - Date.now()));
+}
+
+function getRateLimitDelayMs(response: Response, attempt: number): number {
+  const retryAfterMs = parseRetryAfterMs(response.headers.get("Retry-After"));
+  if (retryAfterMs !== undefined) {
+    return Math.max(1_000, retryAfterMs);
+  }
+
+  return Math.min(30_000, 1_000 * 2 ** Math.max(0, attempt - 1));
+}
+
 async function request<T>(
   method: string,
   path: string,
@@ -159,14 +251,17 @@ async function request<T>(
     body: body !== undefined ? JSON.stringify(body) : undefined,
   };
 
-  let res = await fetch(url, init);
+  const timeoutMs = opts.timeoutMs ?? REQUEST_TIMEOUT_MS;
+  let res = await fetchWithTimeout(url, init, timeoutMs);
 
-  // Auto-retry on 429 (Rate limit)
+  // Respect the server's Retry-After header before retrying rate-limited
+  // requests. This matters for the favorites endpoint, whose quota is
+  // measured per minute rather than per connection.
   if (res.status === 429) {
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      const waitMs = attempt * 1200;
+    for (let attempt = 1; attempt <= MAX_RATE_LIMIT_RETRIES; attempt++) {
+      const waitMs = getRateLimitDelayMs(res, attempt);
       await new Promise((r) => setTimeout(r, waitMs));
-      res = await fetch(url, init);
+      res = await fetchWithTimeout(url, init, timeoutMs);
       if (res.status !== 429) break;
     }
   }
@@ -176,7 +271,7 @@ async function request<T>(
     const refreshed = await tryRefreshTokens();
     if (refreshed) {
       const retryHeaders = await buildHeaders(opts);
-      res = await fetch(url, { ...init, headers: retryHeaders });
+      res = await fetchWithTimeout(url, { ...init, headers: retryHeaders }, timeoutMs);
     }
   }
 
@@ -196,13 +291,27 @@ async function request<T>(
       (data as any)?.message ||
       (data as any)?.error ||
       `HTTP ${res.status}`;
-    throw new ApiError(msg, res.status, data);
+    throw new ApiError(
+      msg,
+      res.status,
+      data,
+      res.status === 429
+        ? parseRetryAfterMs(res.headers.get("Retry-After"))
+        : undefined
+    );
   }
 
   return data as T;
 }
 
 let refreshPromise: Promise<boolean> | null = null;
+
+export function shouldClearTokensAfterRefreshError(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return false;
+  if (error.status !== 400 && error.status !== 401) return false;
+  const detail = JSON.stringify(error.body ?? error.message).toLowerCase();
+  return /refresh|token|revok|invalid|expired/.test(detail);
+}
 
 async function tryRefreshTokens(): Promise<boolean> {
   if (refreshPromise) return refreshPromise;
@@ -220,8 +329,10 @@ async function tryRefreshTokens(): Promise<boolean> {
       );
       await storeTokens(result.access_token, result.refresh_token);
       return true;
-    } catch {
-      await clearTokens();
+    } catch (error) {
+      if (shouldClearTokensAfterRefreshError(error)) {
+        await clearTokens();
+      }
       return false;
     } finally {
       refreshPromise = null;

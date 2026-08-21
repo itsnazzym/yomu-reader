@@ -10,7 +10,6 @@ import {
   TextInput,
   Animated,
   Easing,
-  Alert,
   Modal,
   Pressable,
 } from "react-native";
@@ -21,7 +20,6 @@ import {
   IconSearch,
   IconAdjustmentsHorizontal,
   IconTag,
-  IconX,
   IconAlertCircle,
   IconInbox,
   IconChevronLeft,
@@ -30,18 +28,21 @@ import {
   IconFlame,
   IconWorld,
   IconTags,
-  IconPhotoSearch,
+  IconBook2,
 } from "@tabler/icons-react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/lib/ThemeContext";
 import { useDrawer } from "@/lib/DrawerContext";
 import { BookCard } from "@/components/BookCard";
+import { SearchBar } from "@/components/SearchBar";
 import { FilterModal, FilterOptions } from "@/components/modals/FilterModal";
 import { ReverseImageSearchModal } from "@/components/modals/ReverseImageSearchModal";
 import { searchGalleries } from "@/lib/api/nhentai";
 import { Gallery } from "@/lib/api/types";
 import { isGalleryBlacklisted, useBlacklist } from "@/lib/blacklistFilter";
+import { useHistory } from "@/lib/historyStore";
+import SmartImage from "@/components/SmartImage";
 import { addToSearchHistory } from "@/lib/recommendationEngine";
 import {
   searchTaxonomy,
@@ -59,6 +60,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const { tags: blacklistedTags } = useBlacklist();
+  const { history } = useHistory();
   const params = useLocalSearchParams<{
     tag?: string;
     query?: string;
@@ -142,6 +144,7 @@ export default function HomeScreen() {
   // Rotation animation for refresh button
   const spinAnim = useRef(new Animated.Value(0)).current;
   const flatListRef = useRef<any>(null);
+  const latestRequestRef = useRef(0);
 
   const { settings: readerSettings } = useReaderSettings();
 
@@ -186,6 +189,7 @@ export default function HomeScreen() {
       opts: FilterOptions,
       p: number
     ) => {
+      const requestId = ++latestRequestRef.current;
       setIsLoading(true);
       setError(null);
 
@@ -235,6 +239,7 @@ export default function HomeScreen() {
               })
             : Promise.resolve(null),
         ]);
+        if (requestId !== latestRequestRef.current) return;
 
         const newItems = response.result || [];
         if (p > 1 && readerSettings.infiniteScroll) {
@@ -251,14 +256,23 @@ export default function HomeScreen() {
         );
         setTotalPages(Math.max(1, response.num_pages || 1));
       } catch (err: any) {
+        if (requestId !== latestRequestRef.current) return;
         console.error("Fetch galleries error:", err);
         setError(err?.message || "Erreur de chargement des galeries.");
       } finally {
-        setIsLoading(false);
+        if (requestId === latestRequestRef.current) {
+          setIsLoading(false);
+        }
       }
     },
-    [spinAnim]
+    [readerSettings.infiniteScroll, spinAnim]
   );
+
+  useEffect(() => {
+    return () => {
+      latestRequestRef.current += 1;
+    };
+  }, []);
 
   useEffect(() => {
     fetchGalleries(activeQuery, filterOptions, page);
@@ -298,6 +312,27 @@ export default function HomeScreen() {
     filterOptions.language === "all" &&
     filterOptions.pageRange === "all" &&
     filterOptions.dateFilter === "all";
+
+  const resumeEntry = useMemo(() => {
+    if (!isHomeFeed || isSearchOpen) return null;
+    return (
+      history.find((entry) => {
+        const total = entry.totalPages || 0;
+        return entry.lastPage > 0 && total > 1 && entry.lastPage < total - 1;
+      }) ?? null
+    );
+  }, [history, isHomeFeed, isSearchOpen]);
+
+  const handleResumeRead = () => {
+    if (!resumeEntry) return;
+    router.push({
+      pathname: "/read",
+      params: {
+        id: String(resumeEntry.gallery.id),
+        initialPage: String(resumeEntry.lastPage),
+      },
+    });
+  };
 
   const filteredGalleries = useMemo(() => {
     if (!blacklistedTags.length) return galleries;
@@ -357,7 +392,7 @@ export default function HomeScreen() {
       style={[
         styles.container,
         {
-          backgroundColor: "#12121a",
+          backgroundColor: colors.bg,
           paddingTop: insets.top + 6,
         },
       ]}
@@ -369,9 +404,11 @@ export default function HomeScreen() {
           activeOpacity={0.7}
           onPress={openDrawer}
           style={styles.headerLeft}
+          accessibilityRole="button"
+          accessibilityLabel="Ouvrir le menu"
         >
-          <IconMenu2 size={20} color="#f3f4f6" stroke={2} style={{ marginRight: 10 }} />
-          <Text style={styles.headerTitle}>Home</Text>
+          <IconMenu2 size={20} color={colors.txt} stroke={2} style={{ marginRight: 10 }} />
+          <Text style={[styles.headerTitle, { color: colors.txt }]}>Accueil</Text>
         </TouchableOpacity>
 
         {/* Right Action Icons */}
@@ -381,9 +418,12 @@ export default function HomeScreen() {
             activeOpacity={0.7}
             onPress={handleRefresh}
             style={styles.iconBtn}
+            hitSlop={4}
+            accessibilityRole="button"
+            accessibilityLabel="Actualiser les galeries"
           >
             <Animated.View style={{ transform: [{ rotate: spin }] }}>
-              <IconRefresh size={18} color="#c5878d" stroke={2} />
+              <IconRefresh size={18} color={colors.accent} stroke={2} />
             </Animated.View>
           </TouchableOpacity>
 
@@ -391,18 +431,24 @@ export default function HomeScreen() {
           <TouchableOpacity
             activeOpacity={0.7}
             onPress={() => setIsSearchOpen((prev) => !prev)}
-            style={[styles.iconBtn, isSearchOpen && { backgroundColor: "rgba(197, 135, 141, 0.2)" }]}
+            style={[styles.iconBtn, isSearchOpen && { backgroundColor: colors.accent + "33" }]}
+            hitSlop={4}
+            accessibilityRole="button"
+            accessibilityLabel={isSearchOpen ? "Fermer la recherche" : "Ouvrir la recherche"}
           >
-            <IconSearch size={18} color="#c5878d" stroke={2} />
+            <IconSearch size={18} color={colors.accent} stroke={2} />
           </TouchableOpacity>
 
           {/* Filter & Sort Trigger */}
           <TouchableOpacity
             activeOpacity={0.7}
             onPress={() => setIsFilterModalOpen(true)}
-            style={[styles.iconBtn, hasActiveFilters && { backgroundColor: "rgba(197, 135, 141, 0.2)" }]}
+            style={[styles.iconBtn, hasActiveFilters && { backgroundColor: colors.accent + "33" }]}
+            hitSlop={4}
+            accessibilityRole="button"
+            accessibilityLabel="Ouvrir les filtres"
           >
-            <IconAdjustmentsHorizontal size={18} color="#c5878d" stroke={1.8} />
+            <IconAdjustmentsHorizontal size={18} color={colors.accent} stroke={1.8} />
             {hasActiveFilters && <View style={styles.filterBadgeDot} />}
           </TouchableOpacity>
 
@@ -411,55 +457,93 @@ export default function HomeScreen() {
             activeOpacity={0.7}
             onPress={() => router.push("/tags")}
             style={styles.iconBtn}
+            hitSlop={4}
+            accessibilityRole="button"
+            accessibilityLabel="Explorer les tags"
           >
-            <IconTag size={18} color="#c5878d" stroke={1.8} />
+            <IconTag size={18} color={colors.accent} stroke={1.8} />
           </TouchableOpacity>
         </View>
       </View>
 
+      {resumeEntry ? (
+        <TouchableOpacity
+          activeOpacity={0.75}
+          onPress={handleResumeRead}
+          style={[
+            styles.resumeBar,
+            { backgroundColor: colors.searchBg, borderColor: colors.tagBg },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel={`Reprendre la lecture de ${
+            resumeEntry.gallery.title?.pretty ||
+            resumeEntry.gallery.title?.english ||
+            `Gallery #${resumeEntry.gallery.id}`
+          }`}
+        >
+          <View style={[styles.resumeCover, { backgroundColor: colors.bg }]}>
+            <SmartImage
+              uri={
+                resumeEntry.gallery.images?.cover?.url ||
+                resumeEntry.gallery.images?.thumbnail?.url ||
+                ""
+              }
+              style={styles.resumeCoverImage}
+              contentFit="cover"
+            />
+          </View>
+          <View style={styles.resumeInfo}>
+            <Text style={[styles.resumeLabel, { color: colors.accent }]}>Reprendre</Text>
+            <Text style={styles.resumeTitle} numberOfLines={1}>
+              {resumeEntry.gallery.title?.pretty ||
+                resumeEntry.gallery.title?.english ||
+                `Gallery #${resumeEntry.gallery.id}`}
+            </Text>
+            <Text style={styles.resumePage}>
+              Page {resumeEntry.lastPage + 1} / {resumeEntry.totalPages}
+            </Text>
+          </View>
+          <View style={[styles.resumeAction, { backgroundColor: colors.accent + "29" }]}>
+            <IconBook2 size={18} color={colors.accent} stroke={2} />
+          </View>
+        </TouchableOpacity>
+      ) : null}
+
       {/* Expandable Search Input & Tag Suggestions */}
       {isSearchOpen && (
         <View style={styles.searchSection}>
-          <View style={styles.searchBarWrap}>
-            <IconSearch size={16} color="#9ca3af" stroke={1.8} style={{ marginRight: 8 }} />
-            <TextInput
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              onSubmitEditing={handleSearchSubmit}
-              returnKeyType="search"
-              placeholder="Rechercher tags, artistes, parodies ou code..."
-              placeholderTextColor="#6b7280"
-              style={styles.searchInput}
-              autoFocus
-            />
-            {/* Recherche Visuelle par Image */}
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => setIsImageSearchOpen(true)}
-              style={{ padding: 4, marginRight: 2 }}
-            >
-              <IconPhotoSearch size={18} color="#60a5fa" stroke={2} />
-            </TouchableOpacity>
-
-            {searchQuery ? (
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={() => {
-                  setSearchQuery("");
-                  setActiveQuery("");
-                  setPage(1);
-                  router.setParams({ tag: undefined, query: undefined, type: undefined });
-                }}
-                style={{ padding: 4 }}
-              >
-                <IconX size={16} color="#9ca3af" stroke={2} />
-              </TouchableOpacity>
-            ) : null}
-          </View>
+          <SearchBar
+            query={searchQuery}
+            onQueryChange={setSearchQuery}
+            onSubmit={handleSearchSubmit}
+            selectedLanguage={filterOptions.language}
+            onLanguageChange={(language) => {
+              setFilterOptions((prev) => ({ ...prev, language }));
+              setPage(1);
+            }}
+            sort={filterOptions.sort}
+            onSortChange={(sort) => {
+              setFilterOptions((prev) => ({ ...prev, sort }));
+              setPage(1);
+            }}
+            showMenu={false}
+            showLanguagePills={false}
+            showSortButton={false}
+            showRandomButton={false}
+            onImageSearch={() => setIsImageSearchOpen(true)}
+            onClear={() => {
+              setSearchQuery("");
+              setActiveQuery("");
+              setPage(1);
+              router.setParams({ tag: undefined, query: undefined, type: undefined });
+            }}
+            autoFocus
+            placeholder="Rechercher tags, artistes, parodies ou code..."
+          />
 
           {/* Live Tag Autocomplete Dropdown */}
           {tagSuggestions.length > 0 && (
-            <View style={[styles.suggestionsBox, { backgroundColor: "#151522", borderColor: "#28283a" }]}>
+            <View style={[styles.suggestionsBox, { backgroundColor: colors.page, borderColor: colors.tagBg }]}>
               {tagSuggestions.map((item) => {
                 const meta = CATEGORY_META[item.category];
                 return (
@@ -468,6 +552,8 @@ export default function HomeScreen() {
                     activeOpacity={0.7}
                     onPress={() => handleSelectSuggestion(item)}
                     style={styles.suggestionItem}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Ajouter le tag ${item.name}`}
                   >
                     <View style={styles.suggestionLeft}>
                       <View style={[styles.categoryBadge, { backgroundColor: `${meta?.color || "#60a5fa"}20` }]}>
@@ -502,9 +588,19 @@ export default function HomeScreen() {
                 setActiveQuery(q);
                 setPage(1);
               }}
-              style={[styles.quickChip, searchQuery.includes("french") && styles.quickChipActive]}
+              style={[
+                styles.quickChip,
+                { backgroundColor: colors.page, borderColor: colors.tagBg },
+                searchQuery.includes("french") && {
+                  backgroundColor: colors.accent + "33",
+                  borderColor: colors.accent,
+                },
+              ]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: searchQuery.includes("french") }}
+              accessibilityLabel="Filtrer les galeries françaises"
             >
-              <IconWorld size={14} color={searchQuery.includes("french") ? "#ffffff" : "#60a5fa"} stroke={2} />
+              <IconWorld size={14} color={searchQuery.includes("french") ? "#ffffff" : colors.accent} stroke={2} />
               <Text style={[styles.quickChipText, searchQuery.includes("french") && styles.quickChipTextActive]}>
                 Français
               </Text>
@@ -518,9 +614,19 @@ export default function HomeScreen() {
                 setActiveQuery(q);
                 setPage(1);
               }}
-              style={[styles.quickChip, searchQuery.includes("english") && styles.quickChipActive]}
+              style={[
+                styles.quickChip,
+                { backgroundColor: colors.page, borderColor: colors.tagBg },
+                searchQuery.includes("english") && {
+                  backgroundColor: colors.accent + "33",
+                  borderColor: colors.accent,
+                },
+              ]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: searchQuery.includes("english") }}
+              accessibilityLabel="Filtrer les galeries anglaises"
             >
-              <IconWorld size={14} color={searchQuery.includes("english") ? "#ffffff" : "#34d399"} stroke={2} />
+              <IconWorld size={14} color={searchQuery.includes("english") ? "#ffffff" : colors.accent} stroke={2} />
               <Text style={[styles.quickChipText, searchQuery.includes("english") && styles.quickChipTextActive]}>
                 Anglais
               </Text>
@@ -535,9 +641,19 @@ export default function HomeScreen() {
                 }));
                 setPage(1);
               }}
-              style={[styles.quickChip, filterOptions.sort.includes("popular") && styles.quickChipActive]}
+              style={[
+                styles.quickChip,
+                { backgroundColor: colors.page, borderColor: colors.tagBg },
+                filterOptions.sort.includes("popular") && {
+                  backgroundColor: colors.accent + "33",
+                  borderColor: colors.accent,
+                },
+              ]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: filterOptions.sort.includes("popular") }}
+              accessibilityLabel="Trier par popularité"
             >
-              <IconFlame size={14} color={filterOptions.sort.includes("popular") ? "#ffffff" : "#fbbf24"} stroke={2} />
+              <IconFlame size={14} color={filterOptions.sort.includes("popular") ? "#ffffff" : colors.accent} stroke={2} />
               <Text style={[styles.quickChipText, filterOptions.sort.includes("popular") && styles.quickChipTextActive]}>
                 Populaires
               </Text>
@@ -558,9 +674,12 @@ export default function HomeScreen() {
                   }}
                   style={[
                     styles.quickChip,
-                    { borderColor: col.color + "60" },
+                    { backgroundColor: colors.page, borderColor: col.color + "60" },
                     isColActive && { backgroundColor: col.color + "30", borderColor: col.color },
                   ]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isColActive }}
+                  accessibilityLabel={`Collection ${col.name}`}
                 >
                   <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: col.color }} />
                   <Text style={[styles.quickChipText, isColActive && { color: "#ffffff", fontWeight: "800" }]}>
@@ -573,9 +692,11 @@ export default function HomeScreen() {
             <TouchableOpacity
               activeOpacity={0.7}
               onPress={() => router.push("/tags")}
-              style={styles.quickChip}
+              style={[styles.quickChip, { backgroundColor: colors.page, borderColor: colors.tagBg }]}
+              accessibilityRole="button"
+              accessibilityLabel="Explorer les tags"
             >
-              <IconTags size={14} color="#a78bfa" stroke={2} />
+              <IconTags size={14} color={colors.accent} stroke={2} />
               <Text style={styles.quickChipText}>
                 Explorer Tags
               </Text>
@@ -642,6 +763,8 @@ export default function HomeScreen() {
           style={[
             styles.bottomPagination,
             {
+              backgroundColor: colors.bg + "F2",
+              borderTopColor: colors.tagBg,
               paddingBottom: Math.max(insets.bottom, 12),
             },
           ]}
@@ -651,9 +774,15 @@ export default function HomeScreen() {
           activeOpacity={0.7}
           onPress={() => handlePageChange(page - 1)}
           disabled={page <= 1 || isLoading}
-          style={[styles.pageNavBtn, page <= 1 && { opacity: 0.3 }]}
+          style={[
+            styles.pageNavBtn,
+            { backgroundColor: colors.page },
+            page <= 1 && { opacity: 0.3 },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Page précédente"
         >
-          <IconChevronLeft size={22} color="#f3f4f6" stroke={2} />
+          <IconChevronLeft size={22} color={colors.txt} stroke={2} />
         </TouchableOpacity>
 
         {/* Page Indicator (Clickable to jump - Android, iOS, Web compatible) */}
@@ -663,9 +792,14 @@ export default function HomeScreen() {
             setJumpPageInput(String(page));
             setIsJumpModalOpen(true);
           }}
-          style={styles.pageIndicatorBox}
+          style={[
+            styles.pageIndicatorBox,
+            { backgroundColor: colors.page, borderColor: colors.tagBg },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel={`Aller à la page ${page} sur ${totalPages}`}
         >
-          <Text style={styles.pageText}>
+          <Text style={[styles.pageText, { color: colors.txt }]}>
             {page} / {totalPages}
           </Text>
         </TouchableOpacity>
@@ -675,9 +809,15 @@ export default function HomeScreen() {
           activeOpacity={0.7}
           onPress={() => handlePageChange(page + 1)}
           disabled={page >= totalPages || isLoading}
-          style={[styles.pageNavBtn, page >= totalPages && { opacity: 0.3 }]}
+          style={[
+            styles.pageNavBtn,
+            { backgroundColor: colors.page },
+            page >= totalPages && { opacity: 0.3 },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Page suivante"
         >
-          <IconChevronRight size={22} color="#f3f4f6" stroke={2} />
+          <IconChevronRight size={22} color={colors.txt} stroke={2} />
         </TouchableOpacity>
       </View>
       )}
@@ -696,12 +836,12 @@ export default function HomeScreen() {
           <Pressable
             style={[
               styles.jumpModalCard,
-              { backgroundColor: "#161622", borderColor: "#28283a" },
+              { backgroundColor: colors.page, borderColor: colors.tagBg },
             ]}
             onPress={(e) => e.stopPropagation()}
           >
-            <Text style={styles.jumpModalTitle}>Aller à la page</Text>
-            <Text style={styles.jumpModalSub}>
+            <Text style={[styles.jumpModalTitle, { color: colors.txt }]}>Aller à la page</Text>
+            <Text style={[styles.jumpModalSub, { color: colors.sub }]}>
               Entrez un numéro de page entre 1 et {totalPages} :
             </Text>
 
@@ -720,7 +860,7 @@ export default function HomeScreen() {
               }}
               style={[
                 styles.jumpInput,
-                { backgroundColor: "#12121a", borderColor: "#28283a", color: "#f3f4f6" },
+                { backgroundColor: colors.bg, borderColor: colors.tagBg, color: colors.txt },
               ]}
             />
 
@@ -728,9 +868,11 @@ export default function HomeScreen() {
               <TouchableOpacity
                 activeOpacity={0.7}
                 onPress={() => setIsJumpModalOpen(false)}
-                style={styles.jumpCancelBtn}
+                style={[styles.jumpCancelBtn, { backgroundColor: colors.tagBg }]}
+                accessibilityRole="button"
+                accessibilityLabel="Annuler"
               >
-                <Text style={styles.jumpCancelText}>Annuler</Text>
+                <Text style={[styles.jumpCancelText, { color: colors.sub }]}>Annuler</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -743,6 +885,8 @@ export default function HomeScreen() {
                   setIsJumpModalOpen(false);
                 }}
                 style={[styles.jumpSubmitBtn, { backgroundColor: colors.accent }]}
+                accessibilityRole="button"
+                accessibilityLabel="Aller à la page"
               >
                 <Text style={styles.jumpSubmitText}>Aller</Text>
                 <IconArrowRight size={16} color="#1c191a" stroke={2.5} />
@@ -813,24 +957,56 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: "#ed2553",
+    backgroundColor: "#ff4757",
   },
-  searchBarWrap: {
+  resumeBar: {
     flexDirection: "row",
     alignItems: "center",
     marginHorizontal: 16,
     marginBottom: 8,
-    backgroundColor: "#181826",
-    borderColor: "#28283a",
-    borderWidth: 1,
+    padding: 8,
     borderRadius: 14,
-    paddingHorizontal: 12,
-    height: 42,
+    borderWidth: 1,
+    gap: 10,
   },
-  searchInput: {
+  resumeCover: {
+    width: 40,
+    height: 56,
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  resumeCoverImage: {
+    width: "100%",
+    height: "100%",
+  },
+  resumeInfo: {
     flex: 1,
-    fontSize: 13.5,
+    minWidth: 0,
+  },
+  resumeLabel: {
+    fontSize: 10,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.7,
+    marginBottom: 2,
+  },
+  resumeTitle: {
+    fontSize: 13,
+    fontWeight: "700",
     color: "#f3f4f6",
+  },
+  resumePage: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#9ca3af",
+    marginTop: 2,
+  },
+  resumeAction: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
   },
   homeHeader: {
     paddingTop: 4,
@@ -919,9 +1095,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 24,
     paddingTop: 10,
-    backgroundColor: "rgba(18, 18, 26, 0.95)",
     borderTopWidth: 1,
-    borderTopColor: "#20202e",
   },
   pageNavBtn: {
     width: 42,
@@ -929,15 +1103,12 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#1c1c28",
   },
   pageIndicatorBox: {
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 12,
-    backgroundColor: "#161622",
     borderWidth: 1,
-    borderColor: "#28283a",
   },
   pageText: {
     fontSize: 13.5,
@@ -995,12 +1166,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#1e1e2c",
   },
   jumpCancelText: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#9ca3af",
   },
   jumpSubmitBtn: {
     flex: 1,
@@ -1078,13 +1247,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 20,
-    backgroundColor: "#161622",
     borderWidth: 1,
-    borderColor: "#28283a",
-  },
-  quickChipActive: {
-    backgroundColor: "rgba(197, 135, 141, 0.2)",
-    borderColor: "#c5878d",
   },
   quickChipText: {
     fontSize: 12,
@@ -1092,7 +1255,7 @@ const styles = StyleSheet.create({
     color: "#d1d5db",
   },
   quickChipTextActive: {
-    color: "#c5878d",
+    color: "#ffffff",
     fontWeight: "800",
   },
 });

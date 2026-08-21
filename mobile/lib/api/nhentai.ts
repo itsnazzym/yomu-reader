@@ -2,9 +2,8 @@ import { Gallery, GalleryImage, SearchResult, Comment, Tag } from "./types";
 import { Platform } from "react-native";
 import {
   searchGalleries as v2Search,
-  getGalleries as v2GetGalleries,
-  getPopularGalleries as v2GetPopularGalleries,
   getGallery as v2GetGallery,
+  getRelatedGalleries as v2GetRelatedGalleries,
   getRandomGalleryId as v2GetRandomGalleryId,
   getComments as v2GetComments,
   resolveThumbUrl as v2ResolveThumbUrl,
@@ -12,9 +11,9 @@ import {
   initCdn,
 } from "./v2";
 import type { GalleryCard as V2GalleryCard, Gallery as V2Gallery } from "./v2/types";
+import { ApiError } from "./v2/client";
 
 const BASE_URL = "https://nhentai.net";
-const API_V2_URL = `${BASE_URL}/api/v2`;
 const API_V1_URL = `${BASE_URL}/api`;
 
 /**
@@ -49,6 +48,20 @@ const COMMON_HEADERS: Record<string, string> = {
 
 // Global in-memory cache
 export const galleryCache = new Map<number, Gallery>();
+const GALLERY_CACHE_MAX_ENTRIES = 300;
+
+function cacheGallery(gallery: Gallery): void {
+  const id = Number(gallery.id);
+  if (!Number.isFinite(id) || id <= 0) return;
+  galleryCache.delete(id);
+  galleryCache.set(id, gallery);
+  while (galleryCache.size > GALLERY_CACHE_MAX_ENTRIES) {
+    const oldestId = galleryCache.keys().next().value;
+    if (oldestId === undefined) break;
+    galleryCache.delete(oldestId);
+  }
+}
+
 // In-flight request deduplicator
 const inFlightRequests = new Map<string, Promise<any>>();
 
@@ -85,7 +98,7 @@ async function nativeFetchJson<T>(url: string): Promise<T> {
       });
 
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        throw new ApiError(`HTTP ${res.status}: ${res.statusText}`, res.status);
       }
 
       return (await res.json()) as T;
@@ -280,7 +293,7 @@ export function v2CardToGallery(card: V2GalleryCard): Gallery {
     num_favorites: card.num_favorites || 0,
   };
 
-  galleryCache.set(card.id, gallery);
+  cacheGallery(gallery);
   return gallery;
 }
 
@@ -340,7 +353,7 @@ export function v2GalleryToAppGallery(g: V2Gallery): Gallery {
     num_favorites: g.num_favorites || 0,
   };
 
-  galleryCache.set(g.id, gallery);
+  cacheGallery(gallery);
   return gallery;
 }
 
@@ -425,7 +438,7 @@ export function enrichGalleryImages(raw: any): Gallery {
   }
 
   if (gallery.id) {
-    galleryCache.set(Number(gallery.id), gallery);
+    cacheGallery(gallery);
   }
 
   return gallery;
@@ -467,9 +480,30 @@ export async function searchGalleries(
     console.warn(`[API V2 SEARCH ERROR] ${v2Err?.message}. Tentative fallback...`);
   }
 
-  // 2. Fallback Miroir proxy local
-  const sortParam = sort && sort !== "recent" ? `&sort=${sort}` : "";
   const q = trimmed ? encodeURIComponent(trimmed) : "";
+  const endpointV1 = trimmed
+    ? `${API_V1_URL}/galleries/search?query=${q}&page=${page}&sort=${sort}`
+    : `${API_V1_URL}/galleries/all?page=${page}&sort=${sort}`;
+
+  // 2. API v1 officielle, utile lorsque v2 est temporairement indisponible.
+  try {
+    const data = await nativeFetchJson<any>(endpointV1);
+    const rawList = data?.result || data?.galleries || data?.data || [];
+    const resultList: Gallery[] = rawList.map(enrichGalleryImages);
+    const numPages =
+      data?.num_pages ||
+      data?.total_pages ||
+      (data?.total ? Math.ceil(data.total / 25) : 1);
+    return {
+      result: resultList,
+      num_pages: numPages,
+      per_page: data?.per_page || 25,
+    };
+  } catch (v1Err: any) {
+    console.warn(`[API V1 SEARCH ERROR] ${v1Err?.message}. Tentative miroir...`);
+  }
+
+  // 3. Fallback miroir proxy local
   const endpointMirror = trimmed
     ? `${FALLBACK_API_BASE}/api/galleries/search?query=${q}&page=${page}&sort=${sort}`
     : `${FALLBACK_API_BASE}/api/galleries/all?page=${page}&sort=${sort}`;
@@ -496,6 +530,8 @@ export async function getGallery(id: number | string): Promise<Gallery> {
   if (galleryCache.has(numId)) {
     const cached = galleryCache.get(numId)!;
     if (cached.images?.pages && cached.images.pages.length > 0) {
+      galleryCache.delete(numId);
+      galleryCache.set(numId, cached);
       return cached;
     }
   }
@@ -509,9 +545,25 @@ export async function getGallery(id: number | string): Promise<Gallery> {
     }
   } catch (v2Err: any) {
     console.warn(`[v2 getGallery error] ${v2Err?.message}`);
+    if (v2Err instanceof ApiError && v2Err.status === 404) {
+      throw v2Err;
+    }
   }
 
-  // 2. Fallback miroir
+  // 2. API v1 officielle.
+  try {
+    const data = await nativeFetchJson<any>(`${API_V1_URL}/gallery/${id}`);
+    if (data) {
+      return enrichGalleryImages(data);
+    }
+  } catch (v1Err: any) {
+    console.warn(`[v1 getGallery error] ${v1Err?.message}`);
+    if (v1Err instanceof ApiError && v1Err.status === 404) {
+      throw v1Err;
+    }
+  }
+
+  // 3. Fallback miroir
   try {
     const data = await nativeFetchJson<any>(`${FALLBACK_API_BASE}/api/gallery/${id}`);
     if (data) {
@@ -580,4 +632,84 @@ export async function getComments(id: number | string): Promise<Comment[]> {
   } catch {
     return [];
   }
+}
+
+/** Lightweight related card — never written to `galleryCache`. */
+export interface RelatedCard {
+  id: number;
+  title: string;
+  coverUrl: string;
+  tag_ids: number[];
+  tagNames: string[];
+}
+
+export function relatedToCards(raw: unknown): RelatedCard[] {
+  const list = Array.isArray(raw)
+    ? raw
+    : raw && typeof raw === "object" && Array.isArray((raw as { result?: unknown[] }).result)
+      ? ((raw as { result: unknown[] }).result)
+      : [];
+
+  const cards: RelatedCard[] = [];
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const r = item as Record<string, any>;
+    const id = Number(r.id);
+    if (!Number.isFinite(id) || id <= 0) continue;
+
+    const title =
+      r.english_title ||
+      r.title?.pretty ||
+      r.title?.english ||
+      r.japanese_title ||
+      r.title?.japanese ||
+      `Gallery #${id}`;
+
+    let coverUrl = "";
+    if (typeof r.thumbnail === "string" && r.thumbnail) {
+      coverUrl = v2ResolveThumbUrl(r.thumbnail);
+    } else if (r.thumbnail?.path) {
+      coverUrl = v2ResolveThumbUrl(r.thumbnail.path);
+    } else if (r.cover?.path) {
+      coverUrl = v2ResolveThumbUrl(r.cover.path);
+    } else if (r.images?.cover?.url) {
+      coverUrl = String(r.images.cover.url);
+    } else if (r.images?.thumbnail?.url) {
+      coverUrl = String(r.images.thumbnail.url);
+    } else if (r.media_id) {
+      coverUrl = v2ResolveThumbUrl(`/galleries/${r.media_id}/thumb.webp`);
+    }
+
+    const tagNames: string[] = [];
+    if (Array.isArray(r.tags)) {
+      for (const t of r.tags) {
+        const name = t?.name ? String(t.name).toLowerCase() : "";
+        if (name) tagNames.push(name);
+      }
+    }
+
+    const tag_ids = Array.isArray(r.tag_ids)
+      ? r.tag_ids.map((tid: unknown) => Number(tid)).filter((tid: number) => Number.isFinite(tid) && tid > 0)
+      : [];
+
+    cards.push({
+      id,
+      title: String(title),
+      coverUrl,
+      tag_ids,
+      tagNames,
+    });
+  }
+  return cards;
+}
+
+/**
+ * Related galleries from API v2 only (no gallery cache, no mirror fallback).
+ * Throws on network/HTTP error so the UI can hide the section.
+ */
+export async function getRelatedGalleryCards(
+  id: number | string
+): Promise<RelatedCard[]> {
+  const raw = await v2GetRelatedGalleries(id);
+  return relatedToCards(raw);
 }

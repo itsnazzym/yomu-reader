@@ -1,8 +1,8 @@
 # ==============================================================================
-# nHentai Launcher (Desktop & Mobile) - .gitignore
+# nHentai Launcher Ecosystem - .gitignore
 # ==============================================================================
 
-# --- Node / Package Managers ---
+# --- Node & Package Managers ---
 node_modules/
 .pnpm-store/
 .npm/
@@ -17,7 +17,7 @@ node_modules/
 .pnp.js
 .pnp.*
 
-# --- Logs, Debugging & Performance ---
+# --- Logs, Metrics & Debugging ---
 logs/
 *.log
 npm-debug.log*
@@ -27,18 +27,26 @@ pnpm-debug.log*
 lerna-debug.log*
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
-# --- Desktop Build & Distribution Outputs (Vite, Electron, Tauri) ---
+# --- Web & Next.js Builds (web/) ---
+.next/
+web/.next/
+out/
+web/out/
+*.tsbuildinfo
+next-env.d.ts
+.vercel/
+
+# --- Desktop Build & Packaging Outputs (Vite, Electron, Tauri) ---
 dist/
 dist-ssr/
 release/
-out/
-build/
 win-unpacked/
-*.local
 src-tauri/target/
 **/target/
 **/*.rs.bk
+*.local
 *.pdb
+*.dmp
 *.exe
 *.msi
 *.dmg
@@ -49,30 +57,33 @@ src-tauri/target/
 
 # --- Mobile (Expo & React Native) Artifacts ---
 .expo/
-expo-env.d.ts
+mobile/.expo/
 .metro/
-.cache/
 metro-cache/
+.cache/
+expo-env.d.ts
+mobile/expo-env.d.ts
 
-# Android Native Build
-mobile/android/.gradle/
-mobile/android/build/
-mobile/android/app/build/
-mobile/android/.idea/
-mobile/android/*.iml
-mobile/android/app/*.iml
-mobile/android/local.properties
+# Android Native Builds & Intermediate Files
+**/android/.gradle/
+**/android/**/build/
+**/android/**/.cxx/
+**/android/**/.idea/
+**/android/**/*.iml
+**/android/**/local.properties
+mobile/android/
 *.apk
 *.aab
 *.ap_
 *.dex
 
-# iOS Native Build
-mobile/ios/Pods/
-mobile/ios/build/
-mobile/ios/*.xcworkspace/xcuserdata/
-mobile/ios/*.xcodeproj/xcuserdata/
-mobile/ios/*.xcodeproj/project.xcworkspace/xcuserdata/
+# iOS Native Builds & Pods
+**/ios/Pods/
+**/ios/**/build/
+**/ios/**/*.xcworkspace/xcuserdata/
+**/ios/**/*.xcodeproj/xcuserdata/
+**/ios/**/*.xcodeproj/project.xcworkspace/xcuserdata/
+mobile/ios/
 *.ipa
 *.dSYM/
 
@@ -90,6 +101,7 @@ cache/
 *.cbz
 *.cbr
 *.zip
+*.tar.gz
 *.sqlite
 *.sqlite3
 *.sqlite-journal
@@ -116,6 +128,7 @@ credentials.json
 !.vscode/extensions.json
 !.vscode/settings.json
 .idea/
+.cursor/
 *.suo
 *.ntvs*
 *.njsproj
@@ -136,22 +149,25 @@ ehthumbs.db
 Thumbs.db
 [Dd]esktop.ini
 
-# Accidental Expo / agent debug captures (never part of the app)
-mobile/screen_*.png
-mobile/test-bundle.js
-
-# --- Test Coverage & Temporary Artifacts ---
+# --- Test Artifacts & Bundles ---
 coverage/
 .nyc_output/
 *.lcov
 test-results/
+mobile/screen_*.png
+mobile/test-bundle.js
+mobile/test/*.test.cjs
+
+# --- Temporary & Scratch Files (Exclude actual code like backupStore.ts) ---
 .freebuff/
 scratch/
 scratch_*
 *.scratch.*
-backup*
+.agents/scratch/
 *.bak
 *.backup
 *.tmp
 *.temp
-.agents/scratch/
+*~
+backupdepackagejson.txt
+

@@ -1,13 +1,38 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, session, Notification, Menu, net } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, shell, session, Notification, Menu, net, protocol, safeStorage } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const http = require("http");
 const https = require("https");
 const dns = require("dns");
+const crypto = require("crypto");
+const { pathToFileURL } = require("url");
 const archiver = require("archiver");
-const AdmZip = require("adm-zip");
 const cheerio = require("cheerio");
+const { createSecretVault } = require("./lib/secretVault.cjs");
+const { createImageCache, parseNhcacheUrl } = require("./lib/imageCache.cjs");
+const {
+  readArchiveMetadata,
+  extractArchiveEntry,
+  listFolderImages,
+  readFileBounded,
+  extFromName,
+  extToMime,
+} = require("./lib/archiveReader.cjs");
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "nhcache",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+      bypassCSP: true,
+    },
+  },
+]);
 
 // Persistent DNS & DoH Settings Configuration
 const userDataPath = app.getPath("userData");
@@ -76,6 +101,36 @@ let mainWindow = null;
 let authWindow = null;
 let backgroundBypassWindow = null;
 const activeDownloads = new Map(); // id -> AbortController
+let secretVault = null;
+let imageCache = null;
+const openBooks = new Map();
+
+function getSecretVault() {
+  if (!secretVault) {
+    secretVault = createSecretVault({
+      userDataPath: app.getPath("userData"),
+      safeStorage,
+    });
+  }
+  return secretVault;
+}
+
+function getImageCache() {
+  if (!imageCache) {
+    imageCache = createImageCache({
+      cacheDir: path.join(app.getPath("userData"), "image-cache"),
+      maxBytes: 96 * 1024 * 1024,
+    });
+  }
+  return imageCache;
+}
+
+function resolveAuth(customCookies, apiKey) {
+  return getSecretVault().importIfEmpty({
+    cookies: customCookies,
+    apiKey,
+  });
+}
 
 const DEFAULT_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36";
@@ -98,6 +153,142 @@ function createZipArchive(options) {
     return new archiver.Archiver("zip", options);
   }
   throw new Error("Moteur de compression d'archive non disponible");
+}
+
+async function writeZipArchiveAtomic(outputPath, options, populateArchive) {
+  const operationId = `${process.pid}-${crypto.randomBytes(6).toString("hex")}`;
+  const partialPath = `${outputPath}.partial-${operationId}`;
+  const backupPath = `${outputPath}.backup-${operationId}`;
+  const output = fs.createWriteStream(partialPath, { flags: "wx" });
+  const archive = createZipArchive(options);
+
+  try {
+    await new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (error) => {
+        if (settled) return;
+        settled = true;
+        if (error) {
+          try { archive.abort(); } catch {}
+          output.destroy();
+          reject(error);
+        } else {
+          resolve();
+        }
+      };
+
+      output.once("close", () => finish());
+      output.once("error", finish);
+      archive.once("error", finish);
+      archive.once("warning", finish);
+      archive.pipe(output);
+
+      try {
+        populateArchive(archive);
+        Promise.resolve(archive.finalize()).catch(finish);
+      } catch (error) {
+        finish(error);
+      }
+    });
+
+    const hadExistingOutput = fs.existsSync(outputPath);
+    if (hadExistingOutput) {
+      fs.renameSync(outputPath, backupPath);
+    }
+    try {
+      fs.renameSync(partialPath, outputPath);
+      if (hadExistingOutput) {
+        fs.rmSync(backupPath, { force: true });
+      }
+    } catch (error) {
+      if (hadExistingOutput && fs.existsSync(backupPath) && !fs.existsSync(outputPath)) {
+        fs.renameSync(backupPath, outputPath);
+      }
+      throw error;
+    }
+  } catch (error) {
+    try { fs.rmSync(partialPath, { force: true }); } catch {}
+    try {
+      if (fs.existsSync(backupPath) && !fs.existsSync(outputPath)) {
+        fs.renameSync(backupPath, outputPath);
+      }
+    } catch {}
+    throw error;
+  }
+}
+
+function assertMainWindowSender(event) {
+  if (
+    !mainWindow ||
+    mainWindow.isDestroyed() ||
+    event.sender !== mainWindow.webContents ||
+    event.senderFrame !== mainWindow.webContents.mainFrame
+  ) {
+    throw new Error("IPC request rejected");
+  }
+}
+
+function isSafeExternalUrl(rawUrl) {
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol === "https:") return true;
+    const quickShareUrl = getQuickShareUrl();
+    return !!quickShareUrl && parsed.href.startsWith(quickShareUrl);
+  } catch {
+    return false;
+  }
+}
+
+function secureMainWindowNavigation(window, appUrl) {
+  const allowedUrl = new URL(appUrl);
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    if (isSafeExternalUrl(url)) {
+      void shell.openExternal(url);
+    }
+    return { action: "deny" };
+  });
+  window.webContents.on("will-navigate", (event, url) => {
+    let allowed = false;
+    try {
+      const parsed = new URL(url);
+      allowed = allowedUrl.protocol === "file:"
+        ? parsed.protocol === "file:" && parsed.pathname === allowedUrl.pathname
+        : parsed.origin === allowedUrl.origin;
+    } catch {}
+    if (!allowed) {
+      event.preventDefault();
+      if (isSafeExternalUrl(url)) {
+        void shell.openExternal(url);
+      }
+    }
+  });
+}
+
+function secureNhentaiWindowNavigation(window, openExternalLinks = false) {
+  const isTrustedNhentaiUrl = (rawUrl) => {
+    try {
+      const parsed = new URL(rawUrl);
+      return parsed.protocol === "https:" &&
+        (parsed.hostname === "nhentai.net" || parsed.hostname.endsWith(".nhentai.net"));
+    } catch {
+      return false;
+    }
+  };
+
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    if (openExternalLinks && isSafeExternalUrl(url) && !isTrustedNhentaiUrl(url)) {
+      void shell.openExternal(url);
+    }
+    return { action: "deny" };
+  });
+  window.webContents.on("will-navigate", (event, url) => {
+    if (!isTrustedNhentaiUrl(url)) {
+      event.preventDefault();
+      if (openExternalLinks && isSafeExternalUrl(url)) {
+        void shell.openExternal(url);
+      }
+    }
+  });
 }
 
 function sanitizeFilename(name) {
@@ -332,6 +523,7 @@ async function initCloudflareSession() {
         contextIsolation: true,
       },
     });
+    secureNhentaiWindowNavigation(backgroundBypassWindow);
 
     await backgroundBypassWindow.loadURL("https://nhentai.net/");
     return backgroundBypassWindow;
@@ -525,7 +717,8 @@ async function fetchNhentai(url, customCookies, apiKey, retryCount = 0) {
         Referer: "https://nhentai.net/",
       };
 
-      const effectiveApiKey = (apiKey || DEFAULT_API_KEY || "").trim();
+      const auth = resolveAuth(customCookies, apiKey);
+      const effectiveApiKey = (auth.apiKey || DEFAULT_API_KEY || "").trim();
       if (effectiveApiKey) {
         headers["Authorization"] = `Bearer ${effectiveApiKey}`;
         headers["X-API-Key"] = effectiveApiKey;
@@ -533,8 +726,8 @@ async function fetchNhentai(url, customCookies, apiKey, retryCount = 0) {
         headers["Api-Key"] = effectiveApiKey;
       }
 
-      if (customCookies) {
-        headers["Cookie"] = customCookies;
+      if (auth.cookies) {
+        headers["Cookie"] = auth.cookies;
       } else {
         try {
           const sessionCookies = await session.defaultSession.cookies.get({ domain: "nhentai.net" });
@@ -669,14 +862,36 @@ const httpsKeepAliveAgent = new https.Agent({
   timeout: 10000,
 });
 
-const httpKeepAliveAgent = new http.Agent({
-  keepAlive: true,
-  maxSockets: 64,
-  maxFreeSockets: 32,
-  timeout: 10000,
-});
+const ALLOWED_IMAGE_HOSTS = new Set([
+  "i.nhentai.net",
+  "i1.nhentai.net",
+  "i2.nhentai.net",
+  "i3.nhentai.net",
+  "i4.nhentai.net",
+  "t.nhentai.net",
+  "t1.nhentai.net",
+  "t2.nhentai.net",
+  "t3.nhentai.net",
+  "t4.nhentai.net",
+  "i0.wp.com",
+  "i1.wp.com",
+  "i2.wp.com",
+  "i3.wp.com",
+  "external-content.duckduckgo.com",
+]);
+const MAX_IMAGE_REDIRECTS = 4;
+const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 
-function fetchHttpBuffer(url, timeoutMs = 6000, abortSignal) {
+function isAllowedImageUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" && ALLOWED_IMAGE_HOSTS.has(parsed.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+function fetchHttpBuffer(url, timeoutMs = 6000, abortSignal, redirectCount = 0) {
   return new Promise((resolve, reject) => {
     if (abortSignal?.aborted) return reject(new Error("ABORTED"));
     let u;
@@ -685,12 +900,26 @@ function fetchHttpBuffer(url, timeoutMs = 6000, abortSignal) {
     } catch (e) {
       return reject(e);
     }
-    const client = u.protocol === "http:" ? http : https;
-    const agent = u.protocol === "http:" ? httpKeepAliveAgent : httpsKeepAliveAgent;
-    const req = client.get(
+    if (!isAllowedImageUrl(u.toString())) {
+      return reject(new Error("Image host is not allowed"));
+    }
+
+    let settled = false;
+    let abortHandler;
+    const finish = (error, value) => {
+      if (settled) return;
+      settled = true;
+      if (abortSignal && abortHandler) {
+        abortSignal.removeEventListener("abort", abortHandler);
+      }
+      if (error) reject(error);
+      else resolve(value);
+    };
+
+    const req = https.get(
       url,
       {
-        agent,
+        agent: httpsKeepAliveAgent,
         headers: {
           "User-Agent": DEFAULT_USER_AGENT,
           Referer: "https://nhentai.net/",
@@ -698,35 +927,55 @@ function fetchHttpBuffer(url, timeoutMs = 6000, abortSignal) {
         },
       },
       (res) => {
-        if (res.statusCode === 301 || res.statusCode === 302) {
+        if ([301, 302, 303, 307, 308].includes(res.statusCode)) {
           const loc = res.headers.location;
           if (loc) {
-            return fetchHttpBuffer(loc, timeoutMs, abortSignal).then(resolve, reject);
+            res.resume();
+            if (redirectCount >= MAX_IMAGE_REDIRECTS) {
+              return finish(new Error("Too many image redirects"));
+            }
+            const redirectUrl = new URL(loc, u).toString();
+            if (!isAllowedImageUrl(redirectUrl)) {
+              return finish(new Error("Image redirect host is not allowed"));
+            }
+            return fetchHttpBuffer(redirectUrl, timeoutMs, abortSignal, redirectCount + 1)
+              .then((value) => finish(null, value), finish);
           }
         }
         if (res.statusCode !== 200) {
-          return reject(new Error(`HTTP ${res.statusCode}`));
+          res.resume();
+          return finish(new Error(`HTTP ${res.statusCode}`));
+        }
+        const declaredLength = Number(res.headers["content-length"] || 0);
+        if (declaredLength > MAX_IMAGE_BYTES) {
+          res.destroy();
+          return finish(new Error("Image exceeds maximum size"));
         }
         const chunks = [];
-        res.on("data", (c) => chunks.push(c));
+        let receivedBytes = 0;
+        res.on("data", (chunk) => {
+          receivedBytes += chunk.length;
+          if (receivedBytes > MAX_IMAGE_BYTES) {
+            res.destroy(new Error("Image exceeds maximum size"));
+            return;
+          }
+          chunks.push(chunk);
+        });
         res.on("end", () => {
           const buffer = Buffer.concat(chunks);
-          if (buffer.length < 100) return reject(new Error("Empty/corrupted buffer"));
-          resolve({ buffer, finalUrl: url });
+          if (buffer.length < 100) return finish(new Error("Empty/corrupted buffer"));
+          finish(null, { buffer, finalUrl: url });
         });
-        res.on("error", reject);
+        res.on("error", finish);
       }
     );
-    req.on("error", reject);
+    req.on("error", finish);
     req.setTimeout(timeoutMs, () => {
-      req.destroy();
-      reject(new Error(`Timeout on ${url}`));
+      req.destroy(new Error(`Timeout on ${url}`));
     });
     if (abortSignal) {
-      abortSignal.addEventListener("abort", () => {
-        req.destroy();
-        reject(new Error("ABORTED"));
-      });
+      abortHandler = () => req.destroy(new Error("ABORTED"));
+      abortSignal.addEventListener("abort", abortHandler, { once: true });
     }
   });
 }
@@ -735,33 +984,38 @@ function fetchHttpBuffer(url, timeoutMs = 6000, abortSignal) {
 async function downloadImageBufferWithFallback(url, referer, cookies, apiKey, abortSignal) {
   if (abortSignal?.aborted) throw new Error("ABORTED");
 
-  let path = cleanCdnPath(url);
-  if (/^https?:\/\//i.test(path)) {
+  let imagePath = cleanCdnPath(url);
+  if (/^https?:\/\//i.test(imagePath)) {
     try {
-      const u = new URL(path);
-      path = u.pathname.replace(/^\//, "");
+      const u = new URL(imagePath);
+      imagePath = u.pathname.replace(/^\//, "");
     } catch {}
   }
-  path = cleanCdnPath(path);
+  imagePath = cleanCdnPath(imagePath);
+  if (
+    !/^galleries\/\d+\/[a-zA-Z0-9._-]+$/.test(imagePath) ||
+    imagePath.includes("..")
+  ) {
+    throw new Error("Invalid image path");
+  }
 
-  const isThumb = path.includes("thumb") || path.includes("cover") || /t\.[a-z]+$/i.test(path);
+  const isThumb = imagePath.includes("thumb") || imagePath.includes("cover") || /t\.[a-z]+$/i.test(imagePath);
   const directHosts = isThumb
     ? ["t3.nhentai.net", "t2.nhentai.net", "t1.nhentai.net", "t4.nhentai.net"]
     : ["i3.nhentai.net", "i2.nhentai.net", "i1.nhentai.net", "i4.nhentai.net"];
 
   const candidateUrls = [
     // 1. Direct Gigabit CDN Numbered Hosts (Ultra-Fast 8000-15000 KB/s with Keep-Alive Agent)
-    `https://${directHosts[0]}/${path}`,
-    `https://${directHosts[1]}/${path}`,
-    `https://${directHosts[2]}/${path}`,
-    `https://${directHosts[3]}/${path}`,
-    url,
+    `https://${directHosts[0]}/${imagePath}`,
+    `https://${directHosts[1]}/${imagePath}`,
+    `https://${directHosts[2]}/${imagePath}`,
+    `https://${directHosts[3]}/${imagePath}`,
     // 2. Photon Edge CDN Fallback (if direct IPs are blocked without DoH)
-    `https://i0.wp.com/${directHosts[0]}/${path}`,
-    `https://i1.wp.com/${directHosts[1]}/${path}`,
-    `https://i2.wp.com/${directHosts[2]}/${path}`,
+    `https://i0.wp.com/${directHosts[0]}/${imagePath}`,
+    `https://i1.wp.com/${directHosts[1]}/${imagePath}`,
+    `https://i2.wp.com/${directHosts[2]}/${imagePath}`,
     // 3. DuckDuckGo Proxy Fallback
-    `https://external-content.duckduckgo.com/iu/?u=${encodeURIComponent(`https://${directHosts[0]}/${path}`)}`,
+    `https://external-content.duckduckgo.com/iu/?u=${encodeURIComponent(`https://${directHosts[0]}/${imagePath}`)}`,
   ];
 
   for (const candidate of candidateUrls) {
@@ -777,6 +1031,189 @@ async function downloadImageBufferWithFallback(url, referer, cookies, apiKey, ab
   }
 
   throw new Error(`Échec de récupération de l'image depuis tous les miroirs (${url})`);
+}
+
+function fetchHttpToFile(url, destPath, timeoutMs = 6000, abortSignal, redirectCount = 0) {
+  return new Promise((resolve, reject) => {
+    if (abortSignal?.aborted) return reject(new Error("ABORTED"));
+    let u;
+    try {
+      u = new URL(url);
+    } catch (e) {
+      return reject(e);
+    }
+    if (!isAllowedImageUrl(u.toString())) {
+      return reject(new Error("Image host is not allowed"));
+    }
+
+    let settled = false;
+    let abortHandler;
+    const finish = (error, value) => {
+      if (settled) return;
+      settled = true;
+      if (abortSignal && abortHandler) {
+        abortSignal.removeEventListener("abort", abortHandler);
+      }
+      if (error) {
+        try { fs.rmSync(destPath, { force: true }); } catch {}
+        reject(error);
+      } else {
+        resolve(value);
+      }
+    };
+
+    const req = https.get(
+      url,
+      {
+        agent: httpsKeepAliveAgent,
+        headers: {
+          "User-Agent": DEFAULT_USER_AGENT,
+          Referer: "https://nhentai.net/",
+          Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        },
+      },
+      (res) => {
+        if ([301, 302, 303, 307, 308].includes(res.statusCode)) {
+          const loc = res.headers.location;
+          if (loc) {
+            res.resume();
+            if (redirectCount >= MAX_IMAGE_REDIRECTS) {
+              return finish(new Error("Too many image redirects"));
+            }
+            const redirectUrl = new URL(loc, u).toString();
+            if (!isAllowedImageUrl(redirectUrl)) {
+              return finish(new Error("Image redirect host is not allowed"));
+            }
+            return fetchHttpToFile(redirectUrl, destPath, timeoutMs, abortSignal, redirectCount + 1)
+              .then((value) => finish(null, value), finish);
+          }
+        }
+        if (res.statusCode !== 200) {
+          res.resume();
+          return finish(new Error(`HTTP ${res.statusCode}`));
+        }
+        const declaredLength = Number(res.headers["content-length"] || 0);
+        if (declaredLength > MAX_IMAGE_BYTES) {
+          res.destroy();
+          return finish(new Error("Image exceeds maximum size"));
+        }
+        const output = fs.createWriteStream(destPath);
+        let receivedBytes = 0;
+        let streamFailed = false;
+        res.on("data", (chunk) => {
+          receivedBytes += chunk.length;
+          if (receivedBytes > MAX_IMAGE_BYTES) {
+            streamFailed = true;
+            output.destroy();
+            res.destroy(new Error("Image exceeds maximum size"));
+          }
+        });
+        output.on("error", finish);
+        res.on("error", finish);
+        output.on("finish", () => {
+          if (streamFailed) return;
+          if (receivedBytes < 100) return finish(new Error("Empty/corrupted buffer"));
+          finish(null, { bytes: receivedBytes, finalUrl: url });
+        });
+        res.pipe(output);
+      }
+    );
+    req.on("error", finish);
+    req.setTimeout(timeoutMs, () => {
+      req.destroy(new Error(`Timeout on ${url}`));
+    });
+    if (abortSignal) {
+      abortHandler = () => req.destroy(new Error("ABORTED"));
+      abortSignal.addEventListener("abort", abortHandler, { once: true });
+    }
+  });
+}
+
+async function downloadImageToFile(url, destPath, abortSignal) {
+  if (abortSignal?.aborted) throw new Error("ABORTED");
+
+  let imagePath = cleanCdnPath(url);
+  if (/^https?:\/\//i.test(imagePath)) {
+    try {
+      const parsed = new URL(imagePath);
+      imagePath = parsed.pathname.replace(/^\//, "");
+    } catch {}
+  }
+  imagePath = cleanCdnPath(imagePath);
+  if (
+    !/^galleries\/\d+\/[a-zA-Z0-9._-]+$/.test(imagePath) ||
+    imagePath.includes("..")
+  ) {
+    throw new Error("Invalid image path");
+  }
+
+  const isThumb = imagePath.includes("thumb") || imagePath.includes("cover") || /t\.[a-z]+$/i.test(imagePath);
+  const directHosts = isThumb
+    ? ["t3.nhentai.net", "t2.nhentai.net", "t1.nhentai.net", "t4.nhentai.net"]
+    : ["i3.nhentai.net", "i2.nhentai.net", "i1.nhentai.net", "i4.nhentai.net"];
+
+  const candidateUrls = [
+    `https://${directHosts[0]}/${imagePath}`,
+    `https://${directHosts[1]}/${imagePath}`,
+    `https://${directHosts[2]}/${imagePath}`,
+    `https://${directHosts[3]}/${imagePath}`,
+    `https://i0.wp.com/${directHosts[0]}/${imagePath}`,
+    `https://i1.wp.com/${directHosts[1]}/${imagePath}`,
+    `https://i2.wp.com/${directHosts[2]}/${imagePath}`,
+    `https://external-content.duckduckgo.com/iu/?u=${encodeURIComponent(`https://${directHosts[0]}/${imagePath}`)}`,
+  ];
+
+  for (const candidate of candidateUrls) {
+    if (abortSignal?.aborted) throw new Error("ABORTED");
+    try {
+      const res = await fetchHttpToFile(candidate, destPath, 5000, abortSignal);
+      if (res && res.bytes > 300) {
+        return res;
+      }
+    } catch (e) {
+      if (abortSignal?.aborted) throw new Error("ABORTED");
+    }
+  }
+
+  throw new Error(`Échec de récupération de l'image depuis tous les miroirs (${url})`);
+}
+
+function hashBookPath(filePath) {
+  return crypto.createHash("sha256").update(filePath).digest("hex").slice(0, 32);
+}
+
+async function registerLocalBook(filePath) {
+  const real = fs.realpathSync(filePath);
+  const hash = hashBookPath(real);
+  const stats = fs.statSync(real);
+  if (stats.isDirectory()) {
+    const files = listFolderImages(real);
+    openBooks.set(hash, { type: "folder", filePath: real, files });
+    return { hash, real, stats, format: "folder", images: files, comicInfo: { title: null, artist: null } };
+  }
+  const meta = await readArchiveMetadata(real);
+  const format = real.toLowerCase().endsWith(".cbz") ? "cbz" : "zip";
+  openBooks.set(hash, { type: "archive", filePath: real, entries: meta.images });
+  return { hash, real, stats, format, images: meta.images, comicInfo: meta.comicInfo };
+}
+
+async function materializeBookPage(hash, index) {
+  const cache = getImageCache();
+  const cacheKey = `book:${hash}:${index}`;
+  const cached = cache.getByKey(cacheKey);
+  if (cached) return cached.path;
+  const book = openBooks.get(hash);
+  if (!book || !Number.isInteger(index) || index < 0) return null;
+  if (book.type === "folder") {
+    const file = book.files[index];
+    if (!file) return null;
+    const buffer = readFileBounded(file.fullPath);
+    return cache.putBuffer(cacheKey, buffer, extFromName(file.name)).path;
+  }
+  const entry = book.entries[index];
+  if (!entry) return null;
+  const buffer = await extractArchiveEntry(book.filePath, entry.name);
+  return cache.putBuffer(cacheKey, buffer, extFromName(entry.name)).path;
 }
 
 function createMainWindow() {
@@ -795,15 +1232,19 @@ function createMainWindow() {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
-      webSecurity: false,
+      webSecurity: true,
     },
   });
 
   const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
+  const appUrl = isDev
+    ? "http://localhost:1420"
+    : pathToFileURL(path.resolve(__dirname, "../dist/index.html")).toString();
+  secureMainWindowNavigation(mainWindow, appUrl);
   if (isDev) {
-    mainWindow.loadURL("http://localhost:1420");
+    mainWindow.loadURL(appUrl);
   } else {
-    mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
+    mainWindow.loadURL(appUrl);
   }
 
   mainWindow.on("closed", () => {
@@ -855,9 +1296,10 @@ async function executeInBrowserSession(url, script) {
             webPreferences: {
               nodeIntegration: false,
               contextIsolation: true,
-              webSecurity: false,
+              webSecurity: true,
             },
           });
+          secureNhentaiWindowNavigation(backgroundBypassWindow);
         }
 
         const loadPromise = backgroundBypassWindow.loadURL(url);
@@ -1352,6 +1794,7 @@ ipcMain.handle("get-gallery-comments", async (_event, { galleryId, cookies, apiK
 
 ipcMain.handle("get-default-settings", async () => {
   const downloadDir = path.join(os.homedir(), "Downloads", "nHentai Downloads");
+  const secrets = getSecretVault().status();
   return {
     download_directory: downloadDir,
     naming_pattern: "[{id}] [{artist}] {title} ({language})",
@@ -1360,11 +1803,38 @@ ipcMain.handle("get-default-settings", async () => {
     concurrent_images_per_gallery: 4,
     blacklisted_tags: ["scat", "guro"],
     cookies: "",
-    api_key: DEFAULT_API_KEY,
+    api_key: "",
+    hasSecureCookies: secrets.hasCookies,
+    hasSecureApiKey: secrets.hasApiKey,
   };
 });
 
-ipcMain.handle("select-download-directory", async () => {
+ipcMain.handle("get-secret-status", async (event) => {
+  assertMainWindowSender(event);
+  return getSecretVault().status();
+});
+
+ipcMain.handle("set-secrets", async (event, { cookies, apiKey }) => {
+  assertMainWindowSender(event);
+  const patch = {};
+  if (typeof cookies === "string") patch.cookies = cookies.trim();
+  if (typeof apiKey === "string") patch.apiKey = apiKey.trim();
+  return getSecretVault().save(patch);
+});
+
+ipcMain.handle("migrate-secrets", async (event, { cookies, apiKey }) => {
+  assertMainWindowSender(event);
+  getSecretVault().importIfEmpty({ cookies, apiKey });
+  return getSecretVault().status();
+});
+
+ipcMain.handle("clear-secrets", async (event) => {
+  assertMainWindowSender(event);
+  return getSecretVault().clear();
+});
+
+ipcMain.handle("select-download-directory", async (event) => {
+  assertMainWindowSender(event);
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ["openDirectory", "createDirectory"],
   });
@@ -1378,12 +1848,14 @@ ipcMain.handle("format-filename-preview", async (_event, { pattern, gallery }) =
   return formatFilename(pattern, gallery);
 });
 
-ipcMain.handle("log-terminal", async (_event, { text }) => {
+ipcMain.handle("log-terminal", async (event, { text }) => {
+  assertMainWindowSender(event);
   if (text) console.log(text);
   return true;
 });
 
-ipcMain.handle("cancel-download", async (_event, params) => {
+ipcMain.handle("cancel-download", async (event, params) => {
+  assertMainWindowSender(event);
   const targetId = params?.galleryId || params?.id || (typeof params === "number" ? params : null);
   if (targetId) {
     const controller = activeDownloads.get(targetId) || activeDownloads.get(Number(targetId));
@@ -1397,7 +1869,8 @@ ipcMain.handle("cancel-download", async (_event, params) => {
   return true;
 });
 
-ipcMain.handle("open-folder", async (_event, { targetPath }) => {
+ipcMain.handle("open-folder", async (event, { targetPath }) => {
+  assertMainWindowSender(event);
   if (!targetPath) return;
   if (fs.existsSync(targetPath)) {
     shell.showItemInFolder(targetPath);
@@ -1409,7 +1882,8 @@ ipcMain.handle("open-folder", async (_event, { targetPath }) => {
   }
 });
 
-ipcMain.handle("scan-local-library", async (_event, { directoryPath }) => {
+ipcMain.handle("scan-local-library", async (event, { directoryPath }) => {
+  assertMainWindowSender(event);
   const dir = directoryPath || path.join(os.homedir(), "Downloads", "nHentai Downloads");
   if (!fs.existsSync(dir)) return [];
 
@@ -1423,105 +1897,58 @@ ipcMain.handle("scan-local-library", async (_event, { directoryPath }) => {
         const isCbz = entry.isFile() && entry.name.toLowerCase().endsWith(".cbz");
         const isZip = entry.isFile() && entry.name.toLowerCase().endsWith(".zip");
         const isDir = entry.isDirectory();
+        if (!isCbz && !isZip && !isDir) continue;
 
-        if (isCbz || isZip || isDir) {
-          const match = entry.name.match(/\[(\d{4,8})\]/) || entry.name.match(/#?(\d{5,8})/);
-          const galleryId = match ? parseInt(match[1], 10) : undefined;
-          const format = isCbz ? "cbz" : isZip ? "zip" : "folder";
+        const match = entry.name.match(/\[(\d{4,8})\]/) || entry.name.match(/#?(\d{5,8})/);
+        const galleryId = match ? parseInt(match[1], 10) : undefined;
+        const format = isCbz ? "cbz" : isZip ? "zip" : "folder";
+        let rawTitle = entry.name.replace(/\.(cbz|zip)$/i, "");
+        let artist = null;
+        let pagesCount = 0;
+        let coverDataUrl = null;
+        let detectedLang = null;
 
-          let rawTitle = entry.name.replace(/\.(cbz|zip)$/i, "");
-          let artist = null;
-          let pagesCount = 0;
-          let coverDataUrl = null;
-          let detectedLang = null;
-
-          // Try reading metadata and cover directly from inside CBZ/ZIP archive
-          if (isCbz || isZip) {
-            try {
-              const zip = new AdmZip(fullPath);
-              const zipEntries = zip.getEntries();
-              
-              // 1. ComicInfo.xml metadata
-              const comicInfoEntry = zipEntries.find((e) => e.entryName.toLowerCase() === "comicinfo.xml");
-              if (comicInfoEntry) {
-                const xmlStr = zip.readAsText(comicInfoEntry);
-                const pencillerMatch = xmlStr.match(/<Penciller>(.*?)<\/Penciller>/);
-                const writerMatch = xmlStr.match(/<Writer>(.*?)<\/Writer>/);
-                const titleMatch = xmlStr.match(/<Title>(.*?)<\/Title>/);
-                artist = pencillerMatch ? pencillerMatch[1].trim() : writerMatch ? writerMatch[1].trim() : null;
-                if (titleMatch && titleMatch[1]) rawTitle = titleMatch[1].trim();
-              }
-
-              // 2. Extract First Image (Cover)
-              const imgEntries = zipEntries
-                .filter((e) => e.entryName.match(/\.(jpg|jpeg|png|webp)$/i))
-                .sort((a, b) => a.entryName.localeCompare(b.entryName));
-              
-              pagesCount = imgEntries.length;
-              if (imgEntries.length > 0) {
-                const firstImg = imgEntries[0];
-                const buf = zip.readFile(firstImg);
-                if (buf && buf.length > 0) {
-                  const mime = firstImg.entryName.endsWith(".png")
-                    ? "image/png"
-                    : firstImg.entryName.endsWith(".webp")
-                    ? "image/webp"
-                    : "image/jpeg";
-                  coverDataUrl = `data:${mime};base64,${buf.toString("base64")}`;
-                }
-              }
-            } catch (zipErr) {
-              console.warn(`[Scan Library] Notice reading archive ${entry.name}:`, zipErr.message);
+        try {
+          const registered = await registerLocalBook(fullPath);
+          rawTitle = registered.comicInfo.title || rawTitle;
+          artist = registered.comicInfo.artist;
+          pagesCount = registered.images.length;
+          if (registered.images.length > 0) {
+            const coverPath = await materializeBookPage(registered.hash, 0);
+            if (coverPath) {
+              coverDataUrl = `nhcache://book/${registered.hash}/0`;
             }
-          } else if (isDir) {
-            // Folder format: inspect files inside
-            try {
-              const subEntries = fs.readdirSync(fullPath);
-              const imgFiles = subEntries
-                .filter((f) => f.match(/\.(jpg|jpeg|png|webp)$/i))
-                .sort((a, b) => a.localeCompare(b));
-              pagesCount = imgFiles.length;
-              if (imgFiles.length > 0) {
-                const firstImgPath = path.join(fullPath, imgFiles[0]);
-                const buf = fs.readFileSync(firstImgPath);
-                const mime = imgFiles[0].endsWith(".png")
-                  ? "image/png"
-                  : imgFiles[0].endsWith(".webp")
-                  ? "image/webp"
-                  : "image/jpeg";
-                coverDataUrl = `data:${mime};base64,${buf.toString("base64")}`;
-              }
-            } catch (dirErr) {}
           }
-
-          // Fallback artist extraction from title
-          if (!artist || artist.toLowerCase() === "unknown" || artist.toLowerCase() === "unknown artist") {
-            artist = extractArtistFromTitle(rawTitle) || extractArtistFromTitle(entry.name);
-          }
-
-          // Language deduction
-          const rawLower = (rawTitle + " " + entry.name).toLowerCase();
-          if (rawLower.includes("[english]") || rawLower.includes("(english)")) detectedLang = "ENGLISH";
-          else if (rawLower.includes("[french]") || rawLower.includes("(french)")) detectedLang = "FRENCH";
-          else if (rawLower.includes("[chinese]") || rawLower.includes("(chinese)")) detectedLang = "CHINESE";
-          else if (rawLower.includes("[spanish]") || rawLower.includes("(spanish)")) detectedLang = "SPANISH";
-          else detectedLang = "JAPANESE";
-
-          results.push({
-            filename: entry.name,
-            filePath: fullPath,
-            sizeBytes: stats.size,
-            modifiedAt: Math.floor(stats.mtimeMs),
-            isCbz,
-            isFolder: isDir,
-            galleryId,
-            title: rawTitle,
-            artist: artist || "Artiste Inconnu",
-            language: detectedLang,
-            pagesCount,
-            coverDataUrl,
-          });
+        } catch (zipErr) {
+          console.warn(`[Scan Library] Notice reading archive ${entry.name}:`, zipErr.message);
         }
+
+        if (!artist || artist.toLowerCase() === "unknown" || artist.toLowerCase() === "unknown artist") {
+          artist = extractArtistFromTitle(rawTitle) || extractArtistFromTitle(entry.name);
+        }
+
+        const rawLower = (rawTitle + " " + entry.name).toLowerCase();
+        if (rawLower.includes("[english]") || rawLower.includes("(english)")) detectedLang = "ENGLISH";
+        else if (rawLower.includes("[french]") || rawLower.includes("(french)")) detectedLang = "FRENCH";
+        else if (rawLower.includes("[chinese]") || rawLower.includes("(chinese)")) detectedLang = "CHINESE";
+        else if (rawLower.includes("[spanish]") || rawLower.includes("(spanish)")) detectedLang = "SPANISH";
+        else detectedLang = "JAPANESE";
+
+        results.push({
+          filename: entry.name,
+          filePath: fullPath,
+          sizeBytes: stats.size,
+          modifiedAt: Math.floor(stats.mtimeMs),
+          isCbz,
+          isFolder: isDir,
+          galleryId,
+          title: rawTitle,
+          artist: artist || "Artiste Inconnu",
+          language: detectedLang,
+          pagesCount,
+          coverDataUrl,
+          format,
+        });
       } catch (e) {}
     }
   } catch (e) {
@@ -1530,313 +1957,96 @@ ipcMain.handle("scan-local-library", async (_event, { directoryPath }) => {
   return results;
 });
 
-// Read and unpack local CBZ, ZIP, or Folder for offline built-in reader
-ipcMain.handle("read-local-book", async (_event, { filePath }) => {
+ipcMain.handle("read-local-book", async (event, { filePath }) => {
+  assertMainWindowSender(event);
   if (!filePath || !fs.existsSync(filePath)) {
     throw new Error("Fichier introuvable sur le disque");
   }
 
-  const stat = fs.statSync(filePath);
-  const isCbz = stat.isFile() && filePath.toLowerCase().endsWith(".cbz");
-  const isZip = stat.isFile() && filePath.toLowerCase().endsWith(".zip");
-  const isDir = stat.isDirectory();
-  const filename = path.basename(filePath);
+  const registered = await registerLocalBook(filePath);
+  const filename = path.basename(registered.real);
   let rawTitle = filename.replace(/\.(cbz|zip)$/i, "");
-  let artist = null;
-
-  const pages = [];
-
-  if (isCbz || isZip) {
-    const zip = new AdmZip(filePath);
-    const zipEntries = zip.getEntries();
-
-    // Check ComicInfo.xml metadata
-    const comicInfoEntry = zipEntries.find((e) => e.entryName.toLowerCase() === "comicinfo.xml");
-    if (comicInfoEntry) {
-      try {
-        const xmlStr = zip.readAsText(comicInfoEntry);
-        const pencillerMatch = xmlStr.match(/<Penciller>(.*?)<\/Penciller>/);
-        const writerMatch = xmlStr.match(/<Writer>(.*?)<\/Writer>/);
-        const titleMatch = xmlStr.match(/<Title>(.*?)<\/Title>/);
-        artist = pencillerMatch ? pencillerMatch[1].trim() : writerMatch ? writerMatch[1].trim() : null;
-        if (titleMatch && titleMatch[1]) rawTitle = titleMatch[1].trim();
-      } catch (e) {}
-    }
-
-    const imgEntries = zipEntries
-      .filter((e) => e.entryName.match(/\.(jpg|jpeg|png|webp|gif)$/i))
-      .sort((a, b) => a.entryName.localeCompare(b.entryName, undefined, { numeric: true, sensitivity: "base" }));
-
-    imgEntries.forEach((entry, idx) => {
-      const buf = zip.readFile(entry);
-      if (buf && buf.length > 0) {
-        const ext = entry.entryName.toLowerCase();
-        const mime = ext.endsWith(".png")
-          ? "image/png"
-          : ext.endsWith(".webp")
-          ? "image/webp"
-          : ext.endsWith(".gif")
-          ? "image/gif"
-          : "image/jpeg";
-        pages.push({
-          number: idx + 1,
-          name: path.basename(entry.entryName),
-          dataUrl: `data:${mime};base64,${buf.toString("base64")}`,
-        });
-      }
-    });
-  } else if (isDir) {
-    const subEntries = fs.readdirSync(filePath);
-    const imgFiles = subEntries
-      .filter((f) => f.match(/\.(jpg|jpeg|png|webp|gif)$/i))
-      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
-
-    imgFiles.forEach((file, idx) => {
-      const fullPath = path.join(filePath, file);
-      const buf = fs.readFileSync(fullPath);
-      const ext = file.toLowerCase();
-      const mime = ext.endsWith(".png")
-        ? "image/png"
-        : ext.endsWith(".webp")
-        ? "image/webp"
-        : ext.endsWith(".gif")
-        ? "image/gif"
-        : "image/jpeg";
-      pages.push({
-        number: idx + 1,
-        name: file,
-        dataUrl: `data:${mime};base64,${buf.toString("base64")}`,
-      });
-    });
-  }
-
+  let artist = registered.comicInfo.artist;
+  if (registered.comicInfo.title) rawTitle = registered.comicInfo.title;
   if (!artist || artist.toLowerCase() === "unknown" || artist.toLowerCase() === "unknown artist") {
     artist = extractArtistFromTitle(rawTitle) || extractArtistFromTitle(filename);
   }
 
+  const pages = registered.images.map((img, idx) => ({
+    number: idx + 1,
+    name: path.basename(img.name || img.fullPath || String(idx)),
+    dataUrl: `nhcache://book/${registered.hash}/${idx}`,
+  }));
+
   return {
     title: rawTitle,
     artist: artist || "Artiste Inconnu",
-    format: isCbz ? "cbz" : isZip ? "zip" : "folder",
-    filePath,
+    format: registered.format,
+    filePath: registered.real,
     totalPages: pages.length,
     pages,
   };
 });
 
-ipcMain.handle("get-downloaded-ids", async (_event, { directoryPath }) => {
-  const dir = directoryPath || path.join(os.homedir(), "Downloads", "nHentai Downloads");
-  if (!fs.existsSync(dir)) return [];
-  const ids = [];
-  try {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      const isCbz = entry.isFile() && entry.name.toLowerCase().endsWith(".cbz");
-      const isZip = entry.isFile() && entry.name.toLowerCase().endsWith(".zip");
-      const isDir = entry.isDirectory();
-      if (isCbz || isZip || isDir) {
-        const match = entry.name.match(/\[(\d{4,8})\]/) || entry.name.match(/#?(\d{5,8})/);
-        if (match) {
-          ids.push(parseInt(match[1], 10));
-        }
-      }
-    }
-  } catch (e) {}
-  return ids;
-});
-
-ipcMain.handle("open-auth-window", async () => {
-  if (authWindow && !authWindow.isDestroyed()) {
-    authWindow.focus();
-    return;
-  }
-
-  authWindow = new BrowserWindow({
-    width: 960,
-    height: 760,
-    title: "Guichet Cloudflare Turnstile & nHentai",
-    backgroundColor: "#0c0c10",
-    autoHideMenuBar: true,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
-  });
-
-  authWindow.loadURL("https://nhentai.net/login/");
-
-  const checkAndCaptureCookies = async () => {
-    try {
-      const cookies = await session.defaultSession.cookies.get({ domain: "nhentai.net" });
-      const cookieStr = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
-      if (
-        cookieStr.includes("cf_clearance") ||
-        cookieStr.includes("sessionid") ||
-        cookieStr.includes("csrftoken") ||
-        cookieStr.includes("refresh_token")
-      ) {
-        console.log("[🛡️ CLOUDFLARE COOKIES CAPTURED]", cookieStr);
-        mainWindow?.webContents.send("cookies-captured", cookieStr);
-      }
-    } catch (e) {
-      console.error("Error capturing cookies:", e);
-    }
-  };
-
-  authWindow.webContents.on("did-navigate", checkAndCaptureCookies);
-  authWindow.webContents.on("did-navigate-in-page", checkAndCaptureCookies);
-  authWindow.webContents.on("did-finish-load", checkAndCaptureCookies);
-
-  authWindow.on("closed", () => {
-    authWindow = null;
-  });
-});
-
-ipcMain.handle("update-dns-settings", async (_event, { dns_provider, enable_custom_dns, enable_doh }) => {
-  try {
-    const existing = loadStoredDnsSettings();
-    const updated = {
-      ...existing,
-      dns_provider: dns_provider || "adguard",
-      enable_custom_dns: enable_custom_dns !== false,
-      enable_doh: enable_doh !== false,
-    };
-    fs.writeFileSync(settingsFilePath, JSON.stringify(updated, null, 2), "utf8");
-    applyNodeDns(updated.dns_provider, updated.enable_custom_dns);
-    console.log("[🛡️ DNS SETTINGS UPDATED]", updated);
-    return { success: true };
-  } catch (e) {
-    console.error("[DNS SETTINGS ERROR]", e);
-    return { success: false, error: e.message };
-  }
-});
-
-// High-Performance In-Memory RAM Image Cache (Up to 400 pages stored in memory for 0ms access)
-const imageRamCache = new Map();
-const MAX_RAM_CACHE_ENTRIES = 400;
-
-function addToRamCache(url, dataUrl) {
-  if (imageRamCache.size >= MAX_RAM_CACHE_ENTRIES) {
-    const oldestKey = imageRamCache.keys().next().value;
-    imageRamCache.delete(oldestKey);
-  }
-  imageRamCache.set(url, { dataUrl, timestamp: Date.now() });
-}
-
-// Fetch single image data as base64 DataURL from RAM cache or direct HTTPS stream
-ipcMain.handle("get-image-data", async (_event, { url, referer, cookies, apiKey }) => {
+ipcMain.handle("get-image-data", async (event, { url }) => {
+  assertMainWindowSender(event);
   if (!url) return null;
-  if (imageRamCache.has(url)) {
-    return imageRamCache.get(url).dataUrl;
-  }
+  const cache = getImageCache();
+  const cached = cache.getByKey(url);
+  if (cached) return cached.url;
   try {
-    const { buffer, finalUrl } = await downloadImageBufferWithFallback(url, referer, cookies, apiKey);
-    const mime = finalUrl.endsWith(".png") ? "image/png" : finalUrl.endsWith(".jpg") || finalUrl.endsWith(".jpeg") ? "image/jpeg" : "image/webp";
-    const dataUrl = `data:${mime};base64,${buffer.toString("base64")}`;
-    addToRamCache(url, dataUrl);
-    if (finalUrl !== url) addToRamCache(finalUrl, dataUrl);
-    return dataUrl;
+    const allocated = cache.allocatePath(url, "webp");
+    const downloaded = await downloadImageToFile(url, allocated.path);
+    const ext = downloaded.finalUrl.endsWith(".png")
+      ? "png"
+      : downloaded.finalUrl.endsWith(".jpg") || downloaded.finalUrl.endsWith(".jpeg")
+        ? "jpg"
+        : "webp";
+    if (!allocated.path.endsWith(`.${ext}`)) {
+      const renamed = allocated.path.replace(/\.[^.]+$/, `.${ext}`);
+      fs.renameSync(allocated.path, renamed);
+      return cache.commitFile(url, renamed).url;
+    }
+    return cache.commitFile(url, allocated.path).url;
   } catch (err) {
     return null;
   }
 });
 
-// Preload a batch of gallery images in parallel into RAM cache in the background
-ipcMain.handle("preload-gallery-images", async (_event, { urls, referer, cookies, apiKey }) => {
+ipcMain.handle("preload-gallery-images", async (event, { urls }) => {
+  assertMainWindowSender(event);
   if (!Array.isArray(urls) || urls.length === 0) return { preloaded: 0 };
-  const uncachedUrls = urls.filter((u) => !imageRamCache.has(u));
-  if (uncachedUrls.length === 0) return { preloaded: urls.length };
-
+  const limited = urls.slice(0, 12);
+  const cache = getImageCache();
+  const uncachedUrls = limited.filter((u) => !cache.getByKey(u));
   const batchSize = 3;
   for (let i = 0; i < uncachedUrls.length; i += batchSize) {
     const batch = uncachedUrls.slice(i, i + batchSize);
     await Promise.allSettled(
       batch.map(async (u) => {
-        try {
-          const { buffer, finalUrl } = await downloadImageBufferWithFallback(u, referer, cookies, apiKey);
-          const mime = finalUrl.endsWith(".png") ? "image/png" : finalUrl.endsWith(".jpg") || finalUrl.endsWith(".jpeg") ? "image/jpeg" : "image/webp";
-          const dataUrl = `data:${mime};base64,${buffer.toString("base64")}`;
-          addToRamCache(u, dataUrl);
-          if (finalUrl !== u) addToRamCache(finalUrl, dataUrl);
-        } catch (e) {}
+        const allocated = cache.allocatePath(u, "webp");
+        const downloaded = await downloadImageToFile(u, allocated.path);
+        cache.commitFile(u, allocated.path);
+        return downloaded;
       })
     );
-    if (i + batchSize < uncachedUrls.length) {
-      await new Promise((r) => setTimeout(r, 60));
-    }
   }
-  return { preloaded: urls.length };
+  return { preloaded: limited.length };
 });
 
-ipcMain.handle("save-downloaded-archive", async (_event, { gallery, formatType, pattern, destDir, pagesData }) => {
-  const saveStartTime = Date.now();
-  const norm = normalizeGallery(gallery);
-  const baseName = formatFilename(pattern, norm);
-  const destination = destDir || path.join(os.homedir(), "Downloads", "nHentai Downloads");
-  if (!fs.existsSync(destination)) {
-    fs.mkdirSync(destination, { recursive: true });
-  }
-
-  let outputPath = "";
-  if (formatType === "zip" || formatType === "cbz") {
-    const ext = formatType === "cbz" ? ".cbz" : ".zip";
-    outputPath = path.join(destination, `${baseName}${ext}`);
-    const output = fs.createWriteStream(outputPath);
-    // Use level 0 (Store) for maximum speed since images are already compressed
-    const archive = createZipArchive({ zlib: { level: 0 }, store: true });
-
-    await new Promise((resolve, reject) => {
-      output.on("close", resolve);
-      archive.on("error", reject);
-      archive.pipe(output);
-
-      if (formatType === "cbz") {
-        const comicInfo = generateComicInfoXml(norm);
-        archive.append(comicInfo, { name: "ComicInfo.xml" });
-      }
-
-      for (const img of pagesData) {
-        const filename = `${String(img.pageNum).padStart(3, "0")}.${img.ext || "webp"}`;
-        const buf = Buffer.from(img.bufferBase64, "base64");
-        archive.append(buf, { name: filename });
-      }
-
-      archive.finalize();
-    });
-  } else {
-    outputPath = path.join(destination, baseName);
-    if (!fs.existsSync(outputPath)) {
-      fs.mkdirSync(outputPath, { recursive: true });
-    }
-    for (const img of pagesData) {
-      const filename = `${String(img.pageNum).padStart(3, "0")}.${img.ext || "webp"}`;
-      const buf = Buffer.from(img.bufferBase64, "base64");
-      fs.writeFileSync(path.join(outputPath, filename), buf);
-    }
-  }
-
-  const durationMs = Date.now() - saveStartTime;
-  console.log(`[💾 ARCHIVE ENREGISTRÉE] #${norm.id} -> ${path.basename(outputPath)} (${pagesData.length} planches, ${durationMs}ms)`);
-
-  if (Notification.isSupported()) {
-    const displayTitle = norm.title?.pretty || norm.title?.english || `Galerie #${norm.id}`;
-    new Notification({
-      title: "nHentai Launcher",
-      body: `✅ Téléchargement terminé (${(formatType || "CBZ").toUpperCase()}) : ${displayTitle}`,
-    }).show();
-  }
-
-  return outputPath;
+ipcMain.handle("save-downloaded-archive", async (event, { gallery, formatType, pattern, destDir, pagesData }) => {
+  assertMainWindowSender(event);
+  throw new Error("Le téléchargement desktop n'accepte plus les archives base64 complètes. Utilisez start-download.");
 });
 
-// Start download engine with native Chromium streams
-ipcMain.handle("start-download", async (event, { gallery, formatType, pattern, destDir, cookies, apiKey }) => {
-  // If gallery doesn't have full pages details, fetch it first
+ipcMain.handle("start-download", async (event, { gallery, formatType, pattern, destDir }) => {
+  assertMainWindowSender(event);
+  const auth = resolveAuth("", "");
   let fullGallery = gallery;
   if (!fullGallery.pages || fullGallery.pages.length === 0) {
     try {
       const url = `https://nhentai.net/api/v2/galleries/${gallery.id}`;
-      const data = await fetchNhentai(url, cookies, apiKey);
+      const data = await fetchNhentai(url, auth.cookies, auth.apiKey);
       fullGallery = normalizeGallery(data);
     } catch (e) {
       console.warn("Could not fetch full gallery for download, using provided info:", e.message);
@@ -1872,6 +2082,7 @@ ipcMain.handle("start-download", async (event, { gallery, formatType, pattern, d
 
   const startTime = Date.now();
   let downloadedBytes = 0;
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `nh-dl-${galleryId}-`));
 
   try {
     const pages = fullGallery.images?.pages || [];
@@ -1886,31 +2097,37 @@ ipcMain.handle("start-download", async (event, { gallery, formatType, pattern, d
         const i = nextIdx++;
         const pageNum = i + 1;
         const pageInfo = pages[i] || {};
-        const ext = getExt(pageInfo.t);
+        const extHint = getExt(pageInfo.t);
         let imageUrl = "";
 
         if (pageInfo.path) {
           imageUrl = `https://i.nhentai.net/${pageInfo.path.replace(/^\//, "")}`;
         } else {
-          imageUrl = `https://i.nhentai.net/galleries/${fullGallery.media_id}/${pageNum}.${ext}`;
+          imageUrl = `https://i.nhentai.net/galleries/${fullGallery.media_id}/${pageNum}.${extHint}`;
         }
 
-        const referer = `https://nhentai.net/g/${fullGallery.id}/`;
-        const { buffer, finalUrl } = await downloadImageBufferWithFallback(imageUrl, referer, cookies, apiKey, abortController.signal);
-        const resolvedExt = finalUrl.endsWith(".png") ? "png" : finalUrl.endsWith(".jpg") || finalUrl.endsWith(".jpeg") ? "jpg" : "webp";
+        const destFile = path.join(tmpDir, `${String(pageNum).padStart(3, "0")}.part`);
+        const { bytes, finalUrl } = await downloadImageToFile(imageUrl, destFile, abortController.signal);
+        const resolvedExt = finalUrl.endsWith(".png")
+          ? "png"
+          : finalUrl.endsWith(".jpg") || finalUrl.endsWith(".jpeg")
+            ? "jpg"
+            : "webp";
+        const finalName = `${String(pageNum).padStart(3, "0")}.${resolvedExt}`;
+        const finalPath = path.join(tmpDir, finalName);
+        fs.renameSync(destFile, finalPath);
 
-        downloadedBytes += buffer.length;
-        downloadedImages[i] = { pageNum, ext: resolvedExt, buffer };
+        downloadedBytes += bytes;
+        downloadedImages[i] = { pageNum, ext: resolvedExt, path: finalPath };
         completedCount++;
 
         const elapsedSec = Math.max(0.1, (Date.now() - startTime) / 1000);
         const speedKbS = downloadedBytes / 1024 / elapsedSec;
-
         sendProgress(completedCount, speedKbS, "downloading", null, null);
       }
     }
 
-    const workers = Array.from({ length: Math.min(concurrency, pages.length) }, () => downloadWorker());
+    const workers = Array.from({ length: Math.min(concurrency, Math.max(1, pages.length)) }, () => downloadWorker());
     await Promise.all(workers);
 
     if (abortController.signal.aborted) {
@@ -1923,38 +2140,25 @@ ipcMain.handle("start-download", async (event, { gallery, formatType, pattern, d
     if (formatType === "zip" || formatType === "cbz") {
       const ext = formatType === "cbz" ? ".cbz" : ".zip";
       outputPath = path.join(destination, `${baseName}${ext}`);
-      const output = fs.createWriteStream(outputPath);
-      const archive = createZipArchive({ zlib: { level: 6 } });
-
-      await new Promise((resolve, reject) => {
-        output.on("close", resolve);
-        archive.on("error", reject);
-        archive.pipe(output);
-
+      await writeZipArchiveAtomic(outputPath, { zlib: { level: 0 }, store: true }, (archive) => {
         if (formatType === "cbz") {
           const comicInfo = generateComicInfoXml(fullGallery);
           archive.append(comicInfo, { name: "ComicInfo.xml" });
         }
-
         for (const img of downloadedImages) {
-          if (img && img.buffer) {
-            const filename = `${String(img.pageNum).padStart(3, "0")}.${img.ext}`;
-            archive.append(img.buffer, { name: filename });
+          if (img && img.path) {
+            archive.file(img.path, { name: `${String(img.pageNum).padStart(3, "0")}.${img.ext}` });
           }
         }
-
-        archive.finalize();
       });
     } else {
-      // Folder format
       outputPath = path.join(destination, baseName);
       if (!fs.existsSync(outputPath)) {
         fs.mkdirSync(outputPath, { recursive: true });
       }
       for (const img of downloadedImages) {
-        if (img && img.buffer) {
-          const filename = `${String(img.pageNum).padStart(3, "0")}.${img.ext}`;
-          fs.writeFileSync(path.join(outputPath, filename), img.buffer);
+        if (img && img.path) {
+          fs.copyFileSync(img.path, path.join(outputPath, `${String(img.pageNum).padStart(3, "0")}.${img.ext}`));
         }
       }
     }
@@ -1979,6 +2183,102 @@ ipcMain.handle("start-download", async (event, { gallery, formatType, pattern, d
     }
     activeDownloads.delete(galleryId);
     throw err;
+  } finally {
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch {}
+  }
+});
+
+ipcMain.handle("get-downloaded-ids", async (_event, { directoryPath }) => {
+  const dir = directoryPath || path.join(os.homedir(), "Downloads", "nHentai Downloads");
+  if (!fs.existsSync(dir)) return [];
+  const ids = [];
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const isCbz = entry.isFile() && entry.name.toLowerCase().endsWith(".cbz");
+      const isZip = entry.isFile() && entry.name.toLowerCase().endsWith(".zip");
+      const isDir = entry.isDirectory();
+      if (isCbz || isZip || isDir) {
+        const match = entry.name.match(/\[(\d{4,8})\]/) || entry.name.match(/#?(\d{5,8})/);
+        if (match) {
+          ids.push(parseInt(match[1], 10));
+        }
+      }
+    }
+  } catch (e) {}
+  return ids;
+});
+
+ipcMain.handle("open-auth-window", async (event) => {
+  assertMainWindowSender(event);
+  if (authWindow && !authWindow.isDestroyed()) {
+    authWindow.focus();
+    return;
+  }
+
+  authWindow = new BrowserWindow({
+    width: 960,
+    height: 760,
+    title: "Guichet Cloudflare Turnstile & nHentai",
+    backgroundColor: "#0c0c10",
+    autoHideMenuBar: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+  secureNhentaiWindowNavigation(authWindow, true);
+
+  authWindow.loadURL("https://nhentai.net/login/");
+
+  const checkAndCaptureCookies = async () => {
+    try {
+      const cookies = await session.defaultSession.cookies.get({ domain: "nhentai.net" });
+      const cookieStr = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+      if (
+        cookieStr.includes("cf_clearance") ||
+        cookieStr.includes("sessionid") ||
+        cookieStr.includes("csrftoken") ||
+        cookieStr.includes("refresh_token")
+      ) {
+        console.log("[🛡️ CLOUDFLARE COOKIES CAPTURED]");
+        getSecretVault().save({ cookies: cookieStr });
+        mainWindow?.webContents.send("cookies-captured", "");
+        mainWindow?.webContents.send("secrets-updated", getSecretVault().status());
+      }
+    } catch (e) {
+      console.error("Error capturing cookies:", e);
+    }
+  };
+
+  authWindow.webContents.on("did-navigate", checkAndCaptureCookies);
+  authWindow.webContents.on("did-navigate-in-page", checkAndCaptureCookies);
+  authWindow.webContents.on("did-finish-load", checkAndCaptureCookies);
+
+  authWindow.on("closed", () => {
+    authWindow = null;
+  });
+});
+
+ipcMain.handle("update-dns-settings", async (event, { dns_provider, enable_custom_dns, enable_doh }) => {
+  assertMainWindowSender(event);
+  try {
+    const existing = loadStoredDnsSettings();
+    const updated = {
+      ...existing,
+      dns_provider: dns_provider || "adguard",
+      enable_custom_dns: enable_custom_dns !== false,
+      enable_doh: enable_doh !== false,
+    };
+    fs.writeFileSync(settingsFilePath, JSON.stringify(updated, null, 2), "utf8");
+    applyNodeDns(updated.dns_provider, updated.enable_custom_dns);
+    console.log("[🛡️ DNS SETTINGS UPDATED]", updated);
+    return { success: true };
+  } catch (e) {
+    console.error("[DNS SETTINGS ERROR]", e);
+    return { success: false, error: e.message };
   }
 });
 
@@ -1989,6 +2289,8 @@ let quickShareServer = null;
 let quickSharePort = 45678;
 let activeClientsCount = 0;
 let quickShareStartTime = null;
+let quickShareToken = null;
+let quickShareDirectory = null;
 const quickShareCoverCache = new Map();
 
 function getLocalIpAddress() {
@@ -2007,7 +2309,37 @@ function getLocalDownloadDir(customDir) {
   return customDir || path.join(os.homedir(), "Downloads", "nHentai Downloads");
 }
 
-function getDownloadedFilesList(customDir) {
+function getQuickShareUrl(ip = getLocalIpAddress()) {
+  if (!quickShareToken) return "";
+  return `http://${ip}:${quickSharePort}/${quickShareToken}/`;
+}
+
+function resolveQuickShareArchive(rawFilename) {
+  if (!quickShareDirectory || typeof rawFilename !== "string") {
+    throw new Error("Quick Share directory is unavailable");
+  }
+  if (
+    !rawFilename ||
+    path.basename(rawFilename) !== rawFilename ||
+    !/\.(cbz|zip)$/i.test(rawFilename)
+  ) {
+    throw new Error("Invalid archive filename");
+  }
+
+  const candidate = fs.realpathSync(path.join(quickShareDirectory, rawFilename));
+  const relative = path.relative(quickShareDirectory, candidate);
+  if (
+    relative.startsWith("..") ||
+    path.isAbsolute(relative) ||
+    !fs.statSync(candidate).isFile() ||
+    !/\.(cbz|zip)$/i.test(candidate)
+  ) {
+    throw new Error("Archive is outside the shared directory");
+  }
+  return candidate;
+}
+
+async function getDownloadedFilesList(customDir) {
   const dir = getLocalDownloadDir(customDir);
   if (!fs.existsSync(dir)) return [];
   const list = [];
@@ -2025,18 +2357,10 @@ function getDownloadedFilesList(customDir) {
           let pagesCount = 0;
 
           try {
-            const zip = new AdmZip(fullPath);
-            const zipEntries = zip.getEntries();
-            const comicInfo = zipEntries.find((e) => e.entryName.toLowerCase() === "comicinfo.xml");
-            if (comicInfo) {
-              const xmlStr = zip.readAsText(comicInfo);
-              const tMatch = xmlStr.match(/<Title>(.*?)<\/Title>/);
-              const pMatch = xmlStr.match(/<Penciller>(.*?)<\/Penciller>/);
-              if (tMatch && tMatch[1]) title = tMatch[1].trim();
-              if (pMatch && pMatch[1]) artist = pMatch[1].trim();
-            }
-            const imgEntries = zipEntries.filter((e) => e.entryName.match(/\.(jpg|jpeg|png|webp)$/i));
-            pagesCount = imgEntries.length;
+            const meta = await readArchiveMetadata(fullPath);
+            if (meta.comicInfo.title) title = meta.comicInfo.title;
+            if (meta.comicInfo.artist) artist = meta.comicInfo.artist;
+            pagesCount = meta.images.length;
           } catch {}
 
           list.push({
@@ -2407,7 +2731,7 @@ function generateMobileWebClientHtml(ip, port) {
 
     async function loadFiles() {
       try {
-        const res = await fetch('/api/files');
+        const res = await fetch('api/files');
         allFiles = await res.json();
         renderCards(allFiles);
       } catch (e) {
@@ -2440,31 +2764,66 @@ function generateMobileWebClientHtml(ip, port) {
         const encName = encodeURIComponent(f.filename);
         const card = document.createElement('div');
         card.className = 'card';
-        card.innerHTML = \`
-          <div class="cover-wrap">
-            <img class="cover-img" src="/api/cover/\${encName}" loading="lazy" alt="\${f.title}" />
-            \${f.id ? \`<div class="badge-id">#d\${f.id}</div>\` : ''}
-            <div class="badge-pages">\${f.pagesCount}p</div>
-          </div>
-          <div class="card-body">
-            <div>
-              <div class="card-title" title="\${f.title}">\${f.title}</div>
-              \${f.artist ? \`<div class="card-artist">🎨 \${f.artist}</div>\` : ''}
-            </div>
-            <div class="card-meta">
-              <span>\${f.format.toUpperCase()}</span>
-              <span>\${f.sizeFormatted}</span>
-            </div>
-            <div style="display: flex; gap: 6px; flex-direction: column;">
-              <a class="btn-download" href="/api/download/\${encName}" download="\${f.filename}">
-                📥 Télécharger (\${f.format.toUpperCase()})
-              </a>
-              <button class="btn-stream" onclick="openReader('\${encName}', '\${f.title.replace(/'/g, "\\\\'")}', \${f.pagesCount})">
-                📖 Lire en direct
-              </button>
-            </div>
-          </div>
-        \`;
+
+        const coverWrap = document.createElement('div');
+        coverWrap.className = 'cover-wrap';
+        const cover = document.createElement('img');
+        cover.className = 'cover-img';
+        cover.src = 'api/cover/' + encName;
+        cover.loading = 'lazy';
+        cover.alt = String(f.title || '');
+        coverWrap.appendChild(cover);
+        if (f.id) {
+          const idBadge = document.createElement('div');
+          idBadge.className = 'badge-id';
+          idBadge.textContent = '#d' + String(f.id);
+          coverWrap.appendChild(idBadge);
+        }
+        const pagesBadge = document.createElement('div');
+        pagesBadge.className = 'badge-pages';
+        pagesBadge.textContent = String(f.pagesCount || 0) + 'p';
+        coverWrap.appendChild(pagesBadge);
+
+        const body = document.createElement('div');
+        body.className = 'card-body';
+        const metadata = document.createElement('div');
+        const title = document.createElement('div');
+        title.className = 'card-title';
+        title.textContent = String(f.title || '');
+        title.title = String(f.title || '');
+        metadata.appendChild(title);
+        if (f.artist) {
+          const artist = document.createElement('div');
+          artist.className = 'card-artist';
+          artist.textContent = '🎨 ' + String(f.artist);
+          metadata.appendChild(artist);
+        }
+
+        const meta = document.createElement('div');
+        meta.className = 'card-meta';
+        const format = String(f.format || '').toUpperCase();
+        const formatLabel = document.createElement('span');
+        formatLabel.textContent = format;
+        const sizeLabel = document.createElement('span');
+        sizeLabel.textContent = String(f.sizeFormatted || '');
+        meta.append(formatLabel, sizeLabel);
+
+        const actions = document.createElement('div');
+        actions.style.cssText = 'display:flex;gap:6px;flex-direction:column';
+        const download = document.createElement('a');
+        download.className = 'btn-download';
+        download.href = 'api/download/' + encName;
+        download.download = String(f.filename || '');
+        download.textContent = '📥 Télécharger (' + format + ')';
+        const stream = document.createElement('button');
+        stream.className = 'btn-stream';
+        stream.type = 'button';
+        stream.textContent = '📖 Lire en direct';
+        stream.addEventListener('click', () => openReader(encName, String(f.title || '')));
+        actions.append(download, stream);
+
+        body.append(metadata, meta, actions);
+        card.append(coverWrap, body);
         grid.appendChild(card);
       });
     }
@@ -2485,10 +2844,10 @@ function generateMobileWebClientHtml(ip, port) {
     }
 
     function downloadAllZip() {
-      window.location.href = '/api/batch-zip';
+      window.location.href = 'api/batch-zip';
     }
 
-    async function openReader(encFilename, title, pagesCount) {
+    async function openReader(encFilename, title) {
       const modal = document.getElementById('readerModal');
       const content = document.getElementById('readerContent');
       document.getElementById('readerTitle').innerText = title;
@@ -2496,14 +2855,14 @@ function generateMobileWebClientHtml(ip, port) {
       modal.style.display = 'flex';
 
       try {
-        const res = await fetch('/api/manifest/' + encFilename);
+        const res = await fetch('api/manifest/' + encFilename);
         const manifest = await res.json();
         content.innerHTML = '';
         manifest.pages.forEach((p, idx) => {
           const img = document.createElement('img');
           img.className = 'reader-page-img';
           img.loading = idx < 3 ? 'eager' : 'lazy';
-          img.src = '/api/page/' + encFilename + '/' + idx;
+          img.src = 'api/page/' + encFilename + '/' + idx;
           img.alt = 'Page ' + (idx + 1);
           content.appendChild(img);
         });
@@ -2523,31 +2882,55 @@ function generateMobileWebClientHtml(ip, port) {
 </html>`;
 }
 
-function startQuickShareServer(customPort = 45678) {
+function startQuickShareServer(customPort = 45678, customDirectory) {
   if (quickShareServer) {
     return {
       active: true,
       port: quickSharePort,
       ip: getLocalIpAddress(),
-      url: `http://${getLocalIpAddress()}:${quickSharePort}/`,
+      url: getQuickShareUrl(),
     };
   }
 
-  quickSharePort = customPort || 45678;
+  quickSharePort = Number(customPort) || 45678;
+  if (!Number.isInteger(quickSharePort) || quickSharePort < 1024 || quickSharePort > 65535) {
+    throw new Error("Port Quick Share invalide");
+  }
   const ip = getLocalIpAddress();
+  const requestedDirectory = getLocalDownloadDir(customDirectory);
+  if (!fs.existsSync(requestedDirectory) || !fs.statSync(requestedDirectory).isDirectory()) {
+    throw new Error("Le dossier Quick Share configuré est introuvable");
+  }
+  quickShareDirectory = fs.realpathSync(requestedDirectory);
+  quickShareToken = crypto.randomBytes(32).toString("base64url");
 
   quickShareServer = http.createServer(async (req, res) => {
     try {
       const parsedUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-      const pathname = parsedUrl.pathname;
+      const tokenPrefix = `/${quickShareToken}`;
+      if (
+        parsedUrl.pathname !== tokenPrefix &&
+        !parsedUrl.pathname.startsWith(`${tokenPrefix}/`)
+      ) {
+        res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+        return res.end("Not Found");
+      }
+      const pathname = parsedUrl.pathname.slice(tokenPrefix.length) || "/";
 
       // Allow CORS for mobile app fetch
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
       res.setHeader("Access-Control-Allow-Headers", "*");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Referrer-Policy", "no-referrer");
+      res.setHeader("Cache-Control", "no-store");
 
       if (req.method === "OPTIONS") {
         res.writeHead(204);
+        return res.end();
+      }
+      if (req.method !== "GET") {
+        res.writeHead(405, { Allow: "GET, OPTIONS" });
         return res.end();
       }
 
@@ -2559,21 +2942,21 @@ function startQuickShareServer(customPort = 45678) {
 
       // 2. Status API
       if (pathname === "/api/status") {
-        const files = getDownloadedFilesList();
+        const files = await getDownloadedFilesList(quickShareDirectory);
         res.writeHead(200, { "Content-Type": "application/json" });
         return res.end(JSON.stringify({
           success: true,
           server: "nHentai PC Quick Share Hub",
           ip,
           port: quickSharePort,
-          url: `http://${ip}:${quickSharePort}/`,
+          url: getQuickShareUrl(ip),
           filesCount: files.length,
         }));
       }
 
       // 3. Files List API
       if (pathname === "/api/files") {
-        const files = getDownloadedFilesList();
+        const files = await getDownloadedFilesList(quickShareDirectory);
         res.writeHead(200, { "Content-Type": "application/json" });
         return res.end(JSON.stringify(files));
       }
@@ -2581,16 +2964,16 @@ function startQuickShareServer(customPort = 45678) {
       // 4. Single File Download (High-Speed Stream)
       if (pathname.startsWith("/api/download/")) {
         const rawFilename = decodeURIComponent(pathname.replace("/api/download/", ""));
-        const downloadDir = getLocalDownloadDir();
-        const fullPath = path.join(downloadDir, rawFilename);
-
-        if (!fs.existsSync(fullPath)) {
+        let fullPath;
+        try {
+          fullPath = resolveQuickShareArchive(rawFilename);
+        } catch {
           res.writeHead(404, { "Content-Type": "text/plain" });
           return res.end("Fichier non trouvé sur le PC");
         }
 
         const stat = fs.statSync(fullPath);
-        const mimeType = rawFilename.endsWith(".cbz") ? "application/vnd.comicbook+zip" : "application/zip";
+        const mimeType = rawFilename.toLowerCase().endsWith(".cbz") ? "application/vnd.comicbook+zip" : "application/zip";
 
         res.writeHead(200, {
           "Content-Type": mimeType,
@@ -2601,20 +2984,28 @@ function startQuickShareServer(customPort = 45678) {
         const stream = fs.createReadStream(fullPath);
         stream.pipe(res);
         activeClientsCount++;
-        stream.on("end", () => {
+        let transferFinished = false;
+        const finishTransfer = () => {
+          if (transferFinished) return;
+          transferFinished = true;
           activeClientsCount = Math.max(0, activeClientsCount - 1);
-        });
-        stream.on("error", () => {
-          activeClientsCount = Math.max(0, activeClientsCount - 1);
-        });
+        };
+        stream.on("end", finishTransfer);
+        stream.on("close", finishTransfer);
+        stream.on("error", finishTransfer);
         return;
       }
 
       // 5. Cover Image Extractor
       if (pathname.startsWith("/api/cover/")) {
         const rawFilename = decodeURIComponent(pathname.replace("/api/cover/", ""));
-        const downloadDir = getLocalDownloadDir();
-        const fullPath = path.join(downloadDir, rawFilename);
+        let fullPath;
+        try {
+          fullPath = resolveQuickShareArchive(rawFilename);
+        } catch {
+          res.writeHead(404);
+          return res.end();
+        }
 
         if (quickShareCoverCache.has(rawFilename)) {
           const { buffer, mime } = quickShareCoverCache.get(rawFilename);
@@ -2627,19 +3018,14 @@ function startQuickShareServer(customPort = 45678) {
 
         if (fs.existsSync(fullPath)) {
           try {
-            const zip = new AdmZip(fullPath);
-            const imgEntries = zip
-              .getEntries()
-              .filter((e) => e.entryName.match(/\.(jpg|jpeg|png|webp)$/i))
-              .sort((a, b) => a.entryName.localeCompare(b.entryName));
-
-            if (imgEntries.length > 0) {
-              const buf = zip.readFile(imgEntries[0]);
-              const mime = imgEntries[0].entryName.endsWith(".png")
-                ? "image/png"
-                : imgEntries[0].entryName.endsWith(".webp")
-                ? "image/webp"
-                : "image/jpeg";
+            const meta = await readArchiveMetadata(fullPath);
+            if (meta.images.length > 0) {
+              const buf = await extractArchiveEntry(fullPath, meta.images[0].name);
+              const mime = extToMime(meta.images[0].name);
+              if (quickShareCoverCache.size >= 40) {
+                const oldest = quickShareCoverCache.keys().next().value;
+                quickShareCoverCache.delete(oldest);
+              }
               quickShareCoverCache.set(rawFilename, { buffer: buf, mime });
               res.writeHead(200, {
                 "Content-Type": mime,
@@ -2657,18 +3043,18 @@ function startQuickShareServer(customPort = 45678) {
       // 6. Streaming Manifest of Pages
       if (pathname.startsWith("/api/manifest/")) {
         const rawFilename = decodeURIComponent(pathname.replace("/api/manifest/", ""));
-        const downloadDir = getLocalDownloadDir();
-        const fullPath = path.join(downloadDir, rawFilename);
+        let fullPath;
+        try {
+          fullPath = resolveQuickShareArchive(rawFilename);
+        } catch {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          return res.end(JSON.stringify({ error: "Archive non lisible" }));
+        }
 
         if (fs.existsSync(fullPath)) {
           try {
-            const zip = new AdmZip(fullPath);
-            const imgEntries = zip
-              .getEntries()
-              .filter((e) => e.entryName.match(/\.(jpg|jpeg|png|webp)$/i))
-              .sort((a, b) => a.entryName.localeCompare(b.entryName));
-
-            const pages = imgEntries.map((e, idx) => ({ index: idx, name: e.entryName }));
+            const meta = await readArchiveMetadata(fullPath);
+            const pages = meta.images.map((e, idx) => ({ index: idx, name: e.name }));
             res.writeHead(200, { "Content-Type": "application/json" });
             return res.end(JSON.stringify({ pages, count: pages.length }));
           } catch (e) {}
@@ -2682,25 +3068,21 @@ function startQuickShareServer(customPort = 45678) {
         const parts = pathname.replace("/api/page/", "").split("/");
         const rawFilename = decodeURIComponent(parts[0]);
         const pageIdx = parseInt(parts[1], 10) || 0;
-        const downloadDir = getLocalDownloadDir();
-        const fullPath = path.join(downloadDir, rawFilename);
+        let fullPath;
+        try {
+          fullPath = resolveQuickShareArchive(rawFilename);
+        } catch {
+          res.writeHead(404);
+          return res.end();
+        }
 
         if (fs.existsSync(fullPath)) {
           try {
-            const zip = new AdmZip(fullPath);
-            const imgEntries = zip
-              .getEntries()
-              .filter((e) => e.entryName.match(/\.(jpg|jpeg|png|webp)$/i))
-              .sort((a, b) => a.entryName.localeCompare(b.entryName));
-
-            if (pageIdx < imgEntries.length) {
-              const entry = imgEntries[pageIdx];
-              const buf = zip.readFile(entry);
-              const mime = entry.entryName.endsWith(".png")
-                ? "image/png"
-                : entry.entryName.endsWith(".webp")
-                ? "image/webp"
-                : "image/jpeg";
+            const meta = await readArchiveMetadata(fullPath);
+            if (pageIdx < meta.images.length) {
+              const entry = meta.images[pageIdx];
+              const buf = await extractArchiveEntry(fullPath, entry.name);
+              const mime = extToMime(entry.name);
               res.writeHead(200, {
                 "Content-Type": mime,
                 "Cache-Control": "public, max-age=3600",
@@ -2715,8 +3097,7 @@ function startQuickShareServer(customPort = 45678) {
 
       // 8. Batch Download of All CBZ files in a single zip
       if (pathname === "/api/batch-zip") {
-        const downloadDir = getLocalDownloadDir();
-        const files = getDownloadedFilesList();
+        const files = await getDownloadedFilesList(quickShareDirectory);
 
         res.writeHead(200, {
           "Content-Type": "application/zip",
@@ -2724,15 +3105,19 @@ function startQuickShareServer(customPort = 45678) {
         });
 
         const archive = createZipArchive({ zlib: { level: 0 } });
+        archive.on("error", (error) => {
+          console.error("[Quick Share Batch Archive Error]:", error.message);
+          res.destroy(error);
+        });
         archive.pipe(res);
 
         for (const f of files) {
-          const fPath = path.join(downloadDir, f.filename);
-          if (fs.existsSync(fPath)) {
+          try {
+            const fPath = resolveQuickShareArchive(f.filename);
             archive.file(fPath, { name: f.filename });
-          }
+          } catch {}
         }
-        archive.finalize();
+        await archive.finalize();
         return;
       }
 
@@ -2745,62 +3130,104 @@ function startQuickShareServer(customPort = 45678) {
     }
   });
 
-  quickShareServer.listen(quickSharePort, "0.0.0.0", () => {
-    quickShareStartTime = Date.now();
-    console.log(`[⚡ QUICK SHARE SERVER] Démarré sur http://${ip}:${quickSharePort}/ (Wi-Fi Gigabit)`);
+  return new Promise((resolve, reject) => {
+    const server = quickShareServer;
+    const handleListenError = (error) => {
+      server.removeListener("listening", handleListening);
+      if (quickShareServer === server) quickShareServer = null;
+      quickShareToken = null;
+      quickShareDirectory = null;
+      quickShareStartTime = null;
+      quickShareCoverCache.clear();
+      reject(error);
+    };
+    const handleListening = () => {
+      server.removeListener("error", handleListenError);
+      quickShareStartTime = Date.now();
+      console.log(`[⚡ QUICK SHARE SERVER] Démarré sur http://${ip}:${quickSharePort} (accès protégé)`);
+      resolve({
+        active: true,
+        port: quickSharePort,
+        ip,
+        url: getQuickShareUrl(ip),
+      });
+    };
+    server.once("error", handleListenError);
+    server.once("listening", handleListening);
+    try {
+      server.listen(quickSharePort, "0.0.0.0");
+    } catch (error) {
+      handleListenError(error);
+    }
   });
-
-  return {
-    active: true,
-    port: quickSharePort,
-    ip,
-    url: `http://${ip}:${quickSharePort}/`,
-  };
 }
 
-function stopQuickShareServer() {
-  if (quickShareServer) {
-    quickShareServer.close();
-    quickShareServer = null;
-    quickShareCoverCache.clear();
+async function stopQuickShareServer() {
+  const server = quickShareServer;
+  quickShareServer = null;
+  if (server) {
+    await new Promise((resolve) => server.close(resolve));
     console.log("[⚡ QUICK SHARE SERVER] Arrêté");
   }
+  quickShareToken = null;
+  quickShareDirectory = null;
+  quickShareStartTime = null;
+  activeClientsCount = 0;
+  quickShareCoverCache.clear();
   return { active: false };
 }
 
-ipcMain.handle("start-quick-share-server", async (_event, params) => {
-  return startQuickShareServer(params?.port);
+ipcMain.handle("start-quick-share-server", async (event, params) => {
+  assertMainWindowSender(event);
+  return startQuickShareServer(params?.port, params?.directoryPath);
 });
 
-ipcMain.handle("stop-quick-share-server", async () => {
+ipcMain.handle("stop-quick-share-server", async (event) => {
+  assertMainWindowSender(event);
   return stopQuickShareServer();
 });
 
-ipcMain.handle("get-quick-share-status", async () => {
+ipcMain.handle("get-quick-share-status", async (event) => {
+  assertMainWindowSender(event);
   const ip = getLocalIpAddress();
-  const files = getDownloadedFilesList();
+  const files = await getDownloadedFilesList(quickShareDirectory || undefined);
   return {
     active: !!quickShareServer,
     port: quickSharePort,
     ip,
-    url: `http://${ip}:${quickSharePort}/`,
+    url: getQuickShareUrl(ip),
     filesCount: files.length,
     activeTransfers: activeClientsCount,
     uptime: quickShareStartTime ? Math.floor((Date.now() - quickShareStartTime) / 1000) : 0,
   };
 });
 
-ipcMain.handle("get-local-downloaded-files", async (_event, params) => {
+ipcMain.handle("get-local-downloaded-files", async (event, params) => {
+  assertMainWindowSender(event);
   return getDownloadedFilesList(params?.directoryPath);
 });
 
 app.whenReady().then(async () => {
-  // Auto-start Quick Share server on launch so it's always ready for instant QR scan!
-  try {
-    startQuickShareServer(45678);
-  } catch (e) {
-    console.warn("[Quick Share Server Auto-Start Notice]:", e.message);
-  }
+  protocol.handle("nhcache", async (request) => {
+    try {
+      const parsed = parseNhcacheUrl(request.url);
+      if (!parsed) return new Response("Forbidden", { status: 403 });
+      if (parsed.kind === "item") {
+        const filePath = getImageCache().resolveItemId(parsed.id);
+        if (!filePath) return new Response("Not Found", { status: 404 });
+        return net.fetch(pathToFileURL(filePath).href);
+      }
+      if (parsed.kind === "book") {
+        const filePath = await materializeBookPage(parsed.hash, parsed.index);
+        if (!filePath) return new Response("Not Found", { status: 404 });
+        return net.fetch(pathToFileURL(filePath).href);
+      }
+      return new Response("Forbidden", { status: 403 });
+    } catch {
+      return new Response("Error", { status: 500 });
+    }
+  });
+
   // Block ads and heavy third-party analytics to make background Chromium navigation ultra fast (<1s)
   session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
     const u = details.url.toLowerCase();
@@ -2828,7 +3255,7 @@ app.whenReady().then(async () => {
       details.requestHeaders["Referer"] = "https://nhentai.net/";
       details.requestHeaders["User-Agent"] = DEFAULT_USER_AGENT;
       if (!details.requestHeaders["X-API-Key"]) {
-        details.requestHeaders["X-API-Key"] = DEFAULT_API_KEY;
+        details.requestHeaders["X-API-Key"] = getSecretVault().getApiKey() || DEFAULT_API_KEY;
       }
       delete details.requestHeaders["Origin"];
       delete details.requestHeaders["origin"];

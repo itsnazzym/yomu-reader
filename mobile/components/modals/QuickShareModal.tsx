@@ -19,7 +19,7 @@ import {
 } from "@tabler/icons-react-native";
 import { QRCodeView } from "../ui/QRCodeView";
 import { useTheme } from "../../lib/ThemeContext";
-import { mediumImpact, successFeedback } from "../../lib/haptics";
+import { mediumImpact, successFeedback, warningFeedback } from "../../lib/haptics";
 
 interface QuickShareModalProps {
   visible: boolean;
@@ -59,7 +59,10 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
       successFeedback();
       setCopiedKey(key);
       setTimeout(() => setCopiedKey(null), 2000);
-    } catch {}
+    } catch (error) {
+      console.warn("[QuickShareModal] Échec de la copie dans le presse-papiers:", error);
+      warningFeedback();
+    }
   };
 
   const handleNativeShare = async () => {
@@ -80,7 +83,10 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
         message: `${title} - ${shareUrl}`,
         url: shareUrl,
       });
-    } catch {}
+    } catch (error) {
+      console.warn("[QuickShareModal] Échec du partage système:", error);
+      warningFeedback();
+    }
   };
 
   return (
@@ -97,17 +103,22 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
           onPress={onClose}
         />
 
-        <View style={[styles.modalCard, { backgroundColor: "#181824", borderColor: "#2d2d3e" }]}>
+        <View
+          style={[
+            styles.modalCard,
+            { backgroundColor: colors.page, borderColor: colors.tagBg },
+          ]}
+        >
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerTitleRow}>
-              <View style={styles.iconCircle}>
+              <View style={[styles.iconCircle, { backgroundColor: colors.accent }]}>
                 <IconShare size={18} color="#ffffff" stroke={2} />
               </View>
               <View>
-                <Text style={styles.headerTitle}>Quick Share & AirDrop</Text>
+                <Text style={styles.headerTitle}>Partage rapide</Text>
                 <Text style={styles.headerSubtitle}>
-                  Partage immédiat iOS AirDrop, Android & QR Code
+                  Partage instantané via iOS, Android et code QR
                 </Text>
               </View>
             </View>
@@ -116,24 +127,28 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
               onPress={onClose}
               style={styles.closeBtn}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel="Fermer le partage"
             >
-              <IconX size={20} color="#9ca3af" stroke={2} />
+              <IconX size={20} color={colors.sub} stroke={2} />
             </TouchableOpacity>
           </View>
 
           {/* Manga Badge Info */}
-          <View style={styles.mangaBadge}>
-            <Text style={styles.mangaId}>#d{id}</Text>
-            <Text style={styles.mangaTitle} numberOfLines={1}>
+          <View style={[styles.mangaBadge, { backgroundColor: colors.tagBg }]}>
+            <Text style={[styles.mangaId, { color: colors.accent }]}>#d{id}</Text>
+            <Text style={[styles.mangaTitle, { color: colors.txt }]} numberOfLines={1}>
               {title}
             </Text>
           </View>
 
           {/* Quick System AirDrop / Share Action Button */}
           <TouchableOpacity
-            style={styles.airdropMainButton}
+            style={[styles.airdropMainButton, { backgroundColor: colors.accent }]}
             activeOpacity={0.8}
             onPress={handleNativeShare}
+            accessibilityRole="button"
+            accessibilityLabel="Partager avec le partage système"
           >
             <View style={styles.airdropBtnContent}>
               <IconDevices size={20} color="#ffffff" stroke={2} />
@@ -146,48 +161,56 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
           </TouchableOpacity>
 
           {/* Mode Switcher Tabs */}
-          <View style={styles.tabsContainer}>
+          <View style={[styles.tabsContainer, { backgroundColor: colors.bg }]}>
             <TouchableOpacity
               style={[
                 styles.tabBtn,
-                activeTab === "qr" && styles.tabBtnActive,
+                activeTab === "qr" && { backgroundColor: colors.accent + "26" },
               ]}
               onPress={() => setActiveTab("qr")}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: activeTab === "qr" }}
+              accessibilityLabel="Afficher le code QR"
             >
               <IconQrcode
                 size={16}
-                color={activeTab === "qr" ? "#ffffff" : "#9ca3af"}
+                color={activeTab === "qr" ? colors.accent : colors.sub}
                 stroke={2}
               />
               <Text
                 style={[
                   styles.tabBtnText,
+                  { color: activeTab === "qr" ? colors.accent : colors.sub },
                   activeTab === "qr" && styles.tabBtnTextActive,
                 ]}
               >
-                QR Code Immédiat
+                Code QR
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[
                 styles.tabBtn,
-                activeTab === "links" && styles.tabBtnActive,
+                activeTab === "links" && { backgroundColor: colors.accent + "26" },
               ]}
               onPress={() => setActiveTab("links")}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: activeTab === "links" }}
+              accessibilityLabel="Afficher les liens à copier"
             >
               <IconCopy
                 size={15}
-                color={activeTab === "links" ? "#ffffff" : "#9ca3af"}
+                color={activeTab === "links" ? colors.accent : colors.sub}
                 stroke={2}
               />
               <Text
                 style={[
                   styles.tabBtnText,
+                  { color: activeTab === "links" ? colors.accent : colors.sub },
                   activeTab === "links" && styles.tabBtnTextActive,
                 ]}
               >
-                Copier Liens
+                Copier les liens
               </Text>
             </TouchableOpacity>
           </View>
@@ -207,12 +230,14 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
             <View style={styles.linksContainer}>
               {/* Clean URL */}
               <TouchableOpacity
-                style={styles.linkRow}
+                style={[styles.linkRow, { backgroundColor: colors.tagBg }]}
                 onPress={() => handleCopy(shareUrl, "web")}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`Copier le lien web ${shareUrl}`}
               >
                 <View style={styles.linkInfo}>
-                  <Text style={styles.linkLabel}>Lien Web</Text>
+                  <Text style={styles.linkLabel}>Lien web</Text>
                   <Text style={styles.linkVal} numberOfLines={1}>
                     {shareUrl}
                   </Text>
@@ -220,6 +245,7 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
                 <View
                   style={[
                     styles.copyPill,
+                    { backgroundColor: colors.tagBg },
                     copiedKey === "web" && styles.copyPillActive,
                   ]}
                 >
@@ -231,9 +257,11 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
 
               {/* Markdown */}
               <TouchableOpacity
-                style={styles.linkRow}
+                style={[styles.linkRow, { backgroundColor: colors.tagBg }]}
                 onPress={() => handleCopy(markdownLink, "md")}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Copier le lien Markdown"
               >
                 <View style={styles.linkInfo}>
                   <Text style={styles.linkLabel}>Discord / Markdown</Text>
@@ -244,6 +272,7 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
                 <View
                   style={[
                     styles.copyPill,
+                    { backgroundColor: colors.tagBg },
                     copiedKey === "md" && styles.copyPillActive,
                   ]}
                 >
@@ -255,19 +284,22 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
 
               {/* Code ID */}
               <TouchableOpacity
-                style={styles.linkRow}
+                style={[styles.linkRow, { backgroundColor: colors.tagBg }]}
                 onPress={() => handleCopy(String(id), "id")}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`Copier l'identifiant ${id}`}
               >
                 <View style={styles.linkInfo}>
-                  <Text style={styles.linkLabel}>Code Manga ID</Text>
-                  <Text style={[styles.linkVal, { color: "#ed2553", fontWeight: "700" }]}>
+                  <Text style={styles.linkLabel}>Identifiant du manga</Text>
+                  <Text style={[styles.linkVal, { color: colors.accent, fontWeight: "700" }]}>
                     {idTag}
                   </Text>
                 </View>
                 <View
                   style={[
                     styles.copyPill,
+                    { backgroundColor: colors.tagBg },
                     copiedKey === "id" && styles.copyPillActive,
                   ]}
                 >
@@ -319,7 +351,6 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#ed2553",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -339,7 +370,6 @@ const styles = StyleSheet.create({
   mangaBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#202030",
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 12,
@@ -349,7 +379,6 @@ const styles = StyleSheet.create({
   mangaId: {
     fontSize: 12,
     fontWeight: "800",
-    color: "#ed2553",
   },
   mangaTitle: {
     flex: 1,
@@ -358,7 +387,6 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   airdropMainButton: {
-    backgroundColor: "#ed2553",
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: "center",
@@ -377,7 +405,6 @@ const styles = StyleSheet.create({
   },
   tabsContainer: {
     flexDirection: "row",
-    backgroundColor: "#11111a",
     padding: 4,
     borderRadius: 12,
     marginBottom: 16,
@@ -392,16 +419,12 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 8,
   },
-  tabBtnActive: {
-    backgroundColor: "#272738",
-  },
   tabBtnText: {
     fontSize: 12,
     color: "#9ca3af",
     fontWeight: "600",
   },
   tabBtnTextActive: {
-    color: "#ffffff",
     fontWeight: "700",
   },
   qrContainer: {
@@ -427,7 +450,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "#202030",
     padding: 12,
     borderRadius: 12,
   },
@@ -447,7 +469,6 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   copyPill: {
-    backgroundColor: "#2d2d42",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,

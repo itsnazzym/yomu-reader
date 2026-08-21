@@ -30,7 +30,10 @@
  *   GET /healthz
  *
  * Lancement : npm run proxy  (ou : node proxy/nhentai-mirror.mjs)
- * Port : 8787 (surchargeable via PROXY_PORT).
+ * Adresse : 127.0.0.1:8787 par défaut. PROXY_HOST=0.0.0.0 active
+ * explicitement l'accès LAN ; PROXY_PORT surcharge le port.
+ * CORS : origines locales de l'app uniquement, remplaçables via
+ * PROXY_CORS_ORIGINS (liste séparée par des virgules).
  */
 
 import http from "node:http";
@@ -39,7 +42,56 @@ import net from "node:net";
 import { createHash } from "node:crypto";
 import * as cheerio from "cheerio";
 
-const PORT = Number(process.env.PROXY_PORT || 8787);
+function readBoundedIntegerEnv(name, fallback, min, max) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < min || value > max) {
+    throw new Error(`${name} doit être un entier entre ${min} et ${max}`);
+  }
+  return value;
+}
+
+const PORT = readBoundedIntegerEnv("PROXY_PORT", 8787, 1, 65_535);
+const HOST = String(process.env.PROXY_HOST || "127.0.0.1").trim() || "127.0.0.1";
+const DEFAULT_CORS_ORIGINS = [
+  "http://localhost:1420",
+  "http://127.0.0.1:1420",
+  "http://localhost:8081",
+  "http://127.0.0.1:8081",
+  "tauri://localhost",
+  "http://tauri.localhost",
+  "https://tauri.localhost",
+];
+const configuredCorsOrigins = String(process.env.PROXY_CORS_ORIGINS || "")
+  .split(",")
+  .map((origin) => origin.trim().replace(/\/$/, ""))
+  .filter(Boolean);
+const ALLOWED_CORS_ORIGINS = new Set(
+  configuredCorsOrigins.length ? configuredCorsOrigins : DEFAULT_CORS_ORIGINS
+);
+
+const HTML_CACHE_MAX_ENTRIES = 300;
+const REQUEST_BODY_MAX_BYTES = 1_000_000;
+const IMAGE_RESPONSE_MAX_BYTES = readBoundedIntegerEnv(
+  "PROXY_IMAGE_MAX_BYTES",
+  25 * 1024 * 1024,
+  1,
+  256 * 1024 * 1024
+);
+const POW_MAX_CONCURRENCY = readBoundedIntegerEnv(
+  "PROXY_POW_CONCURRENCY",
+  2,
+  1,
+  4
+);
+const POW_MAX_ITERATIONS = 20_000_000;
+const POW_MAX_RUNTIME_MS = 30_000;
+const POW_CHUNK_ITERATIONS = 2_000;
+
+function publicError(status, message, extra = {}) {
+  return Object.assign(new Error(message), { status, expose: true, ...extra });
+}
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
@@ -128,17 +180,27 @@ function candidateMirrors() {
 const cache = new Map();
 function cacheGet(key) {
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.ts < hit.ttl) return hit.data;
-  if (hit) cache.delete(key);
+  if (hit && Date.now() - hit.ts < hit.ttl) {
+    cache.delete(key);
+    cache.set(key, hit);
+    return hit.data;
+  }
+  if (hit) {
+    cache.delete(key);
+  }
   return null;
 }
 function cacheSet(key, data, ttlMs) {
+  cache.delete(key);
   cache.set(key, { data, ts: Date.now(), ttl: ttlMs });
-  if (cache.size > 300) {
-    const now = Date.now();
-    for (const [k, v] of cache) {
-      if (now - v.ts > v.ttl) cache.delete(k);
+  const now = Date.now();
+  for (const [cachedKey, value] of cache) {
+    if (now - value.ts >= value.ttl) {
+      cache.delete(cachedKey);
     }
+  }
+  while (cache.size > HTML_CACHE_MAX_ENTRIES) {
+    cache.delete(cache.keys().next().value);
   }
 }
 
@@ -730,18 +792,54 @@ async function handleFavorites(page, credential, credentialType) {
 // X-Access-Token). La création exige un PoW (GET /api/v2/pow) résolu ici.
 // ---------------------------------------------------------------------------
 
-/** Résout un challenge PoW nhentai : nonce tel que sha256(challenge+nonce)
- *  commence par ceil(difficulty/4) zéros hexadécimaux. Difficulty 0 -> "". */
-function solvePow(challenge, difficulty) {
-  const need = Math.max(0, Math.ceil(Number(difficulty) / 4));
-  const prefix = "0".repeat(need);
-  for (let nonce = 0; nonce < 20_000_000; nonce++) {
-    const hash = createHash("sha256").update(`${challenge}${nonce}`).digest("hex");
-    if (hash.startsWith(prefix)) return String(nonce);
+let activePowJobs = 0;
+
+/** Résout un challenge PoW sans monopoliser la boucle d'événements.
+ * Le travail est découpé en tranches bornées et la concurrence globale est limitée. */
+async function solvePow(challenge, difficulty) {
+  const numericDifficulty = Number(difficulty);
+  const challengeText = String(challenge || "");
+  if (
+    !Number.isFinite(numericDifficulty) ||
+    numericDifficulty < 0 ||
+    numericDifficulty > 256 ||
+    !challengeText ||
+    challengeText.length > 1024
+  ) {
+    throw publicError(502, "Challenge de sécurité distant invalide");
   }
-  const err = new Error("PoW non résolu (difficulté trop élevée)");
-  err.status = 429;
-  throw err;
+  const need = Math.max(0, Math.ceil(numericDifficulty / 4));
+  if (need === 0) return "";
+  if (activePowJobs >= POW_MAX_CONCURRENCY) {
+    throw publicError(429, "Trop de calculs de sécurité en cours", {
+      retryAfter: 5,
+    });
+  }
+
+  activePowJobs += 1;
+  const prefix = "0".repeat(need);
+  const deadline = Date.now() + POW_MAX_RUNTIME_MS;
+  try {
+    for (let nonce = 0; nonce < POW_MAX_ITERATIONS; nonce++) {
+      const hash = createHash("sha256")
+        .update(`${challengeText}${nonce}`)
+        .digest("hex");
+      if (hash.startsWith(prefix)) return String(nonce);
+      if ((nonce + 1) % POW_CHUNK_ITERATIONS === 0) {
+        if (Date.now() >= deadline) {
+          throw publicError(429, "Calcul de sécurité expiré", {
+            retryAfter: 10,
+          });
+        }
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+    }
+  } finally {
+    activePowJobs -= 1;
+  }
+  throw publicError(429, "Calcul de sécurité non résolu", {
+    retryAfter: 10,
+  });
 }
 
 /** Auth User Token à partir des headers de l'app. */
@@ -804,7 +902,7 @@ async function listUserKeys(auth) {
 /** POST /api/v2/user/keys avec PoW résolu -> { id, key, name } (clé complète, une seule fois). */
 async function createUserKey(auth, name, purpose) {
   const pow = await apiFetchJson("https://nhentai.net/api/v2/pow?action=create_api_key");
-  const nonce = pow?.difficulty > 0 ? solvePow(pow.challenge, pow.difficulty) : "";
+  const nonce = pow?.difficulty > 0 ? await solvePow(pow.challenge, pow.difficulty) : "";
   return apiFetchJson("https://nhentai.net/api/v2/user/keys", {
     method: "POST",
     auth,
@@ -836,7 +934,7 @@ async function loginNativeUser(username, password) {
       pow = await apiFetchJson("https://nhentai.net/api/v2/pow");
     } catch {}
   }
-  const nonce = pow?.difficulty > 0 ? solvePow(pow.challenge, pow.difficulty) : "";
+  const nonce = pow?.difficulty > 0 ? await solvePow(pow.challenge, pow.difficulty) : "";
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20000);
@@ -970,7 +1068,7 @@ async function changeUserPasswordApi(auth, currentPassword, newPassword) {
       pow = await apiFetchJson("https://nhentai.net/api/v2/pow");
     } catch {}
   }
-  const nonce = pow?.difficulty > 0 ? solvePow(pow.challenge, pow.difficulty) : "";
+  const nonce = pow?.difficulty > 0 ? await solvePow(pow.challenge, pow.difficulty) : "";
 
   return apiFetchJson("https://nhentai.net/api/v2/user/password", {
     method: "POST",
@@ -988,22 +1086,47 @@ async function changeUserPasswordApi(auth, currentPassword, newPassword) {
 /** Lit un corps JSON (POST) avec une borne de taille. */
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
-    let data = "";
+    let settled = false;
+    let size = 0;
+    let chunks = [];
+
+    const rejectOnce = (error) => {
+      if (settled) return;
+      settled = true;
+      chunks = [];
+      reject(error);
+    };
+
+    const contentLength = Number(req.headers["content-length"] || 0);
+    if (Number.isFinite(contentLength) && contentLength > REQUEST_BODY_MAX_BYTES) {
+      rejectOnce(publicError(413, "Corps de requête trop grand"));
+      req.resume();
+      return;
+    }
+
     req.on("data", (chunk) => {
-      data += chunk;
-      if (data.length > 1e6) {
-        reject(new Error("Corps de requête trop grand"));
-        req.destroy();
+      if (settled) return;
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      size += buffer.length;
+      if (size > REQUEST_BODY_MAX_BYTES) {
+        rejectOnce(publicError(413, "Corps de requête trop grand"));
+        req.resume();
+        return;
       }
+      chunks.push(buffer);
     });
     req.on("end", () => {
+      if (settled) return;
+      settled = true;
       try {
+        const data = Buffer.concat(chunks, size).toString("utf8");
         resolve(data ? JSON.parse(data) : {});
       } catch {
-        reject(new Error("JSON invalide"));
+        reject(publicError(400, "JSON invalide"));
       }
     });
-    req.on("error", reject);
+    req.on("error", (error) => rejectOnce(error));
+    req.on("aborted", () => rejectOnce(new Error("Requête interrompue")));
   });
 }
 
@@ -1109,29 +1232,23 @@ async function assertImageTargetAllowed(targetUrl) {
 }
 
 /** Récupère une image en suivant les redirections manuellement (chaque saut est revalidé). */
-async function fetchImageRaw(url, hops = 0) {
+async function fetchImageRaw(url, hops = 0, signal) {
   if (hops > 5) throw new Error("Trop de redirections");
   await assertImageTargetAllowed(url);
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 20000);
-  let res;
-  try {
-    res = await fetch(url, {
-      headers: {
-        "User-Agent": UA,
-        Accept: "image/avif,image/webp,image/*,*/*;q=0.8",
-        Referer: "https://nhentai.net/",
-      },
-      redirect: "manual", // on valide chaque saut soi-même (anti-SSRF)
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timer);
-  }
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent": UA,
+      Accept: "image/avif,image/webp,image/*,*/*;q=0.8",
+      Referer: "https://nhentai.net/",
+    },
+    redirect: "manual", // on valide chaque saut soi-même (anti-SSRF)
+    signal,
+  });
   if (res.status >= 300 && res.status < 400) {
     const loc = res.headers.get("location");
     if (!loc) throw new Error(`Redirection ${res.status} sans en-tête Location`);
-    return fetchImageRaw(new URL(loc, url).href, hops + 1);
+    await res.body?.cancel().catch(() => {});
+    return fetchImageRaw(new URL(loc, url).href, hops + 1, signal);
   }
   if (!res.ok) throw new Error(`Image HTTP ${res.status}`);
   return res;
@@ -1143,16 +1260,47 @@ async function fetchImageBuffer(targetUrl) {
     touchImageCache(targetUrl); // marque comme récemment utilisé (LRU)
     return cached;
   }
-
-  const res = await fetchImageRaw(targetUrl);
-  const buf = Buffer.from(await res.arrayBuffer());
-  const type = res.headers.get("content-type") || "image/jpeg";
-
-  // Remplace une éventuelle entrée périmée : le compteur d'octets doit rester exact
-  if (imageCache.has(targetUrl)) {
-    imageCacheBytes -= imageCache.get(targetUrl).buf.length;
+  if (cached) {
+    imageCacheBytes -= cached.buf.length;
     imageCache.delete(targetUrl);
   }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20_000);
+  let buf;
+  let type;
+  try {
+    const res = await fetchImageRaw(targetUrl, 0, controller.signal);
+    const declaredLength = Number(res.headers.get("content-length") || 0);
+    if (
+      Number.isFinite(declaredLength) &&
+      declaredLength > IMAGE_RESPONSE_MAX_BYTES
+    ) {
+      await res.body?.cancel().catch(() => {});
+      throw publicError(413, "Image distante trop volumineuse");
+    }
+
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error("Flux d'image distant indisponible");
+    const chunks = [];
+    let received = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.byteLength;
+      if (received > IMAGE_RESPONSE_MAX_BYTES) {
+        controller.abort();
+        await reader.cancel().catch(() => {});
+        throw publicError(413, "Image distante trop volumineuse");
+      }
+      chunks.push(Buffer.from(value));
+    }
+    buf = Buffer.concat(chunks, received);
+    type = res.headers.get("content-type") || "image/jpeg";
+  } finally {
+    clearTimeout(timer);
+  }
+
   if (buf.length <= IMAGE_CACHE_MAX_BYTES) {
     evictImageCache(buf.length); // borne : éviction LRU jusqu'à tenir sous le plafond
     imageCacheBytes += buf.length;
@@ -1228,18 +1376,90 @@ async function resolveTagsByIds(ids) {
 // ---------------------------------------------------------------------------
 // Serveur HTTP
 // ---------------------------------------------------------------------------
+const rateLimitBuckets = new Map();
+const RATE_LIMIT_BUCKET_MAX_ENTRIES = 2_000;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+
+function sensitiveRateLimit(path, method) {
+  if (path === "/api/auth/login" && method === "POST") return 5;
+  if (path === "/api/user/change-password" && method === "POST") return 5;
+  if (path === "/api/keys" && method === "POST") return 10;
+  if (/^\/api\/keys\/[^/]+\/?$/.test(path) && method === "DELETE") return 10;
+  if (
+    path === "/api/favorites" ||
+    path === "/api/keys" ||
+    path === "/api/user/profile" ||
+    path === "/api/user/comments"
+  ) {
+    return 60;
+  }
+  return 0;
+}
+
+function applySensitiveRateLimit(req, res, path) {
+  const limit = sensitiveRateLimit(path, req.method);
+  if (!limit) return;
+
+  const now = Date.now();
+  const client = req.socket.remoteAddress || "unknown";
+  const key = `${client}:${req.method}:${path.replace(/^\/api\/keys\/[^/]+\/?$/, "/api/keys/:id")}`;
+  let bucket = rateLimitBuckets.get(key);
+  if (!bucket || now >= bucket.resetAt) {
+    bucket = { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
+    rateLimitBuckets.delete(key);
+    rateLimitBuckets.set(key, bucket);
+  }
+  bucket.count += 1;
+
+  const remaining = Math.max(0, limit - bucket.count);
+  const retryAfter = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
+  res.setHeader("X-RateLimit-Limit", limit);
+  res.setHeader("X-RateLimit-Remaining", remaining);
+  res.setHeader("X-RateLimit-Reset", Math.ceil(bucket.resetAt / 1000));
+
+  for (const [bucketKey, value] of rateLimitBuckets) {
+    if (now >= value.resetAt) rateLimitBuckets.delete(bucketKey);
+  }
+  while (rateLimitBuckets.size > RATE_LIMIT_BUCKET_MAX_ENTRIES) {
+    rateLimitBuckets.delete(rateLimitBuckets.keys().next().value);
+  }
+
+  if (bucket.count > limit) {
+    throw publicError(429, "Trop de requêtes", { retryAfter });
+  }
+}
+
+function appendVary(res, value) {
+  const current = res.getHeader("Vary");
+  const values = new Set(
+    String(current || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+  );
+  values.add(value);
+  res.setHeader("Vary", [...values].join(", "));
+}
+
+function applyCors(req, res) {
+  const origin = String(req.headers.origin || "").replace(/\/$/, "");
+  if (!origin) return true; // clients natifs : pas d'en-tête Origin
+  appendVary(res, "Origin");
+  if (!ALLOWED_CORS_ORIGINS.has(origin)) return false;
+
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Range, X-Refresh-Token, X-Access-Token, X-Api-Key, X-Sessionid"
+  );
+  res.setHeader("Access-Control-Max-Age", "600");
+  return true;
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const path = url.pathname;
-
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Refresh-Token, X-Access-Token, X-Api-Key, X-Sessionid");
-  if (req.method === "OPTIONS") {
-    res.writeHead(204);
-    res.end();
-    return;
-  }
 
   const sendJson = (status, data) => {
     console.log(`[proxy] ${req.method} ${req.url} -> ${status}`);
@@ -1248,6 +1468,16 @@ const server = http.createServer(async (req, res) => {
   };
 
   try {
+    if (!applyCors(req, res)) {
+      return sendJson(403, { error: "Origine non autorisée" });
+    }
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    applySensitiveRateLimit(req, res, path);
+
     if (path === "/healthz") {
       return sendJson(200, { ok: true });
     }
@@ -1274,7 +1504,6 @@ const server = http.createServer(async (req, res) => {
           if (start >= img.buf.length || end < start) {
             res.writeHead(416, {
               "Content-Range": `bytes */${img.buf.length}`,
-              "Access-Control-Allow-Origin": "*",
             });
             res.end();
             return;
@@ -1290,7 +1519,6 @@ const server = http.createServer(async (req, res) => {
         "Content-Range": `bytes ${start}-${end}/${img.buf.length}`,
         "Accept-Ranges": "bytes",
         "Cache-Control": "public, max-age=86400",
-        "Access-Control-Allow-Origin": "*",
       });
       res.end(chunk);
       return;
@@ -1392,20 +1620,52 @@ const server = http.createServer(async (req, res) => {
     return sendJson(404, { error: "Route inconnue", path });
   } catch (err) {
     console.error(`[proxy] ${req.method} ${path} ->`, err?.message);
-    const status = err?.status || (/404|introuvable|not found/i.test(String(err?.message)) ? 404 : 502);
-    const payload = {
-      error: err?.message || "Erreur interne",
-      captchaRequired: Boolean(err?.captchaRequired || err?.status === 403),
+    const requestedStatus = Number(err?.status);
+    const status =
+      Number.isInteger(requestedStatus) &&
+      requestedStatus >= 400 &&
+      requestedStatus < 500
+        ? requestedStatus
+        : 502;
+    const defaultMessages = {
+      400: "Requête invalide",
+      401: "Authentification requise ou invalide",
+      403: "Accès refusé",
+      404: "Ressource introuvable",
+      413: "Requête trop volumineuse",
+      429: "Trop de requêtes",
+      502: "Service distant indisponible",
     };
+    const captchaRequired = Boolean(err?.captchaRequired);
+    const payload = {
+      error: captchaRequired
+        ? "Vérification de sécurité requise"
+        : err?.expose
+          ? err.message
+          : defaultMessages[status] || "Erreur interne",
+      captchaRequired,
+    };
+    if (err?.retryAfter) {
+      payload.retryAfter = err.retryAfter;
+      res.setHeader("Retry-After", err.retryAfter);
+    }
     if (err?.rateLimit) {
       payload.retryAfter = err.rateLimit.retryAfter || 60;
       payload.rateLimitRemaining = err.rateLimit.remaining;
+      res.setHeader("Retry-After", payload.retryAfter);
     }
     return sendJson(status, payload);
   }
 });
 
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`[nhentai-mirror] en écoute sur http://0.0.0.0:${PORT}`);
+// L'émulateur Android redirige 10.0.2.2 vers le loopback de l'hôte :
+// l'écoute 127.0.0.1 reste donc compatible sans exposer le proxy au LAN.
+server.listen(PORT, HOST, () => {
+  console.log(`[nhentai-mirror] en écoute sur http://${HOST}:${PORT}`);
+  if (HOST !== "127.0.0.1" && HOST !== "::1" && HOST !== "localhost") {
+    console.warn(
+      "[nhentai-mirror] accès réseau activé explicitement via PROXY_HOST"
+    );
+  }
   console.log(`[nhentai-mirror] miroirs : ${MIRRORS.map((m) => m.base).join(", ")}`);
 });

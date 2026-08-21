@@ -1,11 +1,5 @@
 import React, { useState, useEffect } from "react";
-import {
-  StyleSheet,
-  View,
-  Text,
-  ActivityIndicator,
-  Pressable,
-} from "react-native";
+import { StyleSheet, View, Text, ActivityIndicator } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { IconArrowLeft, IconMessageCircle } from "@tabler/icons-react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";

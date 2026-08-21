@@ -39,6 +39,12 @@ export function SmoothSlider({
   const [currentVal, setCurrentVal] = useState(value);
   const isDragging = useRef(false);
   const widthRef = useRef(0);
+  const currentValRef = useRef(value);
+  const updateFromPositionRef = useRef<(touchX: number) => number>(() => value);
+  const onSlidingCompleteRef = useRef(onSlidingComplete);
+
+  currentValRef.current = currentVal;
+  onSlidingCompleteRef.current = onSlidingComplete;
 
   useEffect(() => {
     if (!isDragging.current) {
@@ -60,7 +66,7 @@ export function SmoothSlider({
 
   const updateFromPosition = useCallback(
     (touchX: number) => {
-      if (widthRef.current <= 0) return currentVal;
+      if (widthRef.current <= 0) return currentValRef.current;
       const ratio = Math.max(0, Math.min(1, touchX / widthRef.current));
       const rawVal = range > 0 ? min + ratio * range : min;
       const snapped = snapValue(rawVal);
@@ -68,8 +74,9 @@ export function SmoothSlider({
       onValueChange?.(snapped);
       return snapped;
     },
-    [min, range, snapValue, onValueChange, currentVal]
+    [min, range, snapValue, onValueChange]
   );
+  updateFromPositionRef.current = updateFromPosition;
 
   const panResponder = useRef(
     PanResponder.create({
@@ -78,21 +85,21 @@ export function SmoothSlider({
       onPanResponderGrant: (evt) => {
         isDragging.current = true;
         const x = evt.nativeEvent.locationX;
-        updateFromPosition(x);
+        updateFromPositionRef.current(x);
       },
       onPanResponderMove: (evt) => {
         const x = evt.nativeEvent.locationX;
-        updateFromPosition(x);
+        updateFromPositionRef.current(x);
       },
       onPanResponderRelease: (evt) => {
         isDragging.current = false;
         const x = evt.nativeEvent.locationX;
-        const finalVal = updateFromPosition(x);
-        onSlidingComplete?.(finalVal);
+        const finalVal = updateFromPositionRef.current(x);
+        onSlidingCompleteRef.current?.(finalVal);
       },
       onPanResponderTerminate: () => {
         isDragging.current = false;
-        onSlidingComplete?.(currentVal);
+        onSlidingCompleteRef.current?.(currentValRef.current);
       },
     })
   ).current;

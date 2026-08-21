@@ -8,6 +8,8 @@ import {
   Modal,
   ScrollView,
   ActivityIndicator,
+  StyleProp,
+  ViewStyle,
 } from "react-native";
 import {
   IconMenu2,
@@ -15,6 +17,7 @@ import {
   IconAdjustmentsHorizontal,
   IconArrowsShuffle,
   IconCheck,
+  IconPhotoSearch,
 } from "@tabler/icons-react-native";
 import { useRouter } from "expo-router";
 import { useTheme } from "@/lib/ThemeContext";
@@ -31,6 +34,15 @@ export interface SearchBarProps {
   sort: "recent" | "popular" | "popular-today" | "popular-week";
   onSortChange: (sort: "recent" | "popular" | "popular-today" | "popular-week") => void;
   onToggleDrawer?: () => void;
+  showMenu?: boolean;
+  showLanguagePills?: boolean;
+  showSortButton?: boolean;
+  showRandomButton?: boolean;
+  onImageSearch?: () => void;
+  onClear?: () => void;
+  autoFocus?: boolean;
+  placeholder?: string;
+  style?: StyleProp<ViewStyle>;
 }
 
 export function SearchBar({
@@ -42,6 +54,15 @@ export function SearchBar({
   sort,
   onSortChange,
   onToggleDrawer,
+  showMenu = true,
+  showLanguagePills = true,
+  showSortButton = true,
+  showRandomButton = true,
+  onImageSearch,
+  onClear,
+  autoFocus = false,
+  placeholder = "Rechercher tags, artistes ou code...",
+  style,
 }: SearchBarProps) {
   const { colors } = useTheme();
   const { openDrawer } = useDrawer();
@@ -88,7 +109,7 @@ export function SearchBar({
   };
 
   return (
-    <View style={[styles.wrapper, { backgroundColor: colors.bg }]}>
+    <View style={[styles.wrapper, { backgroundColor: colors.bg }, style]}>
       {/* Top Search Bar Row */}
       <View
         style={[
@@ -99,10 +120,15 @@ export function SearchBar({
           },
         ]}
       >
-        {/* Drawer Toggle */}
-        <IconBtn onPress={handleMenuPress} size={36}>
-          <IconMenu2 size={20} color={colors.txt} stroke={2} />
-        </IconBtn>
+        {showMenu ? (
+          <IconBtn
+            onPress={handleMenuPress}
+            size={36}
+            accessibilityLabel="Ouvrir le menu"
+          >
+            <IconMenu2 size={20} color={colors.txt} stroke={2} />
+          </IconBtn>
+        ) : null}
 
         {/* Input */}
         <TextInput
@@ -110,79 +136,110 @@ export function SearchBar({
           onChangeText={onQueryChange}
           onSubmitEditing={handleSubmit}
           returnKeyType="search"
-          placeholder="Rechercher tags, artistes ou code..."
+          placeholder={placeholder}
           placeholderTextColor={colors.sub}
+          autoFocus={autoFocus}
           style={[styles.input, { color: colors.txt }]}
         />
+
+        {onImageSearch ? (
+          <TouchableOpacity
+            activeOpacity={0.6}
+            onPress={onImageSearch}
+            style={styles.clearBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Rechercher par image"
+          >
+            <IconPhotoSearch size={17} color={colors.accent} stroke={2} />
+          </TouchableOpacity>
+        ) : null}
 
         {/* Clear Button */}
         {query ? (
           <TouchableOpacity
             activeOpacity={0.6}
-            onPress={() => onQueryChange("")}
+            onPress={() => (onClear ? onClear() : onQueryChange(""))}
             style={styles.clearBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Effacer la recherche"
           >
             <IconX size={16} color={colors.sub} stroke={2} />
           </TouchableOpacity>
         ) : null}
 
-        {/* Sort Filter Trigger */}
-        <IconBtn onPress={() => setIsSortModalOpen(true)} size={36}>
-          <IconAdjustmentsHorizontal
-            size={18}
-            color={sort !== "recent" ? colors.accent : colors.sub}
-            stroke={1.8}
-          />
-        </IconBtn>
+        {showSortButton ? (
+          <IconBtn
+            onPress={() => setIsSortModalOpen(true)}
+            size={36}
+            accessibilityLabel="Trier les résultats"
+          >
+            <IconAdjustmentsHorizontal
+              size={18}
+              color={sort !== "recent" ? colors.accent : colors.sub}
+              stroke={1.8}
+            />
+          </IconBtn>
+        ) : null}
 
-        {/* Random Dice */}
-        <IconBtn onPress={handleRandomPress} size={36} disabled={isRandomLoading}>
-          {isRandomLoading ? (
-            <ActivityIndicator size="small" color={colors.accent} />
-          ) : (
-            <IconArrowsShuffle size={18} color={colors.accent} stroke={2} />
-          )}
-        </IconBtn>
+        {showRandomButton ? (
+          <IconBtn
+            onPress={handleRandomPress}
+            size={36}
+            disabled={isRandomLoading}
+            accessibilityLabel="Ouvrir une galerie au hasard"
+          >
+            {isRandomLoading ? (
+              <ActivityIndicator size="small" color={colors.accent} />
+            ) : (
+              <IconArrowsShuffle size={18} color={colors.accent} stroke={2} />
+            )}
+          </IconBtn>
+        ) : null}
       </View>
 
       {/* Language Pills Bar */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.langPillsContainer}
-      >
-        {[
-          { key: "all", label: "Toutes" },
-          { key: "english", label: "🇬🇧 English" },
-          { key: "japanese", label: "🇯🇵 Japanese" },
-          { key: "chinese", label: "🇨🇳 Chinese" },
-        ].map((item) => {
-          const isActive = selectedLanguage === item.key;
-          return (
-            <TouchableOpacity
-              key={item.key}
-              activeOpacity={0.7}
-              onPress={() => onLanguageChange(item.key)}
-              style={[
-                styles.langChip,
-                {
-                  backgroundColor: isActive ? colors.accent : colors.page,
-                  borderColor: isActive ? colors.accent : colors.tagBg,
-                },
-              ]}
-            >
-              <Text
+      {showLanguagePills ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.langPillsContainer}
+        >
+          {[
+            { key: "all", label: "Toutes" },
+            { key: "english", label: "English" },
+            { key: "japanese", label: "Japanese" },
+            { key: "chinese", label: "Chinese" },
+          ].map((item) => {
+            const isActive = selectedLanguage === item.key;
+            return (
+              <TouchableOpacity
+                key={item.key}
+                activeOpacity={0.7}
+                onPress={() => onLanguageChange(item.key)}
                 style={[
-                  styles.langChipText,
-                  { color: isActive ? "#fff" : colors.sub },
+                  styles.langChip,
+                  {
+                    backgroundColor: isActive ? colors.accent : colors.page,
+                    borderColor: isActive ? colors.accent : colors.tagBg,
+                  },
                 ]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isActive }}
+                accessibilityLabel={`Langue : ${item.label}`}
               >
-                {item.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+                <Text
+                  style={[
+                    styles.langChipText,
+                    { color: isActive ? "#fff" : colors.sub },
+                  ]}
+                >
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      ) : null}
 
       {/* Sort Selection Modal */}
       <Modal
@@ -223,6 +280,9 @@ export function SearchBar({
                         backgroundColor: isSelected ? colors.accent + "18" : "transparent",
                       },
                     ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isSelected }}
+                    accessibilityLabel={`Trier : ${sortLabels[key]}`}
                   >
                     <Text
                       style={[

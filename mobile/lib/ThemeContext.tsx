@@ -68,30 +68,34 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const colors = useMemo<ThemeColors>(
-    () => ({
-      bg: hsbToHex({ saturation: 6, brightness: 36 }),
-      page: hsbToHex({ saturation: 6, brightness: 28 }),
-      shadow: "#000",
-      accent: hsbToHex({ saturation: 78, brightness: 210 }),
-      txt: hsbToHex({ saturation: 6, brightness: 235 }),
-      sub: hsbToHex({ saturation: 0, brightness: 150 }),
-      title: hsbToHex({ saturation: 16, brightness: 225 }),
-      metaText: hsbToHex({ saturation: 8, brightness: 200 }),
-      tagBg: hsbToHex({ saturation: 10, brightness: 48 }),
-      tagText: hsbToHex({ saturation: 8, brightness: 225 }),
-      newBadgeBg: "#ff4757",
-      incBg: hsbToHex({ saturation: 52, brightness: 54 }),
-      incTxt: hsbToHex({ saturation: 20, brightness: 225 }),
-      excBg: hsbToHex({ saturation: 0, brightness: 42 }),
-      excTxt: hsbToHex({ saturation: 0, brightness: 210 }),
-      searchBg: hsbToHex({ saturation: 6, brightness: 34 }),
-      searchTxt: hsbToHex({ saturation: 6, brightness: 235 }),
-      menuBg: hsbToHex({ saturation: 6, brightness: 32 }),
-      menuTxt: hsbToHex({ saturation: 6, brightness: 235 }),
-      related: hsbToHex({ saturation: 6, brightness: 28 }),
-      surfaceElevated: hsbToHex({ saturation: 6, brightness: 34 }),
-      iconOnSurface: hsbToHex({ saturation: 8, brightness: 210 }),
-    }),
+    () => {
+      const themedHex = (saturation: number, brightness: number) =>
+        hsbToHex({ hue, saturation, brightness });
+      return {
+        bg: themedHex(6, 36),
+        page: themedHex(6, 28),
+        shadow: "#000",
+        accent: themedHex(78, 210),
+        txt: themedHex(6, 235),
+        sub: themedHex(0, 150),
+        title: themedHex(16, 225),
+        metaText: themedHex(8, 200),
+        tagBg: themedHex(10, 48),
+        tagText: themedHex(8, 225),
+        newBadgeBg: "#ff4757",
+        incBg: themedHex(52, 54),
+        incTxt: themedHex(20, 225),
+        excBg: themedHex(0, 42),
+        excTxt: themedHex(0, 210),
+        searchBg: themedHex(6, 34),
+        searchTxt: themedHex(6, 235),
+        menuBg: themedHex(6, 32),
+        menuTxt: themedHex(6, 235),
+        related: themedHex(6, 28),
+        surfaceElevated: themedHex(6, 34),
+        iconOnSurface: themedHex(8, 210),
+      };
+    },
     [hue]
   );
 

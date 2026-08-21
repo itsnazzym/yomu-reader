@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { DownloadItem, Gallery, DownloadFormat, DownloadProgressPayload } from "../types";
-import { cancelDownload, onDownloadProgress } from "../utils/ipc";
+import { cancelDownload, onDownloadProgress, isElectron, startDownload } from "../utils/ipc";
 import { executeHighSpeedDownload } from "../utils/browserDownloader";
 import { useSettingsStore } from "./settingsStore";
 
@@ -178,41 +178,50 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
     activeAbortControllers.set(nextQueued.id, abortCtrl);
 
     try {
-      await executeHighSpeedDownload({
-        gallery: nextQueued.gallery,
-        formatType: nextQueued.format,
-        pattern: settings.naming_pattern,
-        destDir: settings.download_directory,
-        cookies: settings.cookies,
-        apiKey: settings.api_key,
-        abortSignal: abortCtrl.signal,
-        onProgress: (payload) => {
-          set((state) => {
-            const index = state.queue.findIndex((item) => item.id === payload.id);
-            if (index === -1) return state;
+      if (isElectron()) {
+        await startDownload(
+          nextQueued.gallery,
+          nextQueued.format,
+          settings.naming_pattern,
+          settings.download_directory
+        );
+      } else {
+        await executeHighSpeedDownload({
+          gallery: nextQueued.gallery,
+          formatType: nextQueued.format,
+          pattern: settings.naming_pattern,
+          destDir: settings.download_directory,
+          cookies: settings.cookies,
+          apiKey: settings.api_key,
+          abortSignal: abortCtrl.signal,
+          onProgress: (payload) => {
+            set((state) => {
+              const index = state.queue.findIndex((item) => item.id === payload.id);
+              if (index === -1) return state;
 
-            const updatedQueue = [...state.queue];
-            const current = updatedQueue[index];
+              const updatedQueue = [...state.queue];
+              const current = updatedQueue[index];
 
-            updatedQueue[index] = {
-              ...current,
-              downloaded_pages: payload.downloaded_pages,
-              total_pages: payload.total_pages || current.total_pages,
-              progress: payload.progress,
-              speed_kb_s: payload.speed_kb_s,
-              status: payload.status,
-              error_message: payload.error || current.error_message,
-              target_path: payload.target_path || current.target_path,
-            };
+              updatedQueue[index] = {
+                ...current,
+                downloaded_pages: payload.downloaded_pages,
+                total_pages: payload.total_pages || current.total_pages,
+                progress: payload.progress,
+                speed_kb_s: payload.speed_kb_s,
+                status: payload.status,
+                error_message: payload.error || current.error_message,
+                target_path: payload.target_path || current.target_path,
+              };
 
-            saveQueue(updatedQueue);
-            return {
-              queue: updatedQueue,
-              activeCount: updatedQueue.filter((item) => item.status === "downloading").length,
-            };
-          });
-        },
-      });
+              saveQueue(updatedQueue);
+              return {
+                queue: updatedQueue,
+                activeCount: updatedQueue.filter((item) => item.status === "downloading").length,
+              };
+            });
+          },
+        });
+      }
     } catch (err: any) {
       if (err?.message !== "ABORTED") {
         console.error(`Download failed for gallery #${nextQueued.id}:`, err);

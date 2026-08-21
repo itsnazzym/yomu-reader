@@ -25,8 +25,8 @@ import Animated, {
   withTiming,
   Easing,
 } from "react-native-reanimated";
-import * as Haptics from "expo-haptics";
 import { useTheme } from "@/lib/ThemeContext";
+import { mediumImpact, selectionTap } from "@/lib/haptics";
 
 export type EmptyStateType =
   | "favorites"
@@ -142,23 +142,19 @@ export function AnimatedEmptyState({
       -1,
       true
     );
-  }, []);
+  }, [pulse]);
 
   const animatedSealStyle = useAnimatedStyle(() => ({
     transform: [{ scale: pulse.value }],
   }));
 
   const handleAction = () => {
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    } catch {}
+    mediumImpact();
     onActionPress?.();
   };
 
   const handleSecondary = () => {
-    try {
-      Haptics.selectionAsync();
-    } catch {}
+    selectionTap();
     onSecondaryActionPress?.();
   };
 

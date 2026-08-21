@@ -18,23 +18,22 @@ export interface SmartImageProps extends Omit<ImageProps, "source"> {
  */
 export function resolveCdnHostAndPath(uri: string): { host: string; path: string } {
   if (!uri) return { host: "", path: "" };
-  const clean = uri.replace(/^https?:\/\//, "");
-  const slashIdx = clean.indexOf("/");
-  const rawHost = slashIdx !== -1 ? clean.slice(0, slashIdx).toLowerCase() : clean.toLowerCase();
-  const pathOnly = slashIdx !== -1 ? clean.slice(slashIdx + 1) : "";
+  if (!/^https?:\/\//i.test(uri)) return { host: "", path: "" };
 
-  if (!/(^|\.)nhentai\.net$/i.test(rawHost)) {
-    return { host: rawHost, path: pathOnly };
+  let parsed: URL;
+  try {
+    parsed = new URL(uri);
+  } catch {
+    return { host: "", path: "" };
   }
+  const rawHost = parsed.hostname.toLowerCase();
+  if (!/^(?:t|i)(?:[1-4])?\.nhentai\.net$/.test(rawHost)) {
+    return { host: "", path: "" };
+  }
+  const pathOnly = `${parsed.pathname.replace(/^\/+/, "")}${parsed.search}`;
+  if (!pathOnly) return { host: "", path: "" };
 
-  // Toutes les miniatures, couvertures, et aperçus de pages sont sur t.nhentai.net (ou t1..t4)
-  const isThumb =
-    rawHost.startsWith("t") ||
-    pathOnly.includes("thumb.") ||
-    pathOnly.includes("cover.") ||
-    /\/\d+t\.[a-z0-9]+$/i.test(pathOnly) ||
-    /^\d+t\.[a-z0-9]+$/i.test(pathOnly);
-
+  const isThumb = rawHost.startsWith("t");
   const targetHost = isThumb ? "t.nhentai.net" : "i.nhentai.net";
   return { host: targetHost, path: pathOnly };
 }
@@ -77,16 +76,13 @@ export function SmartImage({
   const [loading, setLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
 
-  // Synchronously reset state if uri changed in recycled view
-  const prevUriRef = useRef(uri);
-  if (prevUriRef.current !== uri) {
-    prevUriRef.current = uri;
-    if (retryIndex !== 0) setRetryIndex(0);
-    if (!loading) setLoading(true);
-    if (hasError) setHasError(false);
-  }
-
   const shimmerAnim = useRef(new Animated.Value(0.3)).current;
+
+  useEffect(() => {
+    setRetryIndex(0);
+    setLoading(true);
+    setHasError(false);
+  }, [uri]);
 
   // Build high-speed, unblocked CDN candidates
   const candidateUrls = useMemo(() => {
@@ -135,7 +131,7 @@ export function SmartImage({
     return () => {
       anim?.stop();
     };
-  }, [loading, hasError]);
+  }, [loading, hasError, shimmerAnim]);
 
   const currentUri = candidateUrls[retryIndex] || uri;
   const effectiveRecyclingKey = recyclingKey || uri;

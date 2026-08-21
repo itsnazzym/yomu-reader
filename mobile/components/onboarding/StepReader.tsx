@@ -19,8 +19,8 @@ export function StepReader() {
         <IconEye size={30} color={colors.accent} stroke={1.7} />
       </View>
 
-      <Text style={styles.title}>Confort de Lecture</Text>
-      <Text style={styles.subtitle}>
+      <Text style={[styles.title, { color: colors.txt }]}>Confort de Lecture</Text>
+      <Text style={[styles.subtitle, { color: colors.sub }]}>
         Choisissez votre mode de lecture par défaut. Vous pourrez le changer à tout moment pendant la lecture.
       </Text>
 
@@ -30,6 +30,7 @@ export function StepReader() {
           onPress={() => updateSettings({ defaultMode: "webtoon" })}
           style={[
             styles.modeCard,
+            { backgroundColor: colors.page, borderColor: colors.tagBg },
             settings.defaultMode === "webtoon" && {
               borderColor: colors.accent,
               backgroundColor: colors.accent + "12",
@@ -39,13 +40,13 @@ export function StepReader() {
           <View style={styles.modeCardHeader}>
             <IconLayoutList
               size={18}
-              color={settings.defaultMode === "webtoon" ? colors.accent : "#9ca3af"}
+              color={settings.defaultMode === "webtoon" ? colors.accent : colors.sub}
               stroke={1.8}
             />
             <Text
               style={[
                 styles.modeCardTitle,
-                settings.defaultMode === "webtoon" && { color: colors.accent },
+                { color: settings.defaultMode === "webtoon" ? colors.accent : colors.txt },
               ]}
             >
               Webtoon (Vertical)
@@ -54,7 +55,7 @@ export function StepReader() {
               <IconCircleCheck size={18} color={colors.accent} stroke={2} style={{ marginLeft: "auto" }} />
             )}
           </View>
-          <Text style={styles.modeCardDesc}>
+          <Text style={[styles.modeCardDesc, { color: colors.sub }]}>
             Défilement vertical continu et fluide, optimisé pour la lecture à une main sur mobile.
           </Text>
         </Pressable>
@@ -63,6 +64,7 @@ export function StepReader() {
           onPress={() => updateSettings({ defaultMode: "pager", defaultDirection: "rtl" })}
           style={[
             styles.modeCard,
+            { backgroundColor: colors.page, borderColor: colors.tagBg },
             settings.defaultMode === "pager" && {
               borderColor: colors.accent,
               backgroundColor: colors.accent + "12",
@@ -72,13 +74,13 @@ export function StepReader() {
           <View style={styles.modeCardHeader}>
             <IconBook2
               size={18}
-              color={settings.defaultMode === "pager" ? colors.accent : "#9ca3af"}
+              color={settings.defaultMode === "pager" ? colors.accent : colors.sub}
               stroke={1.8}
             />
             <Text
               style={[
                 styles.modeCardTitle,
-                settings.defaultMode === "pager" && { color: colors.accent },
+                { color: settings.defaultMode === "pager" ? colors.accent : colors.txt },
               ]}
             >
               Manga (Page par page)
@@ -87,22 +89,22 @@ export function StepReader() {
               <IconCircleCheck size={18} color={colors.accent} stroke={2} style={{ marginLeft: "auto" }} />
             )}
           </View>
-          <Text style={styles.modeCardDesc}>
+          <Text style={[styles.modeCardDesc, { color: colors.sub }]}>
             Tournage de page de droite à gauche, fidèle aux tomes et éditions imprimées japonaises.
           </Text>
         </Pressable>
       </View>
 
       {/* Immersion switch */}
-      <View style={styles.toggleCard}>
+      <View style={[styles.toggleCard, { backgroundColor: colors.page, borderColor: colors.tagBg }]}>
         <View style={{ flex: 1, paddingRight: 10 }}>
-          <Text style={styles.toggleTitle}>Plein écran immersif</Text>
-          <Text style={styles.toggleSub}>Masque la barre d'état du téléphone pendant la lecture.</Text>
+          <Text style={[styles.toggleTitle, { color: colors.txt }]}>Plein écran immersif</Text>
+          <Text style={[styles.toggleSub, { color: colors.sub }]}>Masque la barre d'état du téléphone pendant la lecture.</Text>
         </View>
         <Switch
           value={settings.hideStatusBar}
           onValueChange={(val) => updateSettings({ hideStatusBar: val })}
-          trackColor={{ false: "#28283a", true: colors.accent }}
+          trackColor={{ false: colors.tagBg, true: colors.accent }}
           thumbColor="#fff"
         />
       </View>
@@ -128,13 +130,11 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 22,
     fontWeight: "900",
-    color: "#f3f4f6",
     textAlign: "center",
     letterSpacing: -0.3,
   },
   subtitle: {
     fontSize: 13,
-    color: "#9ca3af",
     textAlign: "center",
     lineHeight: 18,
     marginBottom: 6,
@@ -144,8 +144,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   modeCard: {
-    backgroundColor: "#161622",
-    borderColor: "#28283a",
     borderWidth: 1,
     borderRadius: 14,
     padding: 12,
@@ -159,11 +157,9 @@ const styles = StyleSheet.create({
   modeCardTitle: {
     fontSize: 14,
     fontWeight: "800",
-    color: "#f3f4f6",
   },
   modeCardDesc: {
     fontSize: 11,
-    color: "#9ca3af",
     lineHeight: 15,
   },
   toggleCard: {
@@ -171,8 +167,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "#161622",
-    borderColor: "#28283a",
     borderWidth: 1,
     borderRadius: 14,
     padding: 12,
@@ -180,11 +174,9 @@ const styles = StyleSheet.create({
   toggleTitle: {
     fontSize: 13.5,
     fontWeight: "700",
-    color: "#f3f4f6",
   },
   toggleSub: {
     fontSize: 11,
-    color: "#9ca3af",
     marginTop: 2,
   },
 });
