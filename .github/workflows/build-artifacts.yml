@@ -57,6 +57,21 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Setup Release Keystore
+        run: |
+          if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+            echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > release.keystore
+            echo "KEYSTORE_PASS=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
+            echo "KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}" >> $GITHUB_ENV
+            echo "KEY_PASS=${{ secrets.ANDROID_KEY_PASSWORD }}" >> $GITHUB_ENV
+          else
+            echo "Génération d'un Keystore de Release dédié..."
+            keytool -genkeypair -v -keystore release.keystore -alias yomureader -keyalg RSA -keysize 2048 -validity 10000 -storepass yomureader_release_key -keypass yomureader_release_key -dname "CN=Yomu Reader, OU=Mobile, O=nHentai Launcher, L=Paris, ST=IDF, C=FR"
+            echo "KEYSTORE_PASS=yomureader_release_key" >> $GITHUB_ENV
+            echo "KEY_ALIAS=yomureader" >> $GITHUB_ENV
+            echo "KEY_PASS=yomureader_release_key" >> $GITHUB_ENV
+          fi
+
       - name: Install Mobile Dependencies
         working-directory: mobile
         run: npm ci
@@ -73,20 +88,32 @@ jobs:
         run: mkdir -p build-output/apks
 
       # --- 1. APK Release ARM64-v8a (Lightweight & Optimized) ---
-      - name: Build ARM64-v8a Release APK
+      - name: Build and Sign ARM64-v8a Release APK
         working-directory: mobile/android
         run: |
           ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon
-          ARM64_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
-          cp "$ARM64_APK" ../../build-output/apks/YomuReader-arm64-v8a-release.apk
+          RAW_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          TARGET_APK="../../build-output/apks/YomuReader-arm64-v8a-release.apk"
+          cp "$RAW_APK" "$TARGET_APK"
+          
+          # Signature officielle via apksigner (v1, v2, v3)
+          BUILD_TOOLS_DIR=$(find $ANDROID_HOME/build-tools -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
+          "$BUILD_TOOLS_DIR/apksigner" sign --ks ../../release.keystore --ks-pass "pass:$KEYSTORE_PASS" --key-pass "pass:$KEY_PASS" --ks-key-alias "$KEY_ALIAS" --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true "$TARGET_APK"
+          "$BUILD_TOOLS_DIR/apksigner" verify --verbose "$TARGET_APK"
 
       # --- 2. APK Release Full Universal (All ABIs: arm64-v8a, armeabi-v7a, x86, x86_64) ---
-      - name: Build Universal Full Release APK
+      - name: Build and Sign Universal Full Release APK
         working-directory: mobile/android
         run: |
           ./gradlew assembleRelease -PreactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64 --no-daemon
-          UNIVERSAL_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
-          cp "$UNIVERSAL_APK" ../../build-output/apks/YomuReader-universal-full-release.apk
+          RAW_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          TARGET_APK="../../build-output/apks/YomuReader-universal-full-release.apk"
+          cp "$RAW_APK" "$TARGET_APK"
+          
+          # Signature officielle via apksigner (v1, v2, v3)
+          BUILD_TOOLS_DIR=$(find $ANDROID_HOME/build-tools -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
+          "$BUILD_TOOLS_DIR/apksigner" sign --ks ../../release.keystore --ks-pass "pass:$KEYSTORE_PASS" --key-pass "pass:$KEY_PASS" --ks-key-alias "$KEY_ALIAS" --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true "$TARGET_APK"
+          "$BUILD_TOOLS_DIR/apksigner" verify --verbose "$TARGET_APK"
 
       # --- 3. APK Debug ---
       - name: Build Debug APK
