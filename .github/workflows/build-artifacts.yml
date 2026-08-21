@@ -1,0 +1,180 @@
+name: Build & Package Artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: "Créer une release GitHub officielle"
+        required: false
+        type: boolean
+        default: false
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 1. Android Builds (ARM64-v8a, Universal Full, Debug)
+  # ─────────────────────────────────────────────────────────────────────────────
+  android-apks:
+    name: Build Android APKs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Mobile Dependencies
+        working-directory: mobile
+        run: npm ci
+
+      - name: Expo Prebuild (Generate Android native project)
+        working-directory: mobile
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Make Gradlew Executable
+        working-directory: mobile/android
+        run: chmod +x gradlew
+
+      - name: Prepare Artifacts Directory
+        run: mkdir -p build-output/apks
+
+      # --- 1. APK Release ARM64-v8a (Lightweight & Optimized) ---
+      - name: Build ARM64-v8a Release APK
+        working-directory: mobile/android
+        run: |
+          ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon
+          ARM64_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          cp "$ARM64_APK" ../../build-output/apks/YomuReader-arm64-v8a-release.apk
+
+      # --- 2. APK Release Full Universal (All ABIs: arm64-v8a, armeabi-v7a, x86, x86_64) ---
+      - name: Build Universal Full Release APK
+        working-directory: mobile/android
+        run: |
+          ./gradlew assembleRelease -PreactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64 --no-daemon
+          UNIVERSAL_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          cp "$UNIVERSAL_APK" ../../build-output/apks/YomuReader-universal-full-release.apk
+
+      # --- 3. APK Debug ---
+      - name: Build Debug APK
+        working-directory: mobile/android
+        run: |
+          ./gradlew assembleDebug --no-daemon
+          DEBUG_APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          cp "$DEBUG_APK" ../../build-output/apks/YomuReader-debug.apk
+
+      - name: Upload Android APKs Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apks
+          path: build-output/apks/*.apk
+          retention-days: 14
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 2. Windows Desktop .EXE Portable (Electron)
+  # ─────────────────────────────────────────────────────────────────────────────
+  windows-portable:
+    name: Build Windows .EXE Portable
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install Desktop Dependencies
+        run: npm ci
+
+      - name: Build Desktop Frontend
+        run: npm run build
+
+      - name: Package Windows Portable Executable
+        run: npx electron-builder --win portable --publish never
+
+      - name: Prepare Windows Artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path build-output/windows | Out-Null
+          $exe = Get-ChildItem -Path release -Filter "*.exe" | Select-Object -First 1
+          if ($exe) {
+            Copy-Item -Path $exe.FullName -Destination "build-output/windows/nHentai-Launcher-Portable.exe"
+          } else {
+            throw "Portable .exe non trouvé dans release/"
+          }
+
+      - name: Upload Windows Portable Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-portable-exe
+          path: build-output/windows/*.exe
+          retention-days: 14
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 3. Clean Source Code ZIP Archive
+  # ─────────────────────────────────────────────────────────────────────────────
+  source-zip:
+    name: Package Source Code ZIP
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create Clean Git Archive ZIP
+        run: |
+          mkdir -p build-output/source
+          git archive --format=zip --prefix=nhentai-launcher/ HEAD -o build-output/source/nhentai-launcher-source.zip
+
+      - name: Upload Source ZIP Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-code-zip
+          path: build-output/source/nhentai-launcher-source.zip
+          retention-days: 14
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 4. GitHub Release (Published if tagged or manually requested)
+  # ─────────────────────────────────────────────────────────────────────────────
+  publish-release:
+    name: Publish GitHub Release
+    needs: [android-apks, windows-portable, source-zip]
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.create_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: List Release Assets
+        run: ls -lh release-assets
+
+      - name: Create or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
