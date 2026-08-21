@@ -3,11 +3,26 @@ name: Build & Package Artifacts
 on:
   workflow_dispatch:
     inputs:
+      version:
+        description: "Version du tag (ex: v1.0.0)"
+        required: false
+        type: string
+        default: ""
+      release_title:
+        description: "Titre de la release (laisser vide pour automatique)"
+        required: false
+        type: string
+        default: ""
+      release_notes:
+        description: "Notes de mise à jour (court et concis)"
+        required: false
+        type: string
+        default: ""
       create_release:
-        description: "Créer une release GitHub officielle"
+        description: "Créer / Publier la release sur GitHub"
         required: false
         type: boolean
-        default: false
+        default: true
   push:
     tags:
       - "v*"
@@ -162,19 +177,90 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.create_release == 'true'
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
           path: release-assets
           merge-multiple: true
 
-      - name: List Release Assets
-        run: ls -lh release-assets
+      - name: Generate Structured Release Notes & Checksums
+        id: release_meta
+        run: |
+          # 1. Détermination de la version et du tag
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            TAG_VER="${{ github.event.inputs.version }}"
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TAG_VER="${GITHUB_REF#refs/tags/}"
+          else
+            PKG_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "1.0.0")
+            TAG_VER="v${PKG_VERSION}"
+          fi
+          echo "tag_name=$TAG_VER" >> $GITHUB_OUTPUT
+
+          # 2. Détermination du titre de la release
+          if [ -n "${{ github.event.inputs.release_title }}" ]; then
+            TITLE="${{ github.event.inputs.release_title }}"
+          else
+            TITLE="🌸 Release ${TAG_VER} — nHentai Launcher & Yomu Reader"
+          fi
+          echo "title=$TITLE" >> $GITHUB_OUTPUT
+
+          # 3. Calcul des sommes de contrôle SHA-256
+          cd release-assets
+          sha256sum * > SHA256SUMS.txt
+          cd ..
+
+          # 4. Récupération des notes personnalisées ou valeur par défaut
+          CUSTOM_NOTES="${{ github.event.inputs.release_notes }}"
+          if [ -z "$CUSTOM_NOTES" ]; then
+            CUSTOM_NOTES="Mise à jour de maintenance et d'optimisation pour l'application Mobile (Android) et Desktop (Windows)."
+          fi
+
+          # 5. Construction du corps Markdown structuré et ordonné
+          cat << 'EOF' > release_body.md
+          ## ✨ Notes de mise à jour
+          EOF
+          
+          echo "$CUSTOM_NOTES" >> release_body.md
+
+          cat << 'EOF' >> release_body.md
+
+          ---
+
+          ### 📥 Téléchargements & Paquets disponibles
+
+          | Fichier | Plateforme / Architecture | Description |
+          | :--- | :--- | :--- |
+          | 📱 **`YomuReader-arm64-v8a-release.apk`** | **Android 64-bit (Recommandé)** | Version ultra-légère et optimisée pour smartphones récents (~35 Mo) |
+          | 📱 **`YomuReader-universal-full-release.apk`** | **Android Universel (Tous processeurs)** | Compatible 100% appareils Android (ARMv7, ARM64, x86, x86_64) |
+          | 📱 **`YomuReader-debug.apk`** | **Android Debug / Dev** | Version de test avec React Native DevTools activés |
+          | 💻 **`nHentai-Launcher-Portable.exe`** | **Windows 64-bit** | Exécutable autonome sans installation (lanceur Desktop complet) |
+          | 🗜️ **`nhentai-launcher-source.zip`** | **Code Source** | Archive ZIP propre du code source Git |
+
+          ---
+
+          ### 🛡️ Empreintes d'intégrité (SHA-256)
+          ```text
+          EOF
+
+          cat release-assets/SHA256SUMS.txt >> release_body.md
+
+          cat << 'EOF' >> release_body.md
+          ```
+
+          ---
+          <sub>*Paquets compilés et signés automatiquement par le pipeline CI/CD GitHub Actions.*</sub>
+          EOF
 
       - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.release_meta.outputs.tag_name }}
+          name: ${{ steps.release_meta.outputs.title }}
+          body_path: release_body.md
           files: release-assets/*
           draft: false
           prerelease: false
-          generate_release_notes: true
