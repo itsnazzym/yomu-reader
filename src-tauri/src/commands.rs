@@ -7,7 +7,7 @@ use tokio::sync::Mutex;
 use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 use crate::api::NhClient;
-use crate::downloader::{self, download_gallery, format_filename};
+use crate::downloader::{download_gallery, format_filename};
 use crate::models::{AppSettings, Gallery, SearchResponse};
 
 pub struct AppState {

@@ -6,7 +6,7 @@ const DEFAULT_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Appl
 
 pub struct NhClient {
     client: reqwest::Client,
-    cookies: Option<String>,
+    _cookies: Option<String>,
 }
 
 impl NhClient {
@@ -37,7 +37,7 @@ impl NhClient {
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
 
-        Self { client, cookies }
+        Self { client, _cookies: cookies }
     }
 
     pub async fn search(
