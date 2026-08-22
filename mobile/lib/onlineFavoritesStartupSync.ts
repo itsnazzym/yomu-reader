@@ -83,7 +83,7 @@ function cardToGallery(c: GalleryCard): Gallery {
     tag_ids: c.tag_ids || [],
     num_pages: c.num_pages || 0,
     num_favorites: c.num_favorites || 0,
-    source: "cloud",
+    origin: "cloud",
   };
 }
 

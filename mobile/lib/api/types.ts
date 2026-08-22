@@ -44,8 +44,11 @@ export interface Gallery {
   /**
    * Provenance d'un favori : "cloud" = importé depuis nhentai.net,
    * "local" = ajouté via l'app. Permet de séparer les deux listes.
+   * (Renommé depuis "source" qui désigne désormais la plateforme.)
    */
-  source?: "cloud" | "local";
+  origin?: "cloud" | "local";
+  /** Identifiant global multi-sources ("nhentai:123", "3hentai:456"...). */
+  globalId?: string;
   /** IDs bruts des tags (favoris v2) — résolus en tags nommés côté app. */
   tag_ids?: number[];
 }

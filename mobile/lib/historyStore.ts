@@ -19,7 +19,7 @@ export interface HistoryGallery {
   scanlator?: string;
   upload_date?: number;
   num_favorites?: number;
-  source?: Gallery["source"];
+  origin?: Gallery["origin"];
   tag_ids?: number[];
 }
 
@@ -112,7 +112,7 @@ export function toHistoryGallery(gallery: Gallery | HistoryGallery): HistoryGall
     scanlator: "scanlator" in gallery ? gallery.scanlator : undefined,
     upload_date: "upload_date" in gallery ? gallery.upload_date : undefined,
     num_favorites: "num_favorites" in gallery ? gallery.num_favorites : undefined,
-    source: gallery.source,
+    origin: gallery.origin,
     tag_ids: gallery.tag_ids,
   };
 }
@@ -137,7 +137,7 @@ function normalizeEntry(raw: unknown): HistoryEntry | null {
     scanlator: typeof rawGallery.scanlator === "string" ? rawGallery.scanlator : undefined,
     upload_date: typeof rawGallery.upload_date === "number" ? rawGallery.upload_date : undefined,
     num_favorites: typeof rawGallery.num_favorites === "number" ? rawGallery.num_favorites : undefined,
-    source: rawGallery.source === "cloud" || rawGallery.source === "local" ? rawGallery.source : undefined,
+    origin: rawGallery.origin === "cloud" || rawGallery.origin === "local" ? rawGallery.origin : undefined,
     tag_ids: Array.isArray(rawGallery.tag_ids)
       ? rawGallery.tag_ids.filter((id): id is number => typeof id === "number")
       : undefined,

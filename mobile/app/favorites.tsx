@@ -48,7 +48,7 @@ export default function FavoritesScreen() {
 
   // Comptes par provenance (cloud nhentai.net vs signets locaux de l'app).
   const tabCounts = useMemo(() => {
-    const local = favorites.filter((f) => f.source === "local").length;
+    const local = favorites.filter((f) => f.origin === "local").length;
     return { all: favorites.length, cloud: favorites.length - local, local };
   }, [favorites]);
 
@@ -60,7 +60,7 @@ export default function FavoritesScreen() {
       favTab === "all"
         ? favorites
         : favorites.filter((g) =>
-            favTab === "local" ? g.source === "local" : g.source !== "local"
+            favTab === "local" ? g.origin === "local" : g.origin !== "local"
           );
     const q = filterQuery.trim().toLowerCase();
     if (!q) return tabFiltered;

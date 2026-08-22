@@ -1,6 +1,11 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useState, useEffect } from "react";
 import { Gallery } from "./api/types";
+import {
+  makeGlobalId,
+  splitGlobalId,
+  type GlobalGalleryId,
+} from "./sources/types";
 
 export const FAVORITES_STORAGE_KEY = "@nhentai_favorites_v1";
 
@@ -11,6 +16,17 @@ const listeners = new Set<() => void>();
 
 function notify() {
   for (const l of listeners) l();
+}
+
+/**
+ * globalId d'un favori : champ dédié si présent, sinon dérivé de galleryId,
+ * sinon composé depuis l'id numérique (legacy nhentai).
+ */
+export function favoriteGlobalId(g: Gallery): GlobalGalleryId {
+  const anyG = g as Gallery & { globalId?: string; galleryId?: string };
+  if (anyG.globalId) return anyG.globalId;
+  if (anyG.galleryId) return anyG.galleryId;
+  return makeGlobalId("nhentai", g.id);
 }
 
 function persistFavorites(): Promise<void> {
@@ -29,6 +45,18 @@ function isPlaceholderTitle(g: Gallery): boolean {
   return t.pretty === placeholder || t.english === placeholder;
 }
 
+/** Migration : garantit un globalId sur chaque favori. */
+function migrateGlobalIds(list: Gallery[]): { list: Gallery[]; changed: boolean } {
+  let changed = false;
+  const migrated = list.map((g) => {
+    const gid = favoriteGlobalId(g);
+    if ((g as Gallery & { globalId?: string }).globalId === gid) return g;
+    changed = true;
+    return { ...(g as object), globalId: gid } as Gallery;
+  });
+  return { list: migrated, changed };
+}
+
 async function loadFavoritesFromStorage(): Promise<void> {
   try {
     await favoritesWritePromise.catch(() => {});
@@ -40,11 +68,14 @@ async function loadFavoritesFromStorage(): Promise<void> {
       // de l'ancien proxy) ; un vrai titre = ajouté localement via l'app.
       let migrated = false;
       favoritesList = favoritesList.map((g) => {
-        if (g.source) return g;
+        if (g.origin) return g;
         migrated = true;
         return { ...g, source: isPlaceholderTitle(g) ? "cloud" : "local" };
       });
-      if (migrated) {
+      // Migration multi-sources : composer les ids globaux.
+      const gm = migrateGlobalIds(favoritesList);
+      favoritesList = gm.list;
+      if (migrated || gm.changed) {
         await persistFavorites();
       }
       notify();
@@ -68,68 +99,79 @@ export function getFavorites(): Gallery[] {
   return favoritesList;
 }
 
-export function isFavorite(id: number | string): boolean {
-  const numId = Number(id);
-  return favoritesList.some((g) => Number(g.id) === numId);
+/** Favori présent pour un id global ("3hentai:719") ou numérique legacy. */
+export function isFavorite(id: number | string | GlobalGalleryId): boolean {
+  const target = typeof id === "string" && id.includes(":") ? id : makeGlobalId("nhentai", Number(id));
+  return favoritesList.some((g) => favoriteGlobalId(g) === target);
 }
 
-export async function toggleFavorite(gallery: Gallery) {
+export async function toggleFavorite(
+  gallery: Gallery & { sourceName?: "nhentai" | "3hentai" | "doujins" }
+) {
   await initFavorites();
-  const targetId = Number(gallery.id);
-  const exists = favoritesList.some((g) => Number(g.id) === targetId);
+  const sourceName = gallery.sourceName || splitGlobalId(String(gallery.id)).source;
+  const gid =
+    String(gallery.id).includes(":")
+      ? (String(gallery.id) as GlobalGalleryId)
+      : makeGlobalId(sourceName, gallery.id);
+  const exists = favoritesList.some((g) => favoriteGlobalId(g) === gid);
   if (exists) {
-    favoritesList = favoritesList.filter((g) => Number(g.id) !== targetId);
+    favoritesList = favoritesList.filter((g) => favoriteGlobalId(g) !== gid);
   } else {
     // Un favori ajouté via l'app est un signet LOCAL (source "local").
-    favoritesList = [{ ...gallery, source: "local" }, ...favoritesList];
+    favoritesList = [
+      { ...gallery, id: gallery.id, origin: "local", globalId: gid } as Gallery,
+      ...favoritesList,
+    ];
   }
   await persistFavorites();
   notify();
 }
 
-export async function removeFavorite(id: number | string) {
+export async function removeFavorite(id: number | string | GlobalGalleryId) {
   await initFavorites();
-  const targetId = Number(id);
-  favoritesList = favoritesList.filter((g) => Number(g.id) !== targetId);
+  const target =
+    typeof id === "string" && id.includes(":") ? id : makeGlobalId("nhentai", Number(id));
+  favoritesList = favoritesList.filter((g) => favoriteGlobalId(g) !== target);
   await persistFavorites();
   notify();
 }
 
 export async function importFavorites(importedList: Gallery[]) {
   await initFavorites();
-  // Fusion idempotente avec enrichissement, en préservant les données locales :
-  // - un favori du site absent localement est AJOUTÉ (source "cloud") ;
-  // - un favori existant dont le titre est un placeholder (« Gallery #id »,
-  //   données pauvres de l'ancien proxy) est REMPLACÉ par la copie cloud riche ;
-  // - un favori local (vrai titre) n'est jamais remplacé — on ne fait que
-  //   combler ses tags s'ils sont vides. Relancer une synchro ne change donc
-  //   rien aux favoris déjà synchronisés et complets.
-  const byId = new Map<number, Gallery>(favoritesList.map((g) => [Number(g.id), g]));
+  // Fusion idempotente nhentai-cloud uniquement (les autres sources n'ont pas
+  // de cloud). Les ids globaux non-nhentai sont préservés tels quels.
+  const byKey = new Map<string, Gallery>(
+    favoritesList.map((g) => [favoriteGlobalId(g), g])
+  );
   for (const incoming of importedList) {
-    const id = Number(incoming.id);
-    const existing = byId.get(id);
+    const key = makeGlobalId("nhentai", incoming.id);
+    const existing = byKey.get(key);
     if (!existing) {
-      byId.set(id, { ...incoming, source: "cloud" });
+      byKey.set(key, {
+        ...incoming,
+        origin: "cloud",
+        globalId: key,
+      } as Gallery);
       continue;
     }
     if (isPlaceholderTitle(existing)) {
-      // La copie cloud est désormais plus riche que l'existant : remplacement.
-      byId.set(id, { ...incoming, source: "cloud" });
+      byKey.set(key, { ...incoming, origin: "cloud", globalId: key } as Gallery);
       continue;
     }
     if (!existing.tags?.length && incoming.tags?.length) {
-      byId.set(id, { ...existing, tags: incoming.tags, tag_ids: incoming.tag_ids });
+      byKey.set(key, { ...existing, tags: incoming.tags, tag_ids: incoming.tag_ids });
     }
   }
 
-  favoritesList = [...byId.values()];
+  favoritesList = [...byKey.values()];
   await persistFavorites();
   notify();
 }
 
 export async function removeCloudFavorites(): Promise<void> {
   await initFavorites();
-  const localOnly = favoritesList.filter((gallery) => gallery.source !== "cloud");
+  const localOnly = favoritesList.filter((gallery) => gallery.origin !== "cloud");
   if (localOnly.length === favoritesList.length) return;
   favoritesList = localOnly;
   await persistFavorites();
@@ -150,7 +192,12 @@ export function useFavorites() {
 
   return {
     favorites: favs,
-    isFavorite: (id: number | string) => favs.some((g) => Number(g.id) === Number(id)),
+    isFavorite: (id: number | string) =>
+      favs.some((g) =>
+        typeof id === "string" && id.includes(":")
+          ? favoriteGlobalId(g) === id
+          : Number(g.id) === Number(id)
+      ),
     toggleFavorite,
     removeFavorite,
     importFavorites,
