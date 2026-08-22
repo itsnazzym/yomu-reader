@@ -2,7 +2,7 @@
   "expo": {
     "name": "Yomu Reader",
     "slug": "nhentaidownlo-mobile",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "default",
     "icon": "./assets/images/icon.jpg",
     "scheme": "nhentaidownlo",
@@ -22,11 +22,13 @@
         "backgroundColor": "#101018"
       },
       "package": "com.nhentaidownlo.mobile",
+      "versionCode": 2,
       "permissions": [
         "INTERNET",
         "ACCESS_NETWORK_STATE",
         "VIBRATE",
-        "WAKE_LOCK"
+        "WAKE_LOCK",
+        "POST_NOTIFICATIONS"
       ]
     },
     "web": {
@@ -46,6 +48,21 @@
         }
       ],
       "expo-secure-store",
+      "expo-sqlite",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Yomu Reader utilise Face ID pour déverrouiller l'application."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.jpg",
+          "color": "#c5878d",
+          "defaultChannel": "downloads"
+        }
+      ],
       "./withAndroidDoh"
     ],
     "experiments": {

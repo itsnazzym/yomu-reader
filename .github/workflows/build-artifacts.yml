@@ -64,6 +64,13 @@ jobs:
         run: |
           keytool -genkeypair -v -keystore release.keystore -alias yomureader -keyalg RSA -keysize 2048 -validity 10000 -storepass yomureader_release_key -keypass yomureader_release_key -dname "CN=Yomu Reader, OU=Mobile, O=nHentai Launcher, L=Paris, ST=IDF, C=FR"
 
+      - name: Bump android versionCode from run number
+        working-directory: mobile
+        run: |
+          node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('app.json','utf8'));j.expo.android.versionCode=parseInt(process.env.GITHUB_RUN_NUMBER,10);fs.writeFileSync('app.json',JSON.stringify(j,null,2)+'\n');console.log('versionCode='+j.expo.android.versionCode)"
+        env:
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+
       - name: Install Dependencies & Prebuild
         working-directory: mobile
         run: |
@@ -120,6 +127,13 @@ jobs:
       - name: Setup Release Keystore
         run: |
           keytool -genkeypair -v -keystore release.keystore -alias yomureader -keyalg RSA -keysize 2048 -validity 10000 -storepass yomureader_release_key -keypass yomureader_release_key -dname "CN=Yomu Reader, OU=Mobile, O=nHentai Launcher, L=Paris, ST=IDF, C=FR"
+
+      - name: Bump android versionCode from run number
+        working-directory: mobile
+        run: |
+          node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('app.json','utf8'));j.expo.android.versionCode=parseInt(process.env.GITHUB_RUN_NUMBER,10);fs.writeFileSync('app.json',JSON.stringify(j,null,2)+'\n');console.log('versionCode='+j.expo.android.versionCode)"
+        env:
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
 
       - name: Install Dependencies & Prebuild
         working-directory: mobile
