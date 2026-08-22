@@ -2,12 +2,19 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system";
 import { getGallery, resolvePageUrl } from "./api/nhentai";
 import { Gallery } from "./api/types";
-import { makeLocalId, sanitizeTitle, writeLocalManifest } from "./localLibrary";
+import { ensureNoMediaFile, libraryRoot, makeLocalId, sanitizeTitle, writeLocalManifest } from "./localLibrary";
 import { decodeBase64Header, isCompleteDownload } from "./imageIntegrity";
 import { createInitOnce, createWriteQueue } from "./persistQueue";
 import { getDownloadSettings } from "./downloadSettingsStore";
 import { copyLocalGalleryToSaf } from "./safCopy";
 import { requestNotificationPermissions } from "./permissions";
+import { notifyDownloadFinished } from "./downloadNotifications";
+import NetInfo, { type NetInfoState } from "@react-native-community/netinfo";
+import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
+import {
+  computeResumeOffset,
+  classifyResumeResponse,
+} from "./resumableDownload";
 
 const QUEUE_KEY = "@nhentai_download_queue";
 const CONCURRENCY_KEY = "@nhentai_download_concurrency";
@@ -148,6 +155,14 @@ export function enqueueGalleries(
 }
 
 export function pauseQueueItem(id: number) {
+  // Annule d'abord tout transfert en vol : le .part déjà écrit est conservé,
+  // la reprise se fera par HTTP Range. Le worker verra `null` en retour de
+  // downloadAsync et lèvera __PAUSED__ via la vérification de statut.
+  const inFlight = activeDownloads.get(id);
+  if (inFlight) {
+    activeDownloads.delete(id);
+    void inFlight.cancelAsync().catch(() => {});
+  }
   state.items = state.items.map((item) =>
     item.id === id && (item.status === "queued" || item.status === "downloading")
       ? { ...item, status: "paused" }
@@ -169,6 +184,13 @@ export function resumeQueueItem(id: number) {
 }
 
 export function removeQueueItem(id: number) {
+  // Si un transfert est en vol, l'annuler immédiatement (le .part sera
+  // nettoyé par la boucle du worker via sa vérification de statut).
+  const inFlight = activeDownloads.get(id);
+  if (inFlight) {
+    activeDownloads.delete(id);
+    void inFlight.cancelAsync().catch(() => {});
+  }
   state.items = state.items.filter((item) => item.id !== id);
   persistQueue();
   notify();
@@ -221,6 +243,14 @@ export function clearCompletedQueue() {
 }
 
 export function pauseAllQueue() {
+  // Annule tous les transferts en vol (voir pauseQueueItem) avant de basculer
+  // les statuts, sinon les workers en cours continueraient leur page.
+  const ids = [...activeDownloads.keys()];
+  for (const id of ids) {
+    const inFlight = activeDownloads.get(id);
+    activeDownloads.delete(id);
+    void inFlight?.cancelAsync().catch(() => {});
+  }
   state.items = state.items.map((item) =>
     item.status === "queued" || item.status === "downloading"
       ? { ...item, status: "paused" }
@@ -228,6 +258,31 @@ export function pauseAllQueue() {
   );
   persistQueue();
   notify();
+}
+
+export function reorderQueue(fromIndex: number, toIndex: number): void {
+  if (
+    fromIndex === toIndex ||
+    fromIndex < 0 ||
+    toIndex < 0 ||
+    fromIndex >= state.items.length ||
+    toIndex >= state.items.length
+  ) {
+    return;
+  }
+  const next = [...state.items];
+  const [moved] = next.splice(fromIndex, 1);
+  if (!moved) return;
+  next.splice(toIndex, 0, moved);
+  state.items = next;
+  persistQueue();
+  notify();
+}
+
+export function moveQueueItem(id: number, direction: -1 | 1): void {
+  const index = state.items.findIndex((item) => item.id === id);
+  if (index < 0) return;
+  reorderQueue(index, index + direction);
 }
 
 export function resumeAllQueue() {
@@ -242,6 +297,13 @@ export function resumeAllQueue() {
 }
 
 const activeWorkers = new Set<number>();
+/**
+ * Pause immédiate : mappe galleryId -> DownloadResumable en vol. `cancelAsync`
+ * résout la promesse avec `null` SANS supprimer le .part (confirmé côté natif :
+ * `call.cancel()` → resolve(null)), donc le préfixe déjà écrit reste valable
+ * pour une reprise HTTP Range au prochain passage du worker.
+ */
+const activeDownloads = new Map<number, FileSystem.DownloadResumable>();
 
 /**
  * Les téléchargements s'exécutent au premier plan dans l'app. La reprise se fait
@@ -296,6 +358,8 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
     const targetDir = `${baseDir}${localId}/`;
 
     await FileSystem.makeDirectoryAsync(targetDir, { intermediates: true });
+    await ensureNoMediaFile(libraryRoot());
+    await ensureNoMediaFile(targetDir);
 
     const total = gallery.images?.pages?.length || gallery.num_pages || 0;
     const pagesCopy = [...(gallery.images?.pages || [])];
@@ -335,27 +399,92 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
         }
       }
       if (!fileInfo.exists) {
-        await FileSystem.deleteAsync(partUri, { idempotent: true }).catch(() => {});
-        const downloadRes = FileSystem.createDownloadResumable(pageUrl, partUri, {
-          headers: {
-            Referer: "https://nhentai.net/",
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-          },
-        });
+        // Reprise : si un .part existe (téléchargement interrompu), on passe
+        // son octet de reprise en `resumeData`. Côté natif, cet argument
+        // déclenche à la fois l'APPEND au fichier existant ET l'envoi du
+        // header `Range: bytes=<offset>-` (voir FileSystemModule.kt).
+        // Ne PAS ajouter soi-même un header Range : il serait dupliqué.
+        const partialInfo = await FileSystem.getInfoAsync(partUri);
+        const resumeOffset = partialInfo.exists
+          ? computeResumeOffset({
+              partialSize: partialInfo.size ?? 0,
+              totalBytes: -1, // taille totale inconnue avant la réponse
+            })
+          : 0;
+
+        const baseHeaders: Record<string, string> = {
+          Referer: "https://nhentai.net/",
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+        };
+
+        const runDownload = (offset: number) => {
+          const downloadRes = FileSystem.createDownloadResumable(
+            pageUrl,
+            partUri,
+            { headers: { ...baseHeaders } },
+            undefined,
+            offset > 0 ? String(offset) : undefined
+          );
+          void AsyncStorage.setItem(resumeKey, JSON.stringify(downloadRes.savable())).catch(
+            () => {}
+          );
+          activeDownloads.set(item.id, downloadRes);
+          return downloadRes
+            .downloadAsync()
+            .finally(() => {
+              void AsyncStorage.removeItem(resumeKey).catch(() => {});
+              if (activeDownloads.get(item.id) === downloadRes) {
+                activeDownloads.delete(item.id);
+              }
+            });
+        };
+
+        let result: Awaited<ReturnType<typeof runDownload>> = null;
         try {
-          const savable = downloadRes.savable();
-          await AsyncStorage.setItem(resumeKey, JSON.stringify(savable));
-        } catch {}
-        const result = await downloadRes.downloadAsync();
-        await AsyncStorage.removeItem(resumeKey).catch(() => {});
-        if (!result || result.status < 200 || result.status >= 300) {
+          result = await runDownload(resumeOffset);
+        } catch (err) {
+          // Échec réseau en cours de transfert : conserver le .part pour la
+          // prochaine reprise (c'est toujours un préfixe valide du fichier),
+          // mais signaler l'échec.
+          throw err instanceof Error ? err : new Error(String(err));
+        }
+        if (!result) {
+          // Tâche annulée (pause utilisateur ou retrait de la file) :
+          // le .part est conservé pour la reprise, on sort sans erreur.
+          throw new Error("__PAUSED__");
+        }
+
+        const kind = classifyResumeResponse(result?.status ?? 0);
+        if (
+          kind === "restarted" &&
+          resumeOffset > 0 &&
+          result?.status === 200
+        ) {
+          // Le serveur a ignoré le Range : comme le natif a APPENDU la réponse
+          // complète au .part existant, celui-ci est corrompu. On repart de zéro.
+          await FileSystem.deleteAsync(partUri, { idempotent: true });
+          result = await runDownload(0);
+        }
+        const finalKind = classifyResumeResponse(result?.status ?? 0);
+        if (
+          finalKind === "failed" ||
+          !result ||
+          result.status < 200 ||
+          result.status >= 300
+        ) {
           await FileSystem.deleteAsync(partUri, { idempotent: true });
           throw new Error(`Téléchargement incomplet pour la page ${i + 1}.`);
         }
-        const expectedSize = Number(
-          result.headers?.["Content-Length"] || result.headers?.["content-length"] || 0
+        const contentLength = Number(
+          result.headers?.["Content-Length"] ||
+            result.headers?.["content-length"] ||
+            0
         );
+        // En reprise (206), Content-Length ne couvre que la plage restante :
+        // la taille attendue du fichier final = offset déjà écrit + plage.
+        const expectedSize =
+          finalKind === "resumed" ? resumeOffset + contentLength : contentLength;
         const complete = await isLocalImageComplete(partUri, expectedSize || undefined);
         if (!complete) {
           await FileSystem.deleteAsync(partUri, { idempotent: true });
@@ -408,6 +537,7 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
       downloadedPages: total,
       localId,
     });
+    void notifyDownloadFinished({ title: item.title, ok: true });
 
     const downloadSettings = getDownloadSettings();
     if (downloadSettings.mode === "saf" && downloadSettings.safDirectoryUri) {
@@ -417,18 +547,21 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
         console.warn("[downloadQueue] SAF copy failed, sandbox copy kept:", copyError);
       }
     }
-  } catch (err: any) {
-    if (err?.message === "__PAUSED__") {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Échec du téléchargement";
+    if (message === "__PAUSED__") {
       updateItem(item.id, { status: "paused" });
     } else {
       console.error(`[downloadQueue] Failed gallery ${item.id}:`, err);
       updateItem(item.id, {
         status: "error",
-        errorMessage: err?.message || "Échec du téléchargement",
+        errorMessage: message,
       });
+      void notifyDownloadFinished({ title: item.title, ok: false, errorMessage: message });
     }
   } finally {
     activeWorkers.delete(item.id);
+    syncDownloadKeepAwake();
     persistQueue();
     notify();
     processQueue();
@@ -440,8 +573,35 @@ function updateItem(id: number, patch: Partial<QueueItem>) {
   notify();
 }
 
+async function canStartDownloads(): Promise<boolean> {
+  if (!getDownloadSettings().wifiOnly) return true;
+  try {
+    const net = await NetInfo.fetch();
+    return net.type === "wifi" && net.isConnected === true;
+  } catch {
+    return false;
+  }
+}
+
+function syncDownloadKeepAwake(): void {
+  if (activeWorkers.size > 0) {
+    void activateKeepAwakeAsync("yomu-downloads");
+    return;
+  }
+  try {
+    deactivateKeepAwake("yomu-downloads");
+  } catch {
+    // Tag may not have been activated yet.
+  }
+}
+
 export function processQueue() {
+  void processQueueAsync();
+}
+
+async function processQueueAsync(): Promise<void> {
   if (activeWorkers.size >= state.maxConcurrent) return;
+  if (!(await canStartDownloads())) return;
 
   const slots = state.maxConcurrent - activeWorkers.size;
   const nextItems = state.items.filter(
@@ -452,8 +612,18 @@ export function processQueue() {
     const item = nextItems[i];
     activeWorkers.add(item.id);
     updateItem(item.id, { status: "downloading" });
-    downloadSingleGalleryWorker(item);
+    syncDownloadKeepAwake();
+    void downloadSingleGalleryWorker(item);
   }
 }
+
+function onNetworkChange(state: NetInfoState): void {
+  if (!getDownloadSettings().wifiOnly) return;
+  if (state.type === "wifi" && state.isConnected) {
+    processQueue();
+  }
+}
+
+NetInfo.addEventListener(onNetworkChange);
 
 initDownloadQueue();
