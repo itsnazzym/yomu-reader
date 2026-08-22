@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@expo/vector-icons": "~14.0.4",
+    "@notifee/react-native": "^9.1.8",
     "@react-native-async-storage/async-storage": "1.23.1",
     "@react-native-community/netinfo": "11.4.1",
     "@shopify/flash-list": "1.7.3",
@@ -25,19 +26,24 @@
     "expo-blur": "~14.0.1",
     "expo-clipboard": "~7.0.0",
     "expo-constants": "~17.0.3",
+    "expo-document-picker": "~13.0.3",
     "expo-file-system": "~18.0.4",
     "expo-font": "~13.0.1",
     "expo-haptics": "~14.0.0",
     "expo-image": "~2.0.3",
     "expo-image-picker": "~16.0.4",
+    "expo-keep-awake": "~14.0.3",
     "expo-linear-gradient": "~14.0.1",
     "expo-linking": "~7.0.3",
+    "expo-local-authentication": "~15.0.2",
     "expo-localization": "~16.0.0",
     "expo-navigation-bar": "~4.0.4",
+    "expo-notifications": "^0.29.14",
     "expo-router": "~4.0.6",
     "expo-secure-store": "~14.0.1",
     "expo-sharing": "~13.0.0",
     "expo-splash-screen": "~0.29.11",
+    "expo-sqlite": "~15.1.4",
     "expo-status-bar": "~2.0.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",
@@ -63,7 +69,9 @@
   "allowScripts": {
     "esbuild": true,
     "fsevents": false,
-    "unrs-resolver": true
+    "unrs-resolver": true,
+    "expo-sqlite": true,
+    "expo-local-authentication": true
   },
   "private": true
 }

@@ -28,7 +28,9 @@
         "ACCESS_NETWORK_STATE",
         "VIBRATE",
         "WAKE_LOCK",
-        "POST_NOTIFICATIONS"
+        "POST_NOTIFICATIONS",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_DATA_SYNC"
       ]
     },
     "web": {
@@ -63,7 +65,8 @@
           "defaultChannel": "downloads"
         }
       ],
-      "./withAndroidDoh"
+      "./withAndroidDoh",
+      "./withNotifeeDataSync"
     ],
     "experiments": {
       "typedRoutes": true

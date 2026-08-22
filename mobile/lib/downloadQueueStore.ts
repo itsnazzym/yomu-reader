@@ -15,6 +15,11 @@ import {
   computeResumeOffset,
   classifyResumeResponse,
 } from "./resumableDownload";
+import {
+  startDownloadForeground,
+  updateDownloadForeground,
+  stopDownloadForeground,
+} from "./foregroundDownloadService";
 
 const QUEUE_KEY = "@nhentai_download_queue";
 const CONCURRENCY_KEY = "@nhentai_download_concurrency";
@@ -571,6 +576,13 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
 function updateItem(id: number, patch: Partial<QueueItem>) {
   state.items = state.items.map((it) => (it.id === id ? { ...it, ...patch } : it));
   notify();
+  // Progression de page -> rafraîchir la notif persistante (throttlé 1/s).
+  if (
+    patch.downloadedPages !== undefined ||
+    patch.totalPages !== undefined
+  ) {
+    void syncForegroundService();
+  }
 }
 
 async function canStartDownloads(): Promise<boolean> {
@@ -586,6 +598,7 @@ async function canStartDownloads(): Promise<boolean> {
 function syncDownloadKeepAwake(): void {
   if (activeWorkers.size > 0) {
     void activateKeepAwakeAsync("yomu-downloads");
+    void syncForegroundService();
     return;
   }
   try {
@@ -593,7 +606,40 @@ function syncDownloadKeepAwake(): void {
   } catch {
     // Tag may not have been activated yet.
   }
+  void stopDownloadForeground().catch(() => {});
 }
+
+/**
+ * Notifie le foreground service de la progression globale de la file.
+ * Throttle ~1 update/s : les updates notifee sont coûteuses (IPC + notif).
+ */
+let lastFgsUpdate = 0;
+async function syncForegroundService(): Promise<void> {
+  const now = Date.now();
+  if (now - lastFgsUpdate < 1000) return;
+  lastFgsUpdate = now;
+  const pending = state.items.filter(
+    (it) => it.status === "downloading" || it.status === "queued"
+  );
+  if (pending.length === 0) return;
+  const progress = {
+    remainingGalleries: pending.length,
+    downloadedPages: pending.reduce((acc, it) => acc + it.downloadedPages, 0),
+    totalPages: pending.reduce((acc, it) => acc + it.totalPages, 0),
+  };
+  try {
+    if (!fgsStarted) {
+      fgsStarted = true;
+      await startDownloadForeground(progress);
+    } else {
+      await updateDownloadForeground(progress);
+    }
+  } catch {
+    // Pas grave si le FGS échoue (permission notif refusée, etc.) :
+    // les téléchargements continuent au premier plan quand même.
+  }
+}
+let fgsStarted = false;
 
 export function processQueue() {
   void processQueueAsync();
