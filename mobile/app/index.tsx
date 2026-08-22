@@ -39,6 +39,10 @@ import { SearchBar } from "@/components/SearchBar";
 import { FilterModal, FilterOptions } from "@/components/modals/FilterModal";
 import { ReverseImageSearchModal } from "@/components/modals/ReverseImageSearchModal";
 import { searchGalleries } from "@/lib/api/nhentai";
+import { listSources } from "@/lib/sources/registry";
+import { getSource } from "@/lib/sources/registry";
+import type { SourceId } from "@/lib/sources/types";
+import { lightTap } from "@/lib/haptics";
 import { Gallery } from "@/lib/api/types";
 import { isGalleryBlacklisted, useBlacklist } from "@/lib/blacklistFilter";
 import { useHistory } from "@/lib/historyStore";
@@ -166,6 +170,10 @@ export default function HomeScreen() {
   const loadingMoreRef = useRef(false);
   const galleriesRef = useRef<Gallery[]>([]);
 
+  // Multi-sources : "all" = fusion nhentai + 3hentai + doujins.
+  const [activeSource, setActiveSource] = useState<SourceId | "all">("all");
+  const sourceMetas = React.useMemo(() => listSources(), []);
+
   const { settings: readerSettings } = useReaderSettings();
 
   const isLandscape = width > 500;
@@ -246,35 +254,110 @@ export default function HomeScreen() {
             ? opts.sort
             : "recent";
         const popQuery = opts.language && opts.language !== "all" ? `language:${opts.language}` : "";
-        const [response, popularResponse] = await Promise.all([
-          searchGalleries(effectiveQuery, p, sort),
-          isHomeFeed && p === 1
-            ? searchGalleries(popQuery, 1, "popular-today").catch((popularError) => {
-                // A failed popularity request must not hide the usable upload
-                // feed; the website's main content remains the priority.
-                console.warn("Popular Now unavailable:", popularError);
-                return null;
-              })
-            : Promise.resolve(null),
-        ]);
-        if (requestId !== latestRequestRef.current) return;
 
-        const newItems = response.result || [];
-        if (isPagination) {
-          setGalleries((prev) => {
-            const existingIds = new Set(prev.map((g) => g.id));
-            const fresh = newItems.filter((g) => !existingIds.has(g.id));
-            return [...prev, ...fresh];
+        // ─── Multi-sources ───────────────────────────────────────────────
+        // "all" : nhentai (flux principal + popular) + 3hentai + doujins en
+        // parallèle, résultats entrelacés. Source unique : flux direct.
+        if (activeSource === "all") {
+          const nhentaiPromise = searchGalleries(effectiveQuery, p, sort);
+          const altSources = ["3hentai", "doujins"] as SourceId[];
+          const altPromises = altSources.map(async (sid) => {
+            try {
+              const r = await getSource(sid).search({
+                query: effectiveQuery || undefined,
+                page: p,
+                sort: sort === "recent" ? "recent" : "popular",
+              });
+              // Map les cartes sources vers un pseudo-Gallery pour l'affichage.
+              return r.cards.map((c) => ({
+                id: Number(c.globalId.split(":")[1]) || 0,
+                media_id: "",
+                globalId: c.globalId,
+                title: { english: c.title, japanese: "", pretty: c.title },
+                images: {
+                  pages: [],
+                  cover: { url: c.coverUrl } as any,
+                  thumbnail: { url: c.coverUrl } as any,
+                },
+                scanlator: sid,
+                upload_date: c.uploadDate || 0,
+                tags: (c.tags || []).map((t) => ({ id: 0, type: (t.type || "tag") as any, name: t.name, url: "", count: 0 })),
+                num_pages: c.numPages || 0,
+                num_favorites: 0,
+              })) as Gallery[];
+            } catch (e) {
+              console.warn(`Source ${sid} indisponible:`, e);
+              return [] as Gallery[];
+            }
           });
+
+          const [response, threeH, dj] = await Promise.all([
+            nhentaiPromise,
+            ...altPromises,
+          ]);
+          if (requestId !== latestRequestRef.current) return;
+
+          // Interleave : nhentai d'abord, puis alternance 3hentai/doujins.
+          const merged: Gallery[] = [...(response.result || [])];
+          const maxAlt = Math.max(threeH.length, dj.length);
+          for (let i = 0; i < maxAlt; i++) {
+            if (threeH[i]) merged.push(threeH[i]);
+            if (dj[i]) merged.push(dj[i]);
+          }
+
+          const dedupKey = (g: Gallery) =>
+            ((g as any).globalId as string) || `${g.id}`;
+          if (isPagination) {
+            setGalleries((prev) => {
+              const existingIds = new Set(prev.map(dedupKey));
+              const fresh = merged.filter((g) => !existingIds.has(dedupKey(g)));
+              return [...prev, ...fresh];
+            });
+          } else {
+            setGalleries(merged);
+          }
+          setTotalPages(Math.max(1, response.num_pages || 1));
         } else {
-          setGalleries(newItems);
+          const adapter = getSource(activeSource);
+          const res = await adapter.search({
+            query: effectiveQuery || undefined,
+            page: p,
+            sort: sort === "recent" ? "recent" : "popular",
+          });
+          if (requestId !== latestRequestRef.current) return;
+          const mapped: Gallery[] = res.cards.map((c) => ({
+            id: Number(c.globalId.split(":")[1]) || 0,
+            media_id: "",
+            globalId: c.globalId,
+            title: { english: c.title, japanese: "", pretty: c.title },
+            images: {
+              pages: [],
+              cover: { url: c.coverUrl } as any,
+              thumbnail: { url: c.coverUrl } as any,
+            },
+            scanlator: activeSource,
+            upload_date: c.uploadDate || 0,
+            tags: (c.tags || []).map((t) => ({ id: 0, type: (t.type || "tag") as any, name: t.name, url: "", count: 0 })),
+            num_pages: c.numPages || 0,
+            num_favorites: 0,
+          }));
+          const dedupKey = (g: Gallery) => (g as any).globalId;
+          if (isPagination) {
+            setGalleries((prev) => {
+              const existingIds = new Set(prev.map(dedupKey));
+              const fresh = mapped.filter((g) => !existingIds.has(dedupKey(g)));
+              return [...prev, ...fresh];
+            });
+          } else {
+            setGalleries(mapped);
+          }
+          setTotalPages(res.hasMore ? p + 1 : p);
         }
-        if (isHomeFeed && p === 1) {
-          setPopularGalleries((popularResponse?.result || []).slice(0, 5));
-        } else if (!isHomeFeed) {
+        if (isHomeFeed && p === 1 && activeSource === "all") {
+          setPopularGalleries([]);
+        } else {
           setPopularGalleries([]);
         }
-        setTotalPages(Math.max(1, response.num_pages || 1));
       } catch (err: unknown) {
         if (requestId !== latestRequestRef.current) return;
         console.error("Fetch galleries error:", err);
@@ -288,7 +371,7 @@ export default function HomeScreen() {
         }
       }
     },
-    [spinAnim]
+    [spinAnim, activeSource]
   );
 
   useEffect(() => {
@@ -513,6 +596,53 @@ export default function HomeScreen() {
             <IconTag size={18} color={colors.accent} strokeWidth={1.8} />
           </TouchableOpacity>
         </View>
+      </View>
+
+      {/* Multi-source selector chips */}
+      <View style={styles.sourceChipsRow}>
+        {([["all", "Tout"]] as [SourceId | "all", string][]).concat(
+          sourceMetas.map((m) => [m.id, m.label] as [SourceId, string])
+        ).map(([sid, label]) => {
+          const isActive = activeSource === sid;
+          const meta = sid === "all" ? undefined : sourceMetas.find((m2) => m2.id === sid);
+          return (
+            <TouchableOpacity
+              key={sid}
+              activeOpacity={0.7}
+              onPress={() => {
+                lightTap();
+                setPage(1);
+                setActiveSource(sid);
+              }}
+              style={[
+                styles.sourceChip,
+                {
+                  borderColor: isActive ? colors.accent : colors.tagBg,
+                  backgroundColor: isActive ? colors.accent + "26" : "transparent",
+                },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={`Filtrer sur la source ${label}`}
+            >
+              {meta && (
+                <View
+                  style={[
+                    styles.sourceChipDot,
+                    { backgroundColor: meta.accentColor },
+                  ]}
+                />
+              )}
+              <Text
+                style={[
+                  styles.sourceChipText,
+                  { color: isActive ? colors.accent : colors.sub },
+                ]}
+              >
+                {label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       {resumeEntry ? (
@@ -993,6 +1123,32 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 10,
+  },
+  sourceChipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 8,
+  },
+  sourceChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  sourceChipDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  sourceChipText: {
+    fontSize: 12,
+    fontWeight: "700",
   },
   headerLeft: {
     flexDirection: "row",

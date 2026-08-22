@@ -8,6 +8,10 @@ import { CardPressable } from "@/components/ui/CardPressable";
 import SmartImage from "@/components/SmartImage";
 import { useFavorites } from "@/lib/favoritesStore";
 import { lightTap } from "@/lib/haptics";
+import {
+  listSources,
+  type SourceMeta,
+} from "@/lib/sources/registry";
 
 export interface BookCardProps {
   gallery: Gallery;
@@ -25,10 +29,18 @@ const TAG_TYPE_COLORS: Record<string, { bg: string; text: string; border: string
   language: { bg: "rgba(245, 158, 11, 0.12)", text: "#fbbf24", border: "rgba(245, 158, 11, 0.28)" },
 };
 
+/** Métadonnées des sources indexées par id (badges). */
+const SOURCE_METAS: Record<string, SourceMeta> = Object.fromEntries(
+  listSources().map((m) => [m.id, m])
+);
+
 export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
   const { colors } = useTheme();
   const router = useRouter();
   const { isFavorite, toggleFavorite } = useFavorites();
+
+  const globalId = (gallery as Gallery & { globalId?: string }).globalId;
+  const sourceMeta = globalId ? SOURCE_METAS[globalId.split(":")[0]] : undefined;
 
   const galleryId = gallery?.id ? Number(gallery.id) : 0;
   const fav = galleryId ? isFavorite(galleryId) : false;
@@ -69,7 +81,10 @@ export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
     } else if (galleryId > 0) {
       router.push({
         pathname: "/book/[id]",
-        params: { id: String(galleryId) },
+        params: {
+          id: String(galleryId),
+          ...(globalId ? { src: globalId.split(":")[0] } : {}),
+        },
       });
     }
   };
@@ -154,6 +169,14 @@ export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
           {lang && (
             <View style={[styles.specBadge, styles.langBadge]}>
               <Text style={styles.langText}>{lang}</Text>
+            </View>
+          )}
+          {/* Badge de source multi-sources (masqué pour nhentai, source par défaut) */}
+          {sourceMeta && sourceMeta.id !== "nhentai" && (
+            <View style={[styles.sourceBadge, { backgroundColor: sourceMeta.accentColor }]}>
+              <Text style={styles.sourceText} numberOfLines={1}>
+                {sourceMeta.label}
+              </Text>
             </View>
           )}
         </View>
@@ -272,6 +295,17 @@ const styles = StyleSheet.create({
   langText: {
     color: "#fbbf24",
     fontSize: 9,
+    fontWeight: "900",
+  },
+  sourceBadge: {
+    maxWidth: 90,
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+  },
+  sourceText: {
+    color: "#0b0b10",
+    fontSize: 8.5,
     fontWeight: "900",
   },
   info: {

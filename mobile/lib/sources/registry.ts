@@ -4,7 +4,9 @@
  * n'ont pas d'état mutable critique).
  */
 
-import type { SourceAdapter, SourceId, SourceMeta, GlobalGalleryId } from "./types";
+import type { SourceAdapter, SourceId, GlobalGalleryId } from "./types";
+import type { SourceMeta } from "./types";
+export type { SourceMeta };
 import { NhentaiSource } from "./nhentai";
 import { ThreeHentaiSource } from "./threehentai";
 import { DoujinsSource } from "./doujins";
