@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { ErrorBoundaryProps, Stack } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Drawer } from "react-native-drawer-layout";
@@ -12,6 +13,7 @@ import { SideMenu } from "@/components/SideMenu";
 import { TexturedBackground } from "@/components/ui/TexturedBackground";
 import { OnboardingModal } from "@/components/onboarding/OnboardingModal";
 
+SplashScreen.preventAutoHideAsync().catch(() => {});
 enableScreens(true);
 
 export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
@@ -81,6 +83,10 @@ function AppShell() {
 }
 
 export default function RootLayout() {
+  useEffect(() => {
+    SplashScreen.hideAsync().catch(() => {});
+  }, []);
+
   return (
     <GestureHandlerRootView style={styles.flex}>
       <SafeAreaProvider style={styles.flex}>

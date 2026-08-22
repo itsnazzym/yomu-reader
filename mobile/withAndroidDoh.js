@@ -59,7 +59,7 @@ private fun createDohNetworkClient(): OkHttpClient {
       .build()
   }
 
-  return OkHttpClient.Builder()
+  return OkHttpClientProvider.createClientBuilder()
     .dns(DohFallbackDns(dohResolvers))
     .build()
 }
