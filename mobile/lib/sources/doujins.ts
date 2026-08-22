@@ -51,7 +51,7 @@ async function fetchHtml(url: string): Promise<string> {
 
 /** Carte du listing : href relative (/series/slug-id), cover signée, titre. */
 const CARD_RE =
-  /<a href="(\/[a-z0-9-]+\/[a-z0-9-]+-(\d+))"[^>]*class=""[^>]*>\s*<img src="([^"]+)"[\s\S]*?<div class="text">([\s\S]*?)<\/div>/g;
+  /<a href="(\/[a-z0-9-]+\/[a-z0-9-]+-(\d+))"[^>]*>\s*<img src="([^"]+)"[\s\S]*?<div class="text">([\s\S]*?)<\/div>/g;
 
 /** Extrait l'id natif depuis un chemin "/series/gallery-slug-12345". */
 function nativeIdFromPath(path: string): string | null {
@@ -63,7 +63,7 @@ function parseCards(html: string): SourceGalleryCard[] {
   const seen = new Set<string>();
   const cards: SourceGalleryCard[] = [];
   for (const m of extractMatches(html, CARD_RE)) {
-    const nativeId = nativeIdFromPath(m[2] || "");
+    const nativeId = m[2];
     if (!nativeId || seen.has(nativeId)) continue;
     seen.add(nativeId);
     cards.push({
@@ -114,7 +114,9 @@ export class DoujinsSource implements SourceAdapter {
 
     const titleM =
       html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/) ||
-      html.match(/<title>[^<]*by [^<]*<\/title>/);
+      // Fallback : <title> "Série - Titre by Artiste"
+      html.match(/<title>[^<]*?-\s*([^<]+?)\s+by\s+[^<]+<\/title>/) ||
+      html.match(/<title>([^<]+)<\/title>/);
     const title = titleM ? stripTags(titleM[1]) : `Doujins #${nativeId}`;
 
     // Pages : toutes les images du lecteur en data-src signées.
@@ -173,7 +175,7 @@ export class DoujinsSource implements SourceAdapter {
     for (const url of candidates) {
       try {
         const list = await fetchHtml(url);
-        const anchorM = list.match(new RegExp(`href="(/[^"]*-${nativeId})"`));
+        const anchorM = list.match(new RegExp(`href="([^"]*-${nativeId})"`));
         if (anchorM) {
           return await fetchHtml(`${BASE}${decodeEntities(anchorM[1])}`);
         }
