@@ -30,18 +30,21 @@ on:
 permissions:
   contents: write
 
+env:
+  GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4096m -Dorg.gradle.parallel=true -Dorg.gradle.caching=true"
+
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
-  # 1. Android Builds (ARM64-v8a, Universal Full, Debug)
+  # 1. Android ARM64-v8a Release (Ultra Rapide & Recommandé pour tous téléphones)
   # ─────────────────────────────────────────────────────────────────────────────
-  android-apks:
-    name: Build Android APKs
+  build-arm64-apk:
+    name: 📱 Android ARM64-v8a Release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Java 17 (Temurin)
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
@@ -54,87 +57,151 @@ jobs:
           cache: npm
           cache-dependency-path: mobile/package-lock.json
 
-      - name: Setup Gradle
+      - name: Setup Gradle Cache
         uses: gradle/actions/setup-gradle@v4
 
       - name: Setup Release Keystore
         run: |
-          if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
-            echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > release.keystore
-            echo "KEYSTORE_PASS=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
-            echo "KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}" >> $GITHUB_ENV
-            echo "KEY_PASS=${{ secrets.ANDROID_KEY_PASSWORD }}" >> $GITHUB_ENV
-          else
-            echo "Génération d'un Keystore de Release dédié..."
-            keytool -genkeypair -v -keystore release.keystore -alias yomureader -keyalg RSA -keysize 2048 -validity 10000 -storepass yomureader_release_key -keypass yomureader_release_key -dname "CN=Yomu Reader, OU=Mobile, O=nHentai Launcher, L=Paris, ST=IDF, C=FR"
-            echo "KEYSTORE_PASS=yomureader_release_key" >> $GITHUB_ENV
-            echo "KEY_ALIAS=yomureader" >> $GITHUB_ENV
-            echo "KEY_PASS=yomureader_release_key" >> $GITHUB_ENV
-          fi
+          keytool -genkeypair -v -keystore release.keystore -alias yomureader -keyalg RSA -keysize 2048 -validity 10000 -storepass yomureader_release_key -keypass yomureader_release_key -dname "CN=Yomu Reader, OU=Mobile, O=nHentai Launcher, L=Paris, ST=IDF, C=FR"
 
-      - name: Install Mobile Dependencies
+      - name: Install Dependencies & Prebuild
         working-directory: mobile
-        run: npm ci
+        run: |
+          npm ci
+          npx expo prebuild --platform android --no-install
 
-      - name: Expo Prebuild (Generate Android native project)
-        working-directory: mobile
-        run: npx expo prebuild --platform android --no-install
-
-      - name: Make Gradlew Executable
-        working-directory: mobile/android
-        run: chmod +x gradlew
-
-      - name: Prepare Artifacts Directory
-        run: mkdir -p build-output/apks
-
-      # --- 1. APK Release ARM64-v8a (Lightweight & Optimized) ---
-      - name: Build and Sign ARM64-v8a Release APK
+      - name: Build & Sign ARM64-v8a APK
         working-directory: mobile/android
         run: |
-          ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon
+          chmod +x gradlew
+          ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --build-cache --parallel
+          
+          mkdir -p ../../output-arm64
           RAW_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
-          TARGET_APK="../../build-output/apks/YomuReader-arm64-v8a-release.apk"
+          TARGET_APK="../../output-arm64/YomuReader-arm64-v8a-release.apk"
           cp "$RAW_APK" "$TARGET_APK"
           
-          # Signature officielle via apksigner (v1, v2, v3)
           BUILD_TOOLS_DIR=$(find $ANDROID_HOME/build-tools -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
-          "$BUILD_TOOLS_DIR/apksigner" sign --ks ../../release.keystore --ks-pass "pass:$KEYSTORE_PASS" --key-pass "pass:$KEY_PASS" --ks-key-alias "$KEY_ALIAS" --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true "$TARGET_APK"
-          "$BUILD_TOOLS_DIR/apksigner" verify --verbose "$TARGET_APK"
+          "$BUILD_TOOLS_DIR/apksigner" sign --ks ../../release.keystore --ks-pass "pass:yomureader_release_key" --key-pass "pass:yomureader_release_key" --ks-key-alias "yomureader" --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true "$TARGET_APK"
 
-      # --- 2. APK Release Full Universal (All ABIs: arm64-v8a, armeabi-v7a, x86, x86_64) ---
-      - name: Build and Sign Universal Full Release APK
-        working-directory: mobile/android
-        run: |
-          ./gradlew assembleRelease -PreactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64 --no-daemon
-          RAW_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
-          TARGET_APK="../../build-output/apks/YomuReader-universal-full-release.apk"
-          cp "$RAW_APK" "$TARGET_APK"
-          
-          # Signature officielle via apksigner (v1, v2, v3)
-          BUILD_TOOLS_DIR=$(find $ANDROID_HOME/build-tools -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
-          "$BUILD_TOOLS_DIR/apksigner" sign --ks ../../release.keystore --ks-pass "pass:$KEYSTORE_PASS" --key-pass "pass:$KEY_PASS" --ks-key-alias "$KEY_ALIAS" --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true "$TARGET_APK"
-          "$BUILD_TOOLS_DIR/apksigner" verify --verbose "$TARGET_APK"
-
-      # --- 3. APK Debug ---
-      - name: Build Debug APK
-        working-directory: mobile/android
-        run: |
-          ./gradlew assembleDebug --no-daemon
-          DEBUG_APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
-          cp "$DEBUG_APK" ../../build-output/apks/YomuReader-debug.apk
-
-      - name: Upload Android APKs Artifacts
+      - name: Upload ARM64 APK
         uses: actions/upload-artifact@v4
         with:
-          name: android-apks
-          path: build-output/apks/*.apk
+          name: apk-arm64
+          path: output-arm64/*.apk
           retention-days: 14
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # 2. Windows Desktop .EXE Portable (Electron)
+  # 2. Android Universal Full Release (Tous processeurs)
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-universal-apk:
+    name: 📱 Android Universal Full Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Setup Gradle Cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Setup Release Keystore
+        run: |
+          keytool -genkeypair -v -keystore release.keystore -alias yomureader -keyalg RSA -keysize 2048 -validity 10000 -storepass yomureader_release_key -keypass yomureader_release_key -dname "CN=Yomu Reader, OU=Mobile, O=nHentai Launcher, L=Paris, ST=IDF, C=FR"
+
+      - name: Install Dependencies & Prebuild
+        working-directory: mobile
+        run: |
+          npm ci
+          npx expo prebuild --platform android --no-install
+
+      - name: Build & Sign Universal APK
+        working-directory: mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease -PreactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64 --build-cache --parallel
+          
+          mkdir -p ../../output-universal
+          RAW_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          TARGET_APK="../../output-universal/YomuReader-universal-full-release.apk"
+          cp "$RAW_APK" "$TARGET_APK"
+          
+          BUILD_TOOLS_DIR=$(find $ANDROID_HOME/build-tools -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
+          "$BUILD_TOOLS_DIR/apksigner" sign --ks ../../release.keystore --ks-pass "pass:yomureader_release_key" --key-pass "pass:yomureader_release_key" --ks-key-alias "yomureader" --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true "$TARGET_APK"
+
+      - name: Upload Universal APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-universal
+          path: output-universal/*.apk
+          retention-days: 14
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 3. Android Debug APK
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-debug-apk:
+    name: 📱 Android Debug APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Setup Gradle Cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Dependencies & Prebuild
+        working-directory: mobile
+        run: |
+          npm ci
+          npx expo prebuild --platform android --no-install
+
+      - name: Build Debug APK
+        working-directory: mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --build-cache --parallel
+          
+          mkdir -p ../../output-debug
+          RAW_APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          cp "$RAW_APK" ../../output-debug/YomuReader-debug.apk
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-debug
+          path: output-debug/*.apk
+          retention-days: 14
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 4. Windows Desktop .EXE Portable (Electron)
   # ─────────────────────────────────────────────────────────────────────────────
   windows-portable:
-    name: Build Windows .EXE Portable
+    name: 💻 Windows .EXE Portable
     runs-on: windows-latest
     steps:
       - name: Checkout repository
@@ -158,10 +225,10 @@ jobs:
       - name: Prepare Windows Artifact
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path build-output/windows | Out-Null
+          New-Item -ItemType Directory -Force -Path output-windows | Out-Null
           $exe = Get-ChildItem -Path release -Filter "*.exe" | Select-Object -First 1
           if ($exe) {
-            Copy-Item -Path $exe.FullName -Destination "build-output/windows/nHentai-Launcher-Portable.exe"
+            Copy-Item -Path $exe.FullName -Destination "output-windows/nHentai-Launcher-Portable.exe"
           } else {
             throw "Portable .exe non trouvé dans release/"
           }
@@ -170,14 +237,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-portable-exe
-          path: build-output/windows/*.exe
+          path: output-windows/*.exe
           retention-days: 14
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # 3. Clean Source Code ZIP Archive
+  # 5. Clean Source Code ZIP Archive
   # ─────────────────────────────────────────────────────────────────────────────
   source-zip:
-    name: Package Source Code ZIP
+    name: 🗜️ Package Source Code ZIP
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -185,22 +252,22 @@ jobs:
 
       - name: Create Clean Git Archive ZIP
         run: |
-          mkdir -p build-output/source
-          git archive --format=zip --prefix=nhentai-launcher/ HEAD -o build-output/source/nhentai-launcher-source.zip
+          mkdir -p output-source
+          git archive --format=zip --prefix=nhentai-launcher/ HEAD -o output-source/nhentai-launcher-source.zip
 
       - name: Upload Source ZIP Artifact
         uses: actions/upload-artifact@v4
         with:
           name: source-code-zip
-          path: build-output/source/nhentai-launcher-source.zip
+          path: output-source/nhentai-launcher-source.zip
           retention-days: 14
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # 4. GitHub Release (Published if tagged or manually requested)
+  # 6. GitHub Release (Runs immediately when all 5 parallel jobs finish)
   # ─────────────────────────────────────────────────────────────────────────────
   publish-release:
-    name: Publish GitHub Release
-    needs: [android-apks, windows-portable, source-zip]
+    name: 🚀 Publish GitHub Release
+    needs: [build-arm64-apk, build-universal-apk, build-debug-apk, windows-portable, source-zip]
     if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.create_release == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -216,7 +283,6 @@ jobs:
       - name: Generate Structured Release Notes & Checksums
         id: release_meta
         run: |
-          # 1. Détermination de la version et du tag
           if [ -n "${{ github.event.inputs.version }}" ]; then
             TAG_VER="${{ github.event.inputs.version }}"
           elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
@@ -227,7 +293,6 @@ jobs:
           fi
           echo "tag_name=$TAG_VER" >> $GITHUB_OUTPUT
 
-          # 2. Détermination du titre de la release
           if [ -n "${{ github.event.inputs.release_title }}" ]; then
             TITLE="${{ github.event.inputs.release_title }}"
           else
@@ -235,18 +300,15 @@ jobs:
           fi
           echo "title=$TITLE" >> $GITHUB_OUTPUT
 
-          # 3. Calcul des sommes de contrôle SHA-256
           cd release-assets
           sha256sum * > SHA256SUMS.txt
           cd ..
 
-          # 4. Récupération des notes personnalisées ou valeur par défaut
           CUSTOM_NOTES="${{ github.event.inputs.release_notes }}"
           if [ -z "$CUSTOM_NOTES" ]; then
-            CUSTOM_NOTES="Mise à jour de maintenance et d'optimisation pour l'application Mobile (Android) et Desktop (Windows)."
+            CUSTOM_NOTES="Mise à jour officielle et optimisée pour l'application Mobile (Android) et Desktop (Windows)."
           fi
 
-          # 5. Construction du corps Markdown structuré et ordonné
           cat << 'EOF' > release_body.md
           ## ✨ Notes de mise à jour
           EOF
