@@ -7,8 +7,10 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const testEntries = ["engine.test.ts"];
 try {
   const fs = await import("node:fs");
-  if (fs.existsSync(path.join(here, "resumable.test.ts"))) {
-    testEntries.push("resumable.test.ts");
+  for (const extra of ["resumable.test.ts", "sourcesHtml.test.ts", "sources.test.ts"]) {
+    if (fs.existsSync(path.join(here, extra))) {
+      testEntries.push(extra);
+    }
   }
 } catch {}
 
