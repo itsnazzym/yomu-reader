@@ -34,8 +34,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { useTheme } from "@/lib/ThemeContext";
 import { useAccount, UserComment } from "@/lib/accountStore";
-import { getFavorites } from "@/lib/favoritesStore";
-import { Gallery } from "@/lib/api/types";
+import { useFavorites } from "@/lib/favoritesStore";
 import { CardPressable } from "@/components/ui/CardPressable";
 import { IconBtn } from "@/components/ui/IconBtn";
 import { SignInModal } from "@/components/modals/SignInModal";
@@ -121,13 +120,13 @@ export default function ProfileScreen() {
     syncFavorites,
     logout,
   } = useAccount();
+  const { favorites } = useFavorites();
 
   const [refreshing, setRefreshing] = useState(false);
   const [isSignInOpen, setIsSignInOpen] = useState(false);
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const [newAvatarInput, setNewAvatarInput] = useState("");
   const [savingAvatar, setSavingAvatar] = useState(false);
-  const [favorites, setFavorites] = useState<Gallery[]>([]);
   const [avatarCandidateIndex, setAvatarCandidateIndex] = useState(0);
 
   // Password change form state
@@ -139,7 +138,6 @@ export default function ProfileScreen() {
   const [syncingFavs, setSyncingFavs] = useState(false);
 
   const loadData = useCallback(async () => {
-    setFavorites(getFavorites());
     if (isLoggedIn) {
       setRefreshing(true);
       try {
@@ -185,8 +183,11 @@ export default function ProfileScreen() {
       } else {
         Alert.alert("Échec", res.error || "Impossible de changer le mot de passe.");
       }
-    } catch (err: any) {
-      Alert.alert("Erreur", err?.message || "Une erreur est survenue.");
+    } catch (err: unknown) {
+      Alert.alert(
+        "Erreur",
+        err instanceof Error ? err.message : "Une erreur est survenue."
+      );
     } finally {
       setChangingPassword(false);
     }
@@ -220,7 +221,6 @@ export default function ProfileScreen() {
       const res = await syncFavorites();
       if (res.success) {
         Alert.alert("Cloud Synchronisé", `${res.count} favoris mis à jour.`);
-        setFavorites(getFavorites());
       } else {
         Alert.alert("Erreur", res.error || "Échec de synchronisation.");
       }
