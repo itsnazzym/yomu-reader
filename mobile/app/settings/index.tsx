@@ -38,6 +38,7 @@ import {
   IconUpload,
 } from "@tabler/icons-react-native";
 import * as Clipboard from "expo-clipboard";
+import { Image } from "expo-image";
 import { exportBackupToFile, restoreBackupFromJson } from "@/lib/backupStore";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -54,10 +55,13 @@ import { useBlacklist } from "@/lib/blacklistFilter";
 import { useAccount } from "@/lib/accountStore";
 import { useReaderSettings } from "@/lib/readerSettingsStore";
 import { useOnboarding } from "@/lib/useOnboarding";
+import { useDownloadSettings } from "@/lib/downloadSettingsStore";
+import { requestDownloadDirectory } from "@/lib/safCopy";
 import { getCacheSize, clearAppCache, formatBytes } from "@/lib/cacheManager";
 import { clearHistory } from "@/lib/historyStore";
 import { SignInModal } from "@/components/modals/SignInModal";
 import SmartImage from "@/components/SmartImage";
+import { resolveAvatarUrl } from "@/app/profile";
 
 const PREVIEW_SAMPLE_MANGA = [
   {
@@ -164,6 +168,13 @@ export default function SettingsScreen() {
     getDownloadQueueSnapshot
   );
 
+  const {
+    settings: downloadSettings,
+    folderLabel,
+    sandboxPath,
+    updateSettings: updateDownloadFolder,
+    resetFolder,
+  } = useDownloadSettings();
   const { tags: blacklistedTags, addTag, removeTag } = useBlacklist();
   const [newTagInput, setNewTagInput] = useState("");
 
@@ -327,10 +338,18 @@ export default function SettingsScreen() {
               style={[styles.accountHeroCard, { borderColor: "#28283a" }]}
             >
               <View style={styles.accountHeroRow}>
-                <View style={[styles.avatarBox, { backgroundColor: colors.accent }]}>
-                  <Text style={styles.avatarInitial}>
-                    {(session.username || "M").charAt(0).toUpperCase()}
-                  </Text>
+                <View style={[styles.avatarBox, { backgroundColor: colors.accent, overflow: "hidden" }]}>
+                  {session.profile?.avatar_url ? (
+                    <Image
+                      source={{ uri: resolveAvatarUrl(session.profile.avatar_url, session.username) }}
+                      style={styles.avatarImg}
+                      contentFit="cover"
+                    />
+                  ) : (
+                    <Text style={styles.avatarInitial}>
+                      {(session.username || "M").charAt(0).toUpperCase()}
+                    </Text>
+                  )}
                 </View>
                 <View style={{ flex: 1 }}>
                   <View style={styles.accountNameRow}>
@@ -833,6 +852,48 @@ export default function SettingsScreen() {
 
             <View style={styles.divider} />
 
+            <View style={{ gap: 6, paddingVertical: 4 }}>
+              <Text style={styles.rowToggleTitle}>Dossier de téléchargement</Text>
+              <Text style={styles.rowToggleSub}>
+                {folderLabel}
+                {"\n"}
+                Lecture hors-ligne : {sandboxPath || "NHAppAndroid (stockage app)"}
+                {downloadSettings.mode === "saf"
+                  ? "\nUne copie est aussi envoyée vers le dossier choisi."
+                  : "\nAucun dossier public n'est requis : l'app écrit dans son stockage privé."}
+              </Text>
+              <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
+                <CardPressable
+                  radius={10}
+                  onPress={async () => {
+                    const uri = await requestDownloadDirectory();
+                    if (uri) {
+                      await updateDownloadFolder({
+                        mode: "saf",
+                        safDirectoryUri: uri,
+                        folderPrompted: true,
+                        rememberFolder: true,
+                      });
+                    }
+                  }}
+                  style={[styles.linkRow, { flex: 1 }]}
+                >
+                  <IconFolder size={16} color={colors.accent} stroke={2} />
+                  <Text style={styles.linkRowText}>Modifier</Text>
+                </CardPressable>
+                <CardPressable
+                  radius={10}
+                  onPress={() => void resetFolder()}
+                  style={[styles.linkRow, { flex: 1 }]}
+                >
+                  <IconRefresh size={16} color={colors.sub} stroke={2} />
+                  <Text style={[styles.linkRowText, { color: colors.sub }]}>Réinitialiser</Text>
+                </CardPressable>
+              </View>
+            </View>
+
+            <View style={styles.divider} />
+
             <CardPressable
               radius={10}
               onPress={() => router.push("/downloaded")}
@@ -1225,6 +1286,10 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
+  },
+  avatarImg: {
+    width: "100%",
+    height: "100%",
   },
   avatarInitial: {
     fontSize: 18,

@@ -4,7 +4,7 @@ import {
   View,
   Text,
   FlatList,
-  Pressable,
+  TouchableOpacity,
   ActivityIndicator,
   useWindowDimensions,
   StatusBar,
@@ -21,8 +21,9 @@ import {
   IconAlertCircle,
   IconEye,
   IconColumns,
+  IconSettings,
 } from "@tabler/icons-react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import PagerView from "react-native-pager-view";
 import { useTheme } from "@/lib/ThemeContext";
@@ -36,7 +37,11 @@ import { recordReadingProgress } from "@/lib/historyStore";
 import { QuickShareModal } from "@/components/modals/QuickShareModal";
 import { useReaderSettings } from "@/lib/readerSettingsStore";
 import { ThumbRail } from "@/components/reader/ThumbRail";
+import { ZoomablePage } from "@/components/reader/ZoomablePage";
+import { ReaderSettingsPanel } from "@/components/reader/ReaderSettingsPanel";
 import { lightTap } from "@/lib/haptics";
+import { useDrawer } from "@/lib/DrawerContext";
+import { buildReaderSpreads, pageToSpreadIndex, spreadToPage } from "@/lib/readerSpreads";
 
 export function parseReaderInitialPage(value?: string): number {
   if (!value) return 0;
@@ -56,6 +61,7 @@ export default function ReaderScreen() {
   const { width, height } = useWindowDimensions();
   const { colors } = useTheme();
   const { settings: readerSettings, updateSettings } = useReaderSettings();
+  const { setSwipeEnabled } = useDrawer();
 
   const [gallery, setGallery] = useState<Gallery | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,10 +77,13 @@ export default function ReaderScreen() {
     readerSettings.defaultDirection || "rtl"
   );
   const [isShareOpen, setIsShareOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [isZoomed, setIsZoomed] = useState(false);
+  const [zoomResetEpoch, setZoomResetEpoch] = useState(0);
 
   const flatListRef = useRef<FlatList>(null);
   const pagerRef = useRef<PagerView>(null);
-  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isLandscape = width > height;
   const isDualPage = Boolean(
@@ -173,21 +182,30 @@ export default function ReaderScreen() {
   }, []);
 
   const handlePageChange = useCallback(
-    (nextPage: number) => {
+    (nextPage: number, resetZoom = false) => {
       const clamped = Math.max(0, Math.min(nextPage, totalPages - 1));
       setCurrentPage(clamped);
+      if (resetZoom && readerSettings.resetZoomOnPageChange) {
+        setIsZoomed(false);
+        setZoomResetEpoch((epoch) => epoch + 1);
+      }
 
       if (gallery) {
         recordReadingProgress(gallery, clamped, totalPages);
       }
     },
-    [gallery, totalPages]
+    [gallery, totalPages, readerSettings.resetZoomOnPageChange]
+  );
+
+  const dualPageSpreads = useMemo(
+    () => (isDualPage ? buildReaderSpreads(pages, readingDirection) : []),
+    [pages, isDualPage, readingDirection]
   );
 
   const jumpToPage = useCallback(
     (index: number) => {
       const target = Math.max(0, Math.min(index, totalPages - 1));
-      handlePageChange(target);
+      handlePageChange(target, true);
 
       if (readMode === "webtoon") {
         flatListRef.current?.scrollToIndex({
@@ -196,47 +214,68 @@ export default function ReaderScreen() {
           viewPosition: 0,
         });
       } else {
-        const pagerTarget = isDualPage ? Math.floor(target / 2) : target;
+        const pagerTarget = isDualPage
+          ? pageToSpreadIndex(dualPageSpreads, target)
+          : target;
         pagerRef.current?.setPage(pagerTarget);
       }
     },
-    [readMode, handlePageChange, totalPages, isDualPage]
+    [readMode, handlePageChange, totalPages, isDualPage, dualPageSpreads]
   );
 
-  const handleReaderTouchStart = (e: any) => {
-    touchStartRef.current = {
-      x: e.nativeEvent.locationX,
-      y: e.nativeEvent.locationY,
-      time: Date.now(),
-    };
-  };
-
-  const handleReaderTouchEnd = (e: any) => {
-    if (!touchStartRef.current) return;
-    const dx = Math.abs(e.nativeEvent.locationX - touchStartRef.current.x);
-    const dy = Math.abs(e.nativeEvent.locationY - touchStartRef.current.y);
-    const dt = Date.now() - touchStartRef.current.time;
-    touchStartRef.current = null;
-
-    if (dx < 12 && dy < 12 && dt < 300) {
-      const tapX = e.nativeEvent.locationX;
+  const handleReaderTap = useCallback(
+    (tapX: number) => {
+      if (isZoomed) {
+        lightTap();
+        setControlsVisible((visible) => !visible);
+        return;
+      }
       const leftZone = width * 0.28;
       const rightZone = width * 0.72;
-
       if (readerSettings.tapToTurnPage && readMode === "pager") {
         if (tapX < leftZone) {
           jumpToPage(readingDirection === "rtl" ? currentPage + 1 : currentPage - 1);
           return;
-        } else if (tapX > rightZone) {
+        }
+        if (tapX > rightZone) {
           jumpToPage(readingDirection === "rtl" ? currentPage - 1 : currentPage + 1);
           return;
         }
       }
-
       lightTap();
-      setControlsVisible((v) => !v);
+      setControlsVisible((visible) => !visible);
+    },
+    [
+      isZoomed,
+      width,
+      readerSettings.tapToTurnPage,
+      readMode,
+      jumpToPage,
+      readingDirection,
+      currentPage,
+    ]
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      setSwipeEnabled(false);
+      return () => setSwipeEnabled(true);
+    }, [setSwipeEnabled])
+  );
+
+  useEffect(() => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
     }
-  };
+    if (!readerSettings.autoHideControls || !controlsVisible || settingsOpen) return;
+    hideTimerRef.current = setTimeout(() => {
+      setControlsVisible(false);
+    }, 4000);
+    return () => {
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    };
+  }, [controlsVisible, readerSettings.autoHideControls, settingsOpen, currentPage]);
 
   const cycleFilter = () => {
     lightTap();
@@ -257,26 +296,6 @@ export default function ReaderScreen() {
     updateSettings({ dualPageMode: !readerSettings.dualPageMode });
   };
 
-  // Group pages for dual-page mode
-  const dualPageSpreads = useMemo(() => {
-    if (!isDualPage) return [];
-    const spreads: { left: number; right: number | null }[] = [];
-    for (let i = 0; i < pages.length; i += 2) {
-      if (readingDirection === "rtl") {
-        spreads.push({
-          right: i,
-          left: i + 1 < pages.length ? i + 1 : null,
-        });
-      } else {
-        spreads.push({
-          left: i,
-          right: i + 1 < pages.length ? i + 1 : null,
-        });
-      }
-    }
-    return spreads;
-  }, [pages, isDualPage, readingDirection]);
-
   if (loading) {
     return (
       <View style={[styles.centerContainer, { backgroundColor: "#000" }]}>
@@ -295,12 +314,13 @@ export default function ReaderScreen() {
         <Text style={[styles.loadingText, { color: "#fff" }]}>
           {error || "Galerie introuvable"}
         </Text>
-        <Pressable
+        <TouchableOpacity
+          activeOpacity={0.85}
           onPress={() => router.back()}
           style={[styles.errorBackBtn, { backgroundColor: colors.accent }]}
         >
           <Text style={styles.errorBackText}>Retour</Text>
-        </Pressable>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -317,20 +337,14 @@ export default function ReaderScreen() {
       <StatusBar hidden={isImmersive} animated />
 
       {/* Reader Main Content */}
-      <View
-        style={styles.readerArea}
-        onTouchStart={handleReaderTouchStart}
-        onTouchEnd={handleReaderTouchEnd}
-        onTouchCancel={() => {
-          touchStartRef.current = null;
-        }}
-      >
+      <View style={styles.readerArea}>
         {readMode === "webtoon" ? (
           <FlatList
             ref={flatListRef}
             data={pages}
             keyExtractor={(_, idx) => String(idx)}
             initialScrollIndex={currentPage > 0 ? currentPage : undefined}
+            scrollEnabled={!isZoomed}
             renderItem={({ item, index }) => {
               const imgUrl = item.url || resolvePageUrl(gallery.media_id, index, item);
               const imgRatio = item.w && item.h ? item.w / item.h : 0.707;
@@ -338,12 +352,21 @@ export default function ReaderScreen() {
 
               return (
                 <View style={[styles.webtoonPageWrap, { width, height: imgHeight }]}>
-                  <SmartImage
-                    uri={imgUrl}
-                    style={{ width, height: imgHeight }}
-                    contentFit="contain"
-                    priority={index === currentPage ? "high" : "normal"}
-                  />
+                  <ZoomablePage
+                    enabled
+                    pinchEnabled={readerSettings.pinchToZoom}
+                    doubleTapScale={readerSettings.doubleTapZoom}
+                    resetToken={`${id}-${index}-${zoomResetEpoch}`}
+                    onZoomChange={(scale) => setIsZoomed(scale > 1.02)}
+                    onSingleTap={(x) => handleReaderTap(x)}
+                  >
+                    <SmartImage
+                      uri={imgUrl}
+                      style={{ width, height: imgHeight }}
+                      contentFit={readerSettings.fitMode === "height" ? "cover" : "contain"}
+                      priority={index === currentPage ? "high" : "normal"}
+                    />
+                  </ZoomablePage>
                   <View style={styles.webtoonPageNumber}>
                     <Text style={styles.pageNumberText}>
                       {index + 1} / {totalPages}
@@ -362,9 +385,12 @@ export default function ReaderScreen() {
           <PagerView
             ref={pagerRef}
             style={StyleSheet.absoluteFillObject}
-            initialPage={Math.floor(currentPage / 2)}
+            initialPage={pageToSpreadIndex(dualPageSpreads, currentPage)}
             layoutDirection={readingDirection}
-            onPageSelected={(e) => handlePageChange(e.nativeEvent.position * 2)}
+            scrollEnabled={!isZoomed}
+            onPageSelected={(e) =>
+              handlePageChange(spreadToPage(dualPageSpreads, e.nativeEvent.position), true)
+            }
           >
             {dualPageSpreads.map((spread, sIdx) => {
               const leftUrl =
@@ -380,24 +406,34 @@ export default function ReaderScreen() {
 
               return (
                 <View key={sIdx} style={styles.dualPageSpread}>
-                  <View style={styles.dualPageHalf}>
-                    {leftUrl ? (
-                      <SmartImage
-                        uri={leftUrl}
-                        style={{ width: width / 2, height }}
-                        contentFit="contain"
-                      />
-                    ) : null}
-                  </View>
-                  <View style={styles.dualPageHalf}>
-                    {rightUrl ? (
-                      <SmartImage
-                        uri={rightUrl}
-                        style={{ width: width / 2, height }}
-                        contentFit="contain"
-                      />
-                    ) : null}
-                  </View>
+                  <ZoomablePage
+                    pinchEnabled={readerSettings.pinchToZoom}
+                    doubleTapScale={readerSettings.doubleTapZoom}
+                    resetToken={`${id}-spread-${sIdx}-${zoomResetEpoch}`}
+                    onZoomChange={(scale) => setIsZoomed(scale > 1.02)}
+                    onSingleTap={(x) => handleReaderTap(x)}
+                  >
+                    <View style={styles.dualPageSpread}>
+                      <View style={styles.dualPageHalf}>
+                        {leftUrl ? (
+                          <SmartImage
+                            uri={leftUrl}
+                            style={{ width: width / 2, height }}
+                            contentFit="contain"
+                          />
+                        ) : null}
+                      </View>
+                      <View style={styles.dualPageHalf}>
+                        {rightUrl ? (
+                          <SmartImage
+                            uri={rightUrl}
+                            style={{ width: width / 2, height }}
+                            contentFit="contain"
+                          />
+                        ) : null}
+                      </View>
+                    </View>
+                  </ZoomablePage>
                 </View>
               );
             })}
@@ -408,18 +444,27 @@ export default function ReaderScreen() {
             style={StyleSheet.absoluteFillObject}
             initialPage={currentPage}
             layoutDirection={readingDirection}
-            onPageSelected={(e) => handlePageChange(e.nativeEvent.position)}
+            scrollEnabled={!isZoomed}
+            onPageSelected={(e) => handlePageChange(e.nativeEvent.position, true)}
           >
             {pages.map((p, idx) => {
               const imgUrl = p.url || resolvePageUrl(gallery.media_id, idx, p);
               return (
                 <View key={idx} style={styles.pagerPageWrap}>
-                  <SmartImage
-                    uri={imgUrl}
-                    style={{ width, height }}
-                    contentFit="contain"
-                    priority={idx === currentPage ? "high" : "normal"}
-                  />
+                  <ZoomablePage
+                    pinchEnabled={readerSettings.pinchToZoom}
+                    doubleTapScale={readerSettings.doubleTapZoom}
+                    resetToken={`${id}-page-${idx}-${zoomResetEpoch}`}
+                    onZoomChange={(scale) => setIsZoomed(scale > 1.02)}
+                    onSingleTap={(x) => handleReaderTap(x)}
+                  >
+                    <SmartImage
+                      uri={imgUrl}
+                      style={{ width, height }}
+                      contentFit={readerSettings.fitMode === "height" ? "cover" : "contain"}
+                      priority={idx === currentPage ? "high" : "normal"}
+                    />
+                  </ZoomablePage>
                 </View>
               );
             })}
@@ -435,6 +480,15 @@ export default function ReaderScreen() {
         )}
         {readerSettings.colorFilter === "invert" && (
           <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, styles.invertOverlay]} />
+        )}
+        {readerSettings.readerBrightness < 0.99 && (
+          <View
+            pointerEvents="none"
+            style={[
+              StyleSheet.absoluteFillObject,
+              { backgroundColor: `rgba(0,0,0,${1 - readerSettings.readerBrightness})` },
+            ]}
+          />
         )}
       </View>
 
@@ -513,6 +567,14 @@ export default function ReaderScreen() {
               </IconBtn>
             )}
 
+            <IconBtn
+              onPress={() => setSettingsOpen(true)}
+              size={40}
+              accessibilityLabel="Réglages du lecteur"
+            >
+              <IconSettings size={20} color="#fff" stroke={2} />
+            </IconBtn>
+
             {/* Share */}
             <IconBtn onPress={() => setIsShareOpen(true)} size={40}>
               <IconShare size={20} color={colors.txt} stroke={2} />
@@ -522,7 +584,7 @@ export default function ReaderScreen() {
       )}
 
       {/* Floating ThumbRail Filmstrip */}
-      {controlsVisible && (
+      {controlsVisible && readerSettings.showThumbRail && (
         <ThumbRail
           pages={pages}
           currentPage={currentPage}
@@ -561,6 +623,15 @@ export default function ReaderScreen() {
           </View>
         </View>
       )}
+
+      <ReaderSettingsPanel
+        visible={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        readMode={readMode}
+        readingDirection={readingDirection}
+        onReadModeChange={setReadMode}
+        onDirectionChange={setReadingDirection}
+      />
 
       <QuickShareModal
         visible={isShareOpen}

@@ -295,7 +295,7 @@ export async function fetchUserProfile(): Promise<UserProfile | null> {
         id: me.id,
         username: me.username,
         email: me.email,
-        avatar_url: me.avatar_url,
+        avatar_url: me.avatar_url || sessionState.profile?.avatar_url,
         num_favorites: sessionState.cloudFavoritesCount || 0,
       };
 
@@ -339,13 +339,6 @@ export async function updateUserAvatar(
   avatarUrl: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    await getAuthStorageReady();
-    if (!(await hasSession())) {
-      return { success: false, error: "Vous devez être connecté." };
-    }
-
-    await updateProfile({ avatar_url: avatarUrl });
-
     const updatedProfile: UserProfile = {
       ...(sessionState.profile || { username: sessionState.username || "User" }),
       avatar_url: avatarUrl,
@@ -354,6 +347,16 @@ export async function updateUserAvatar(
     await saveAccountSession({
       profile: updatedProfile,
     });
+
+    // Try to sync with remote server if it is an HTTP URL
+    if (sessionState.isLoggedIn && /^https?:\/\//i.test(avatarUrl)) {
+      try {
+        await getAuthStorageReady();
+        if (await hasSession()) {
+          await updateProfile({ avatar_url: avatarUrl }).catch(() => {});
+        }
+      } catch {}
+    }
 
     return { success: true };
   } catch (err: any) {

@@ -5,6 +5,9 @@ import { Gallery } from "./api/types";
 import { makeLocalId, sanitizeTitle, writeLocalManifest } from "./localLibrary";
 import { decodeBase64Header, isCompleteDownload } from "./imageIntegrity";
 import { createInitOnce, createWriteQueue } from "./persistQueue";
+import { getDownloadSettings } from "./downloadSettingsStore";
+import { copyLocalGalleryToSaf } from "./safCopy";
+import { requestNotificationPermissions } from "./permissions";
 
 const QUEUE_KEY = "@nhentai_download_queue";
 const CONCURRENCY_KEY = "@nhentai_download_concurrency";
@@ -109,9 +112,15 @@ export function setMaxConcurrent(val: number) {
   processQueue();
 }
 
+let notificationAsked = false;
+
 export function enqueueGalleries(
   galleries: { id: number; title: string; cover?: string }[]
 ) {
+  if (!notificationAsked) {
+    notificationAsked = true;
+    void requestNotificationPermissions();
+  }
   const existingIds = new Set(state.items.map((i) => i.id));
   const newItems: QueueItem[] = [];
 
@@ -399,6 +408,15 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
       downloadedPages: total,
       localId,
     });
+
+    const downloadSettings = getDownloadSettings();
+    if (downloadSettings.mode === "saf" && downloadSettings.safDirectoryUri) {
+      try {
+        await copyLocalGalleryToSaf(localId, downloadSettings.safDirectoryUri);
+      } catch (copyError) {
+        console.warn("[downloadQueue] SAF copy failed, sandbox copy kept:", copyError);
+      }
+    }
   } catch (err: any) {
     if (err?.message === "__PAUSED__") {
       updateItem(item.id, { status: "paused" });

@@ -2,6 +2,7 @@ const {
   createRunOncePlugin,
   withAppBuildGradle,
   withMainApplication,
+  withGradleProperties,
 } = require("@expo/config-plugins");
 
 const DOH_DEPENDENCY =
@@ -73,7 +74,37 @@ const DOH_INSTALL = `
     })
 `;
 
+function setGradleProperty(properties, key, value) {
+  const existing = properties.find(
+    (item) => item.type === "property" && item.key === key
+  );
+  if (existing) {
+    existing.value = value;
+  } else {
+    properties.push({
+      type: "property",
+      key,
+      value,
+    });
+  }
+}
+
 function withAndroidDoh(config) {
+  // 1. Configure gradle.properties for arm64-v8a target and high-speed build
+  config = withGradleProperties(config, (modConfig) => {
+    setGradleProperty(modConfig.modResults, "reactNativeArchitectures", "arm64-v8a");
+    setGradleProperty(modConfig.modResults, "org.gradle.parallel", "true");
+    setGradleProperty(modConfig.modResults, "org.gradle.caching", "true");
+    setGradleProperty(
+      modConfig.modResults,
+      "org.gradle.jvmargs",
+      "-Xmx4096m -XX:MaxMetaspaceSize=1024m -XX:+UseG1GC"
+    );
+    setGradleProperty(modConfig.modResults, "android.enablePngCrunchInReleaseBuilds", "true");
+    return modConfig;
+  });
+
+  // 2. Configure app/build.gradle with DoH dependency and NDK ABI filter
   config = withAppBuildGradle(config, (modConfig) => {
     if (!modConfig.modResults.contents.includes("okhttp-dnsoverhttps")) {
       const marker = "dependencies {";
@@ -85,6 +116,17 @@ function withAndroidDoh(config) {
         `${marker}\n    ${DOH_DEPENDENCY}`
       );
     }
+
+    if (!modConfig.modResults.contents.includes('abiFilters "arm64-v8a"')) {
+      const defaultConfMarker = 'versionName "1.0.0"';
+      if (modConfig.modResults.contents.includes(defaultConfMarker)) {
+        modConfig.modResults.contents = modConfig.modResults.contents.replace(
+          defaultConfMarker,
+          `${defaultConfMarker}\n        ndk {\n            abiFilters "arm64-v8a"\n        }`
+        );
+      }
+    }
+
     return modConfig;
   });
 

@@ -8,6 +8,7 @@ import {
   Animated,
 } from "react-native";
 import { useTheme } from "@/lib/ThemeContext";
+import { useReduceMotion } from "@/lib/reduceMotion";
 
 export interface IconBtnProps
   extends Pick<
@@ -35,11 +36,16 @@ export function IconBtn({
   hitSlop = 4,
 }: IconBtnProps) {
   const { colors } = useTheme();
+  const reduceMotion = useReduceMotion();
   const effectiveHighlightColor = highlightColor ?? `${colors.accent}2E`;
   const scale = useRef(new Animated.Value(1)).current;
   const bgOpacity = useRef(new Animated.Value(0)).current;
 
   const onPressIn = useCallback(() => {
+    if (reduceMotion) {
+      bgOpacity.setValue(1);
+      return;
+    }
     Animated.parallel([
       Animated.spring(scale, {
         toValue: 0.88,
@@ -53,9 +59,14 @@ export function IconBtn({
         useNativeDriver: true,
       }),
     ]).start();
-  }, [scale, bgOpacity]);
+  }, [scale, bgOpacity, reduceMotion]);
 
   const onPressOut = useCallback(() => {
+    if (reduceMotion) {
+      bgOpacity.setValue(0);
+      scale.setValue(1);
+      return;
+    }
     Animated.parallel([
       Animated.spring(scale, {
         toValue: 1,
@@ -69,7 +80,7 @@ export function IconBtn({
         useNativeDriver: true,
       }),
     ]).start();
-  }, [scale, bgOpacity]);
+  }, [scale, bgOpacity, reduceMotion]);
 
   return (
     <TouchableOpacity

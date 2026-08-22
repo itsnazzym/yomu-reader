@@ -68,8 +68,20 @@ export async function searchGalleries(
       cookies: cookies || null,
     });
   }
-  console.warn("Desktop environment not detected, using demo data");
-  return mockSearchResponse(query, page);
+  try {
+    const sortParam = sort && sort !== "date" ? `&sort=${sort}` : "";
+    const queryParam = query.trim() ? `query=${encodeURIComponent(query)}&` : "";
+    const url = query.trim()
+      ? `http://127.0.0.1:8787/api/galleries/search?${queryParam}page=${page}${sortParam}`
+      : `http://127.0.0.1:8787/api/galleries/all?page=${page}`;
+    const res = await fetch(url);
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (e) {
+    console.warn("Direct mirror request failed:", e);
+  }
+  return { result: [], num_pages: 0, per_page: 25 };
 }
 
 const galleryCache = new Map<number, { gallery: Gallery; timestamp: number }>();
@@ -81,14 +93,19 @@ export async function getGallery(id: number, cookies?: string, apiKey?: string):
     return cached.gallery;
   }
 
-  let gallery: Gallery;
+  let gallery: Gallery | null = null;
   if (isElectron() && window.electronAPI) {
     gallery = await window.electronAPI.getGallery({ id, cookies, apiKey });
   } else if (isTauri()) {
     const { invoke } = await import("@tauri-apps/api/core");
     gallery = await invoke<Gallery>("get_gallery", { id, cookies: cookies || null });
   } else {
-    gallery = mockGallery(id);
+    try {
+      const res = await fetch(`http://127.0.0.1:8787/api/gallery/${id}`);
+      if (res.ok) {
+        gallery = await res.json();
+      }
+    } catch {}
   }
 
   if (gallery && gallery.id) {
@@ -97,17 +114,23 @@ export async function getGallery(id: number, cookies?: string, apiKey?: string):
       const oldestKey = galleryCache.keys().next().value;
       if (oldestKey !== undefined) galleryCache.delete(oldestKey);
     }
+    return gallery;
   }
 
-  return gallery;
+  throw new Error(`Galerie #${id} introuvable`);
 }
 
 export async function getRandomGallery(cookies?: string, apiKey?: string): Promise<Gallery> {
   if (isElectron() && window.electronAPI?.getRandomGallery) {
     return await window.electronAPI.getRandomGallery({ cookies, apiKey });
   }
-  const randomId = Math.floor(Math.random() * 400000) + 100000;
-  return mockGallery(randomId);
+  try {
+    const res = await fetch("http://127.0.0.1:8787/api/galleries/random");
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {}
+  throw new Error("Impossible de charger une galerie aléatoire");
 }
 
 export async function getTagsByType(
@@ -451,43 +474,6 @@ export function getGalleryArtist(gallery?: Gallery | null): string {
   if (artistTag && artistTag.name) return artistTag.name;
   const fromTitle = extractArtistFromTitle(gallery.title?.english || gallery.title?.pretty || "");
   return fromTitle || "Unknown Artist";
-}
-
-function mockGallery(id: number): Gallery {
-  return {
-    id,
-    media_id: "2849182",
-    title: {
-      pretty: `Sample Doujinshi #${id}`,
-      english: `[Artist] Sample Doujinshi #${id} [English]`,
-      japanese: `[作家] サンプル同人誌 #${id}`,
-    },
-    images: {
-      cover: { t: "j", w: 350, h: 500 },
-      thumbnail: { t: "j", w: 250, h: 350 },
-      pages: Array.from({ length: 24 }, () => ({ t: "j", w: 1200, h: 1800 })),
-    },
-    num_pages: 24,
-    num_favorites: 1420,
-    upload_date: 1700000000,
-    tags: [
-      { id: 1, type: "artist", name: "matsumoto", url: "/artist/matsumoto/", count: 42 },
-      { id: 2, type: "language", name: "english", url: "/language/english/", count: 120000 },
-      { id: 3, type: "category", name: "doujinshi", url: "/category/doujinshi/", count: 350000 },
-      { id: 4, type: "parody", name: "original", url: "/parody/original/", count: 210000 },
-      { id: 5, type: "tag", name: "sole female", url: "/tag/sole-female/", count: 95000 },
-      { id: 6, type: "tag", name: "sole male", url: "/tag/sole-male/", count: 88000 },
-      { id: 7, type: "tag", name: "stockings", url: "/tag/stockings/", count: 72000 },
-    ],
-  };
-}
-
-function mockSearchResponse(_query: string, page: number): SearchResponse {
-  return {
-    result: Array.from({ length: 12 }, (_, i) => mockGallery(400000 + i + (page - 1) * 12)),
-    num_pages: 5,
-    per_page: 12,
-  };
 }
 
 export async function fetchImageData(

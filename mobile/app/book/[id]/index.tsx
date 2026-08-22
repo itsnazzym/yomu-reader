@@ -26,6 +26,7 @@ import {
   IconChevronRight,
   IconPlayerPlay,
   IconPlus,
+  IconMinus,
 } from "@tabler/icons-react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -43,6 +44,12 @@ import { useTagFavs } from "@/lib/tagFavoritesStore";
 import { enqueueGalleries } from "@/lib/downloadQueueStore";
 import { RelatedRow } from "@/components/RelatedRow";
 import { QuickShareModal } from "@/components/modals/QuickShareModal";
+import { SignInModal } from "@/components/modals/SignInModal";
+import { AuthRequiredModal } from "@/components/modals/AuthRequiredModal";
+import { useAccount } from "@/lib/accountStore";
+import { addFavorite, isFavorited, removeFavorite } from "@/lib/api/v2/galleries";
+import { useHomeSearch } from "@/lib/homeSearchStore";
+import { queryContainsTerm } from "@/lib/searchQuery";
 
 export default function BookDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -53,6 +60,11 @@ export default function BookDetailScreen() {
   const { isFavorite, toggleFavorite } = useFavorites();
   const { history } = useHistory();
   const { isFav: isTagFav, toggleFav: toggleTagFav } = useTagFavs();
+  const { isLoggedIn } = useAccount();
+  const { query: homeQuery, toggleTerm, replaceTerm } = useHomeSearch();
+  const bookmarkScale = useRef(new Animated.Value(1)).current;
+  const heartScale = useRef(new Animated.Value(1)).current;
+  const appendLockRef = useRef(false);
 
   const [gallery, setGallery] = useState<Gallery | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -62,6 +74,12 @@ export default function BookDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  const [authPromptOpen, setAuthPromptOpen] = useState(false);
+  const [signInOpen, setSignInOpen] = useState(false);
+  const [signInMode, setSignInMode] = useState<"login" | "register">("login");
+  const [accountFav, setAccountFav] = useState(false);
+  const [accountFavLoading, setAccountFavLoading] = useState(false);
+  const [appendNotice, setAppendNotice] = useState<string | null>(null);
 
   // Fermeture animée avant navigation (même pattern que le panneau des
   // recommandations) : fondu de l'écran, puis navigation au callback de fin.
@@ -146,20 +164,85 @@ export default function BookDetailScreen() {
     });
   };
 
+  const pulse = (anim: Animated.Value): void => {
+    Animated.sequence([
+      Animated.timing(anim, { toValue: 1.18, duration: 90, useNativeDriver: true }),
+      Animated.spring(anim, { toValue: 1, useNativeDriver: true, speed: 18, bounciness: 8 }),
+    ]).start();
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!gallery || !isLoggedIn) {
+      setAccountFav(false);
+      return;
+    }
+    setAccountFavLoading(true);
+    isFavorited(gallery.id)
+      .then((res) => {
+        if (!cancelled) setAccountFav(Boolean(res?.is_favorited));
+      })
+      .catch(() => {
+        if (!cancelled) setAccountFav(false);
+      })
+      .finally(() => {
+        if (!cancelled) setAccountFavLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [gallery, isLoggedIn]);
+
+  const handleBookmark = (): void => {
+    if (!gallery) return;
+    lightTap();
+    pulse(bookmarkScale);
+    void toggleFavorite(gallery);
+  };
+
+  const handleAccountHeart = async (): Promise<void> => {
+    if (!gallery || accountFavLoading) return;
+    if (!isLoggedIn) {
+      setAuthPromptOpen(true);
+      return;
+    }
+    const next = !accountFav;
+    setAccountFav(next);
+    setAccountFavLoading(true);
+    lightTap();
+    pulse(heartScale);
+    try {
+      if (next) {
+        await addFavorite(gallery.id);
+      } else {
+        await removeFavorite(gallery.id);
+      }
+    } catch {
+      setAccountFav(!next);
+    } finally {
+      setAccountFavLoading(false);
+    }
+  };
+
   const openTagSearch = (name: string, type = "tag") => {
     lightTap();
+    replaceTerm(type, name);
     router.push({
       pathname: "/",
       params: { tag: name, type },
     });
   };
 
-  const appendTagSearch = (name: string, type = "tag") => {
+  const toggleTagSearch = (name: string, type = "tag") => {
+    if (appendLockRef.current) return;
+    appendLockRef.current = true;
     lightTap();
-    router.push({
-      pathname: "/",
-      params: { appendTag: name, type },
-    });
+    const result = toggleTerm(type, name);
+    setAppendNotice(result.added ? `Ajouté · ${result.term}` : `Retiré · ${result.term}`);
+    setTimeout(() => {
+      appendLockRef.current = false;
+      setAppendNotice(null);
+    }, 1400);
   };
 
   const groupTagsByType = (tags: Tag[] = []) => {
@@ -258,12 +341,33 @@ export default function BookDetailScreen() {
         </IconBtn>
 
         <View style={styles.topBarActions}>
-          <IconBtn onPress={() => toggleFavorite(gallery)} size={40}>
-            <IconBookmark
-              size={20}
-              color={fav ? colors.accent : colors.txt}
-              stroke={fav ? 2.5 : 1.8}
-            />
+          <IconBtn
+            onPress={() => void handleAccountHeart()}
+            size={40}
+            accessibilityLabel={accountFav ? "Retirer des favoris nHentai" : "Ajouter aux favoris nHentai"}
+          >
+            <Animated.View style={{ transform: [{ scale: heartScale }] }}>
+              <IconHeart
+                size={20}
+                color={accountFav ? "#f43f5e" : colors.txt}
+                fill={accountFav ? "#f43f5e" : "transparent"}
+                stroke={accountFav ? 2.4 : 1.8}
+              />
+            </Animated.View>
+          </IconBtn>
+          <IconBtn
+            onPress={handleBookmark}
+            size={40}
+            accessibilityLabel={fav ? "Retirer le signet local" : "Ajouter un signet local"}
+          >
+            <Animated.View style={{ transform: [{ scale: bookmarkScale }] }}>
+              <IconBookmark
+                size={20}
+                color={fav ? colors.accent : colors.txt}
+                fill={fav ? colors.accent : "transparent"}
+                stroke={fav ? 2.5 : 1.8}
+              />
+            </Animated.View>
           </IconBtn>
           <IconBtn onPress={handleShare} size={40}>
             <IconShare size={20} color={colors.txt} stroke={2} />
@@ -360,20 +464,26 @@ export default function BookDetailScreen() {
               </Text>
               <View style={styles.tagChipsWrap}>
                 {tags.map((t) => {
-                  const isFavorited = isTagFav(t.type, t.name);
+                  const isTagFavorited = isTagFav(t.type, t.name);
+                  const inSearch = queryContainsTerm(homeQuery, t.type, t.name);
                   return (
                     <View
                       key={t.id}
                       style={[
                         styles.tagChipContainer,
                         {
-                          backgroundColor: colors.tagBg,
-                          borderColor: isFavorited ? colors.accent : "rgba(255,255,255,0.06)",
+                          backgroundColor: inSearch ? colors.accent + "22" : colors.tagBg,
+                          borderColor: inSearch
+                            ? colors.accent
+                            : isTagFavorited
+                              ? colors.accent
+                              : "rgba(255,255,255,0.06)",
                         },
                       ]}
                     >
                       {/* Clic direct pour chercher ce tag */}
-                      <Pressable
+                      <TouchableOpacity
+                        activeOpacity={0.75}
                         onPress={() => openTagSearch(t.name, t.type)}
                         style={styles.tagChipMainPress}
                       >
@@ -383,19 +493,38 @@ export default function BookDetailScreen() {
                         <Text style={[styles.tagChipCount, { color: colors.sub }]}>
                           {t.count > 999 ? `${(t.count / 1000).toFixed(0)}k` : t.count}
                         </Text>
-                      </Pressable>
+                      </TouchableOpacity>
 
-                      {/* Bouton + pour ajouter à la recherche */}
-                      <Pressable
+                      {/* Bouton +/- pour ajouter/retirer de la recherche sans quitter la page */}
+                      <TouchableOpacity
+                        activeOpacity={0.7}
                         hitSlop={6}
-                        onPress={() => appendTagSearch(t.name, t.type)}
-                        style={[styles.tagChipActionBtn, { borderLeftColor: "rgba(255,255,255,0.1)" }]}
+                        onPress={() => toggleTagSearch(t.name, t.type)}
+                        style={[
+                          styles.tagChipActionBtn,
+                          {
+                            borderLeftColor: "rgba(255,255,255,0.1)",
+                            backgroundColor: inSearch ? colors.accent + "33" : "transparent",
+                          },
+                        ]}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: inSearch }}
+                        accessibilityLabel={
+                          inSearch
+                            ? `Retirer ${t.name} de la recherche`
+                            : `Ajouter ${t.name} à la recherche`
+                        }
                       >
-                        <IconPlus size={13} color={colors.accent} stroke={2.5} />
-                      </Pressable>
+                        {inSearch ? (
+                          <IconMinus size={13} color={colors.accent} stroke={2.5} />
+                        ) : (
+                          <IconPlus size={13} color={colors.accent} stroke={2.5} />
+                        )}
+                      </TouchableOpacity>
 
                       {/* Bouton cœur pour mettre en favoris */}
-                      <Pressable
+                      <TouchableOpacity
+                        activeOpacity={0.7}
                         hitSlop={6}
                         onPress={() => {
                           lightTap();
@@ -405,11 +534,11 @@ export default function BookDetailScreen() {
                       >
                         <IconHeart
                           size={13}
-                          color={isFavorited ? "#f43f5e" : colors.sub}
-                          fill={isFavorited ? "#f43f5e" : "transparent"}
+                          color={isTagFavorited ? "#f43f5e" : colors.sub}
+                          fill={isTagFavorited ? "#f43f5e" : "transparent"}
                           stroke={1.8}
                         />
-                      </Pressable>
+                      </TouchableOpacity>
                     </View>
                   );
                 })}
@@ -586,6 +715,39 @@ export default function BookDetailScreen() {
         </Pressable>
       </Modal>
 
+      {appendNotice ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.appendNotice,
+            { top: Math.max(insets.top, 12) + 52, backgroundColor: colors.accent + "F2" },
+          ]}
+        >
+          <Text style={styles.appendNoticeText}>{appendNotice}</Text>
+        </View>
+      ) : null}
+
+      <AuthRequiredModal
+        visible={authPromptOpen}
+        onClose={() => setAuthPromptOpen(false)}
+        onSignIn={() => {
+          setAuthPromptOpen(false);
+          setSignInMode("login");
+          setSignInOpen(true);
+        }}
+        onRegister={() => {
+          setAuthPromptOpen(false);
+          setSignInMode("register");
+          setSignInOpen(true);
+        }}
+      />
+      <SignInModal
+        visible={signInOpen}
+        initialMode={signInMode}
+        onClose={() => setSignInOpen(false)}
+        onSuccess={() => setSignInOpen(false)}
+      />
+
       <QuickShareModal
         visible={isShareOpen}
         onClose={() => setIsShareOpen(false)}
@@ -610,6 +772,17 @@ export default function BookDetailScreen() {
 }
 
 const styles = StyleSheet.create({
+  appendNotice: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    zIndex: 30,
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: "center",
+  },
+  appendNoticeText: { color: "#fff", fontWeight: "800", fontSize: 12 },
   container: { flex: 1 },
   centerContainer: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
   loadingText: { marginTop: 14, fontSize: 14, fontWeight: "600" },

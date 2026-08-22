@@ -99,19 +99,19 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
   };
 
   const hasActiveFilters =
-    currentLang !== "all" ||
+    currentLang !== "english" ||
     currentPageRange !== "all" ||
     currentDateFilter !== "all" ||
     currentSort !== "recent";
 
   const handleReset = () => {
     setCurrentSort("recent");
-    setCurrentLang("all");
+    setCurrentLang("english");
     setCurrentPageRange("all");
     setCurrentDateFilter("all");
     onChange({
       sort: "recent",
-      language: "all",
+      language: "english",
       pageRange: "all",
       dateFilter: "all",
     });

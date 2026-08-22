@@ -1,7 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useState, useEffect } from "react";
+import { updateDownloadSettings } from "./downloadSettingsStore";
 
 const ONBOARDING_KEY = "@nhentai_onboarding_done_v1";
+const LAST_ONBOARDING_STEP = 4;
 
 let isCompletedGlobal = true; // Par défaut à true pour éviter un flash visuel avant la lecture du stockage
 let isInitialized = false;
@@ -30,6 +32,7 @@ export async function completeOnboarding(): Promise<void> {
   notify();
   try {
     await AsyncStorage.setItem(ONBOARDING_KEY, "true");
+    await updateDownloadSettings({ folderPrompted: true });
   } catch {}
 }
 
@@ -43,7 +46,7 @@ export async function resetOnboarding(): Promise<void> {
 }
 
 export function setOnboardingStep(step: number): void {
-  currentStepGlobal = Math.max(0, Math.min(3, step));
+  currentStepGlobal = Math.max(0, Math.min(LAST_ONBOARDING_STEP, step));
   notify();
 }
 
@@ -71,9 +74,9 @@ export function useOnboarding() {
     isReady: initialized,
     isOpen: initialized && !completed,
     currentStep: step,
-    totalSteps: 4,
+    totalSteps: LAST_ONBOARDING_STEP + 1,
     nextStep: () => {
-      if (step < 3) setOnboardingStep(step + 1);
+      if (step < LAST_ONBOARDING_STEP) setOnboardingStep(step + 1);
       else completeOnboarding();
     },
     prevStep: () => {

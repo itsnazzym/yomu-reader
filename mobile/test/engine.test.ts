@@ -403,3 +403,72 @@ test("coupure puis reprise : page complète sautée, .part tronqué relancé", a
   );
 });
 
+test("appendSearchTerm, removeSearchTerm et toggleSearchTerm gèrent les tags proprement", async () => {
+  const {
+    appendSearchTerm,
+    removeSearchTerm,
+    toggleSearchTerm,
+    queryContainsTerm,
+    formatSearchTerm,
+  } = await import("@/lib/searchQuery");
+
+  const first = appendSearchTerm("artist:A tag:B", "tag", "C");
+  assert.equal(first.added, true);
+  assert.equal(first.query, "artist:A tag:B tag:C");
+  assert.equal(queryContainsTerm(first.query, "tag", "C"), true);
+  assert.equal(queryContainsTerm(first.query, "tags", "c"), true); // plural and case insensitive
+
+  const quoted = appendSearchTerm('artist:"Foo Bar"', "tag", "big breasts");
+  assert.equal(quoted.query, 'artist:"Foo Bar" tag:"big breasts"');
+  assert.equal(queryContainsTerm(quoted.query, "tag", "big breasts"), true);
+
+  const dup = appendSearchTerm(quoted.query, "tag", "big breasts");
+  assert.equal(dup.added, false);
+  assert.equal(dup.query, quoted.query);
+  assert.equal(formatSearchTerm("artist", "A"), "artist:A");
+
+  // Plain word and quoted word matching
+  assert.equal(queryContainsTerm('maid "big breasts"', "tag", "maid"), true);
+  assert.equal(queryContainsTerm('maid "big breasts"', "tag", "big breasts"), true);
+  assert.equal(queryContainsTerm('-tag:maid', "tag", "maid"), false); // exclusions should not match as present
+
+  // removeSearchTerm
+  const removed = removeSearchTerm('artist:A tag:B tag:"big breasts"', "tag", "big breasts");
+  assert.equal(removed.removed, true);
+  assert.equal(removed.query, "artist:A tag:B");
+  assert.equal(queryContainsTerm(removed.query, "tag", "big breasts"), false);
+
+  // toggleSearchTerm: remove if present, add if absent
+  const toggledOff = toggleSearchTerm("tag:maid artist:shindol", "tag", "maid");
+  assert.equal(toggledOff.removed, true);
+  assert.equal(toggledOff.added, false);
+  assert.equal(toggledOff.query, "artist:shindol");
+
+  const toggledOn = toggleSearchTerm(toggledOff.query, "tag", "maid");
+  assert.equal(toggledOn.added, true);
+  assert.equal(toggledOn.removed, false);
+  assert.equal(toggledOn.query, "artist:shindol tag:maid");
+});
+
+test("buildReaderSpreads garde couverture et planches larges en simple", async () => {
+  const { buildReaderSpreads, pageToSpreadIndex, spreadToPage } = await import(
+    "@/lib/readerSpreads"
+  );
+  const pages = [
+    { w: 700, h: 1000 }, // cover portrait
+    { w: 700, h: 1000 },
+    { w: 700, h: 1000 },
+    { w: 1600, h: 900 }, // panorama
+    { w: 700, h: 1000 },
+    { w: 400, h: 1400 }, // tall strip
+  ];
+  const spreads = buildReaderSpreads(pages, "ltr");
+  assert.equal(spreads[0]?.pages.length, 1, "couverture seule");
+  assert.deepEqual(spreads[1]?.pages, [1, 2], "deux portraits consécutifs");
+  assert.deepEqual(spreads[2]?.pages, [3], "panorama seul");
+  assert.deepEqual(spreads[3]?.pages, [4], "page avant strip seule");
+  assert.deepEqual(spreads[4]?.pages, [5], "strip seul");
+  assert.equal(pageToSpreadIndex(spreads, 3), 2);
+  assert.equal(spreadToPage(spreads, 1), 1);
+});
+

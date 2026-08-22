@@ -2,7 +2,8 @@ import React from "react";
 import { Feather } from "@expo/vector-icons";
 
 type FeatherProps = React.ComponentProps<typeof Feather>;
-type IconProps = FeatherProps & {
+type IconProps = Omit<FeatherProps, "name"> & {
+  name?: FeatherProps["name"];
   /** Compatibility with the former Tabler icon API. */
   stroke?: number;
   strokeWidth?: number;
@@ -84,6 +85,7 @@ export const IconPhotoSearch = makeFeatherIcon("camera");
 export const IconPlayerPause = makeFeatherIcon("pause-circle");
 export const IconPlayerPlay = makeFeatherIcon("play-circle");
 export const IconPlus = makeFeatherIcon("plus");
+export const IconMinus = makeFeatherIcon("minus");
 export const IconQrcode = makeFeatherIcon("grid");
 export const IconRefresh = makeFeatherIcon("refresh-cw");
 export const IconReload = makeFeatherIcon("refresh-cw");
@@ -108,4 +110,7 @@ export const IconUserPlus = makeFeatherIcon("user-plus");
 export const IconUsers = makeFeatherIcon("users");
 export const IconWifiOff = makeFeatherIcon("wifi-off");
 export const IconWorld = makeFeatherIcon("globe");
+export const IconZoomIn = makeFeatherIcon("zoom-in");
+export const IconZoomOut = makeFeatherIcon("zoom-out");
+export const IconMove = makeFeatherIcon("move");
 export const IconX = makeFeatherIcon("x");

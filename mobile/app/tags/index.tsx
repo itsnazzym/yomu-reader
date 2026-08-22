@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useRef } from "react";
 import {
   StyleSheet,
   View,
@@ -15,6 +15,7 @@ import {
   IconX,
   IconHeart,
   IconPlus,
+  IconMinus,
   IconSparkles,
   IconSearchOff,
   IconTag,
@@ -40,6 +41,8 @@ import {
 } from "@/lib/taxonomyData";
 import { useTagFavs } from "@/lib/tagFavoritesStore";
 import { useTagCollections, TagCollection } from "@/lib/tagCollectionsStore";
+import { useHomeSearch } from "@/lib/homeSearchStore";
+import { queryContainsTerm } from "@/lib/searchQuery";
 
 type ActiveTab =
   | "all"
@@ -143,25 +146,34 @@ export default function TagsScreen() {
     return baseList;
   }, [activeTab, searchFilter, favoriteList]);
 
-  // Clic sur le tag -> lance directement la recherche sur la page d'accueil
+  const { query: homeQuery, toggleTerm, replaceTerm } = useHomeSearch();
+  const [appendNotice, setAppendNotice] = useState<string | null>(null);
+  const appendLockRef = useRef(false);
+
+  // Clic sur le tag -> remplace la recherche et ouvre l'accueil
   const handleSelectTag = useCallback((tag: TaxonomyItem) => {
     lightTap();
     const type = CATEGORY_TYPE_MAP[tag.category] || "tag";
+    replaceTerm(type, tag.name);
     router.push({
       pathname: "/",
       params: { tag: tag.name, type },
     });
-  }, [router]);
+  }, [replaceTerm, router]);
 
-  // Clic sur le bouton + -> ajoute le tag en plus à la recherche existante
-  const handleAppendTag = useCallback((tag: TaxonomyItem) => {
+  // Clic sur +/- : ajoute ou retire le tag de la recherche actuelle, sans quitter la page
+  const handleToggleSearchTag = useCallback((tag: TaxonomyItem) => {
+    if (appendLockRef.current) return;
+    appendLockRef.current = true;
     lightTap();
     const type = CATEGORY_TYPE_MAP[tag.category] || "tag";
-    router.push({
-      pathname: "/",
-      params: { appendTag: tag.name, type },
-    });
-  }, [router]);
+    const result = toggleTerm(type, tag.name);
+    setAppendNotice(result.added ? `Ajouté · ${result.term}` : `Retiré · ${result.term}`);
+    setTimeout(() => {
+      appendLockRef.current = false;
+      setAppendNotice(null);
+    }, 1400);
+  }, [toggleTerm]);
 
   // Clic sur le cœur -> met en favoris instantanément
   const handleToggleFavorite = useCallback((tag: TaxonomyItem) => {
@@ -233,6 +245,7 @@ export default function TagsScreen() {
       const IconComp = meta.icon || IconTag;
       const itemType = CATEGORY_TYPE_MAP[item.category] || "tag";
       const favorited = isFav(itemType, item.name);
+      const inSearch = queryContainsTerm(homeQuery, itemType, item.name);
 
       return (
         <View
@@ -240,7 +253,11 @@ export default function TagsScreen() {
             styles.tagCard,
             {
               backgroundColor: "#14141e",
-              borderColor: favorited ? "rgba(244,63,94,0.4)" : "#232332",
+              borderColor: inSearch
+                ? colors.accent
+                : favorited
+                  ? "rgba(244,63,94,0.4)"
+                  : "#232332",
             },
           ]}
         >
@@ -269,13 +286,23 @@ export default function TagsScreen() {
             </View>
           </Pressable>
 
-          {/* Bouton + pour ajouter à la recherche */}
+          {/* Bouton +/- pour ajouter/retirer de la recherche */}
           <Pressable
-            onPress={() => handleAppendTag(item)}
+            onPress={() => handleToggleSearchTag(item)}
             hitSlop={6}
-            style={[styles.tagActionBtn, { borderLeftColor: "#232332" }]}
+            style={[
+              styles.tagActionBtn,
+              { borderLeftColor: "#232332", backgroundColor: inSearch ? colors.accent + "22" : "transparent" },
+            ]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: inSearch }}
+            accessibilityLabel={inSearch ? `Retirer ${item.name} de la recherche` : `Ajouter ${item.name}`}
           >
-            <IconPlus size={16} color={colors.accent} stroke={2.5} />
+            {inSearch ? (
+              <IconMinus size={16} color="#fff" stroke={2.5} />
+            ) : (
+              <IconPlus size={16} color={colors.accent} stroke={2.5} />
+            )}
           </Pressable>
 
           {/* Bouton Cœur Favori */}
@@ -296,9 +323,10 @@ export default function TagsScreen() {
     },
     [
       colors.accent,
-      handleAppendTag,
+      handleToggleSearchTag,
       handleSelectTag,
       handleToggleFavorite,
+      homeQuery,
       isFav,
     ]
   );
@@ -339,6 +367,12 @@ export default function TagsScreen() {
           </Pressable>
         )}
       </View>
+
+      {appendNotice ? (
+        <View style={[styles.appendNotice, { backgroundColor: colors.accent + "22", borderColor: colors.accent }]}>
+          <Text style={[styles.appendNoticeText, { color: colors.accent }]}>{appendNotice}</Text>
+        </View>
+      ) : null}
 
       {/* Search Input Bar */}
       {activeTab !== "collections" && (
@@ -667,6 +701,19 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#9ca3af",
     marginTop: 1,
+  },
+  appendNotice: {
+    marginHorizontal: 12,
+    marginTop: 8,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  appendNoticeText: {
+    fontSize: 12,
+    fontWeight: "700",
+    textAlign: "center",
   },
   headerActionBtn: {
     flexDirection: "row",

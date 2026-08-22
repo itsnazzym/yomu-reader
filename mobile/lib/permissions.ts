@@ -6,6 +6,11 @@ export interface PermissionStatus {
   canAskAgain: boolean;
 }
 
+/**
+ * Les téléchargements in-app écrivent dans documentDirectory (sandbox).
+ * Cette permission n'est utile que si l'utilisateur veut lire la galerie
+ * média système — elle n'est PAS requise pour le dossier par défaut.
+ */
 export async function checkStoragePermissions(): Promise<boolean> {
   if (Platform.OS !== "android") return true;
 

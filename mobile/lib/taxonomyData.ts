@@ -1,3 +1,4 @@
+import type { ComponentType } from "react";
 import {
   IconTag,
   IconDeviceTv,
@@ -15,10 +16,14 @@ export interface TaxonomyItem {
   category: "tags" | "parodies" | "characters" | "artists" | "groups" | "languages";
 }
 
-export const CATEGORY_META: Record<
-  string,
-  { icon: any; color: string; label: string; type: string }
-> = {
+interface CategoryMetaItem {
+  icon: ComponentType<{ size?: number; color?: string; stroke?: number }>;
+  color: string;
+  label: string;
+  type: string;
+}
+
+export const CATEGORY_META: Record<string, CategoryMetaItem> = {
   tags: { icon: IconTag, color: "#60a5fa", label: "Tag", type: "tag" },
   tag: { icon: IconTag, color: "#60a5fa", label: "Tag", type: "tag" },
   parodies: { icon: IconDeviceTv, color: "#a78bfa", label: "Série", type: "parody" },
@@ -36,24 +41,56 @@ export const CATEGORY_META: Record<
   category: { icon: IconTag, color: "#38bdf8", label: "Catégorie", type: "category" },
 };
 
-const mapRawEntries = (entries: any[], category: any): TaxonomyItem[] => {
+type RawEntry =
+  | [number | string, string, (number | string)?]
+  | { id?: number | string; name?: string; count?: number | string };
+
+interface RawTagsDatabase {
+  updated?: string;
+  tags?: RawEntry[];
+  artists?: RawEntry[];
+  characters?: RawEntry[];
+  parodies?: RawEntry[];
+  groups?: RawEntry[];
+}
+
+const typedRawDb = rawTagsDb as unknown as RawTagsDatabase;
+
+const mapRawEntries = (
+  entries: readonly RawEntry[] | undefined,
+  category: TaxonomyItem["category"]
+): TaxonomyItem[] => {
   if (!Array.isArray(entries)) return [];
   return entries
-    .map((e) => ({
-      id: typeof e.id === "number" ? e.id : parseInt(e.id, 10) || 0,
-      name: String(e.name || ""),
-      count: typeof e.count === "number" ? e.count : parseInt(e.count, 10) || 0,
-      category,
-    }))
+    .map((e): TaxonomyItem => {
+      if (Array.isArray(e)) {
+        const idRaw = e[0];
+        const countRaw = e[2];
+        return {
+          id: typeof idRaw === "number" ? idRaw : parseInt(String(idRaw), 10) || 0,
+          name: String(e[1] || ""),
+          count: typeof countRaw === "number" ? countRaw : parseInt(String(countRaw), 10) || 0,
+          category,
+        };
+      }
+      const idRaw = e.id;
+      const countRaw = e.count;
+      return {
+        id: typeof idRaw === "number" ? idRaw : parseInt(String(idRaw), 10) || 0,
+        name: String(e.name || ""),
+        count: typeof countRaw === "number" ? countRaw : parseInt(String(countRaw), 10) || 0,
+        category,
+      };
+    })
     .sort((a, b) => b.count - a.count);
 };
 
 export const DB_CATEGORIES: Record<string, TaxonomyItem[]> = {
-  tags: mapRawEntries((rawTagsDb as any).tags, "tags"),
-  artists: mapRawEntries((rawTagsDb as any).artists, "artists"),
-  characters: mapRawEntries((rawTagsDb as any).characters, "characters"),
-  parodies: mapRawEntries((rawTagsDb as any).parodies, "parodies"),
-  groups: mapRawEntries((rawTagsDb as any).groups, "groups"),
+  tags: mapRawEntries(typedRawDb.tags, "tags"),
+  artists: mapRawEntries(typedRawDb.artists, "artists"),
+  characters: mapRawEntries(typedRawDb.characters, "characters"),
+  parodies: mapRawEntries(typedRawDb.parodies, "parodies"),
+  groups: mapRawEntries(typedRawDb.groups, "groups"),
   languages: [
     { id: 16947, name: "french", count: 28000, category: "languages" },
     { id: 12227, name: "english", count: 210000, category: "languages" },

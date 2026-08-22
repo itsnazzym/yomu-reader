@@ -6,6 +6,7 @@ import { Icon } from "../common/Icon";
 import { FastScrollRail } from "./FastScrollRail";
 import { SmartImage } from "../common/SmartImage";
 import { QuickShareModal } from "../common/QuickShareModal";
+import { canPairPages } from "../../utils/readerSpreads";
 
 interface ReaderModalProps {
   gallery: Gallery | null;
@@ -146,14 +147,25 @@ const ReaderModalContent: React.FC<ReaderModalProps & { gallery: Gallery }> = ({
   }, [currentPage, preloadCount, currentGallery, readingMode]);
 
   const nextPage = useCallback(() => {
-    const step = doublePage && readingMode !== "webtoon" ? 2 : 1;
+    const pages = currentGallery?.images?.pages ?? [];
+    const canPair =
+      doublePage &&
+      readingMode !== "webtoon" &&
+      canPairPages(pages[currentPage], pages[currentPage + 1]);
+    const step = canPair ? 2 : 1;
     setCurrentPage((prev) => Math.min(totalPages - 1, prev + step));
-  }, [totalPages, doublePage, readingMode]);
+  }, [totalPages, doublePage, readingMode, currentGallery, currentPage]);
 
   const prevPage = useCallback(() => {
-    const step = doublePage && readingMode !== "webtoon" ? 2 : 1;
+    const pages = currentGallery?.images?.pages ?? [];
+    const canPair =
+      doublePage &&
+      readingMode !== "webtoon" &&
+      currentPage > 0 &&
+      canPairPages(pages[currentPage - 1], pages[currentPage]);
+    const step = canPair ? 2 : 1;
     setCurrentPage((prev) => Math.max(0, prev - step));
-  }, [doublePage, readingMode]);
+  }, [doublePage, readingMode, currentGallery, currentPage]);
 
   // Mode switch handler: maintain exact page alignment
   const handleModeChange = (newMode: ReadingMode) => {
@@ -328,9 +340,15 @@ const ReaderModalContent: React.FC<ReaderModalProps & { gallery: Gallery }> = ({
 
   const currentPageInfo = currentGallery.images?.pages?.[currentPage];
 
-  const nextPageInfo = doublePage && currentPage + 1 < totalPages
-    ? currentGallery.images?.pages?.[currentPage + 1]
-    : null;
+  const nextPageInfo =
+    doublePage &&
+    currentPage + 1 < totalPages &&
+    canPairPages(
+      currentGallery.images?.pages?.[currentPage],
+      currentGallery.images?.pages?.[currentPage + 1]
+    )
+      ? currentGallery.images?.pages?.[currentPage + 1]
+      : null;
 
   return (
     <div

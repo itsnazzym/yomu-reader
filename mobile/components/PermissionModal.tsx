@@ -21,7 +21,7 @@ interface PermissionModalProps {
   onDismiss: () => void;
   title?: string;
   description?: string;
-  icon?: any;
+  icon?: React.ReactNode;
   isPermanentlyDenied?: boolean;
 }
 

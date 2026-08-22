@@ -47,11 +47,12 @@ export interface SignInModalProps {
   visible: boolean;
   onClose: () => void;
   onSuccess?: () => void;
+  initialMode?: "login" | "register" | "reset" | "apikey";
 }
 
 type AuthMode = "login" | "register" | "reset" | "apikey";
 
-export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
+export function SignInModal({ visible, onClose, onSuccess, initialMode = "login" }: SignInModalProps) {
   const { colors } = useTheme();
   const { loginWithCredentials, loginWithSession, syncFavorites, session, logout, fetchUserProfile } = useAccount();
 
@@ -77,6 +78,10 @@ export function SignInModal({ visible, onClose, onSuccess }: SignInModalProps) {
   const [powProgress, setPowProgress] = useState<PowProgress | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [resetSuccess, setResetSuccess] = useState(false);
+
+  useEffect(() => {
+    if (visible) setMode(initialMode);
+  }, [visible, initialMode]);
 
   // Load captcha on open or mode switch
   useEffect(() => {

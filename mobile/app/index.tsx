@@ -30,7 +30,7 @@ import {
   IconTags,
   IconBook2,
 } from "@tabler/icons-react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/lib/ThemeContext";
 import { useDrawer } from "@/lib/DrawerContext";
@@ -50,8 +50,15 @@ import {
   TaxonomyItem,
   CATEGORY_META,
 } from "@/lib/taxonomyData";
-import { useReaderSettings } from "@/lib/readerSettingsStore";
+import { getReaderSettings, useReaderSettings } from "@/lib/readerSettingsStore";
 import { useTagCollections } from "@/lib/tagCollectionsStore";
+import {
+  appendHomeSearchTerm,
+  getHomeSearchQuery,
+  replaceHomeSearchTerm,
+  setHomeSearchQuery,
+} from "@/lib/homeSearchStore";
+import { firstRouteParam } from "@/lib/searchQuery";
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -69,38 +76,50 @@ export default function HomeScreen() {
   }>();
 
   // Filter & Search states
-  const [searchQuery, setSearchQuery] = useState("");
-  const [activeQuery, setActiveQuery] = useState("");
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState(() => getHomeSearchQuery());
+  const [activeQuery, setActiveQuery] = useState(() => getHomeSearchQuery());
+  const [isSearchOpen, setIsSearchOpen] = useState(() => Boolean(getHomeSearchQuery()));
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [isImageSearchOpen, setIsImageSearchOpen] = useState(false);
   const { collections, formatQuery: formatColQuery } = useTagCollections();
+  const consumedParamsRef = useRef("");
+
+  const applySearchQuery = useCallback((next: string, openSearch = true) => {
+    const clean = next.trim();
+    setSearchQuery(clean);
+    setActiveQuery(clean);
+    setHomeSearchQuery(clean);
+    if (openSearch && clean) setIsSearchOpen(true);
+    setPage(1);
+  }, []);
 
   useEffect(() => {
-    if (params.query) {
-      setSearchQuery(params.query);
-      setActiveQuery(params.query);
-      setIsSearchOpen(true);
-      setPage(1);
-    } else if (params.tag) {
-      const type = params.type || "tag";
-      const formatted = `${type}:"${params.tag}"`;
-      setSearchQuery(formatted);
-      setActiveQuery(formatted);
-      setIsSearchOpen(true);
-      setPage(1);
-    } else if (params.appendTag) {
-      const type = params.type || "tag";
-      const formatted = `${type}:"${params.appendTag}"`;
-      setSearchQuery((prev) => {
-        const next = prev.trim() ? `${prev.trim()} ${formatted}` : formatted;
-        setActiveQuery(next);
-        return next;
-      });
-      setIsSearchOpen(true);
-      setPage(1);
+    const query = firstRouteParam(params.query);
+    const tag = firstRouteParam(params.tag);
+    const appendTag = firstRouteParam(params.appendTag);
+    const type = firstRouteParam(params.type) || "tag";
+    if (!query && !tag && !appendTag) return;
+
+    const key = `${query}|${tag}|${appendTag}|${type}`;
+    if (consumedParamsRef.current === key) return;
+    consumedParamsRef.current = key;
+
+    if (query) {
+      applySearchQuery(query);
+    } else if (tag) {
+      applySearchQuery(replaceHomeSearchTerm(type, tag));
+    } else {
+      const result = appendHomeSearchTerm(type, appendTag);
+      applySearchQuery(result.query);
     }
-  }, [params.query, params.tag, params.appendTag, params.type]);
+
+    router.setParams({
+      tag: undefined,
+      query: undefined,
+      type: undefined,
+      appendTag: undefined,
+    });
+  }, [params.query, params.tag, params.appendTag, params.type, applySearchQuery, router]);
 
   // Suggestions automatiques de tags
   const tagSuggestions = useMemo(() => {
@@ -116,9 +135,7 @@ export default function HomeScreen() {
     const parts = searchQuery.split(/\s+/);
     parts.pop();
     const newQuery = parts.length > 0 ? `${parts.join(" ")} ${formatted}` : formatted;
-    setSearchQuery(newQuery);
-    setActiveQuery(newQuery);
-    setPage(1);
+    applySearchQuery(newQuery);
   };
 
   // Jump to Page Modal (Works on Android, iOS, Web)
@@ -127,7 +144,7 @@ export default function HomeScreen() {
 
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
     sort: "recent",
-    language: "all",
+    language: "english",
     pageRange: "all",
     dateFilter: "all",
   });
@@ -138,13 +155,16 @@ export default function HomeScreen() {
   const [totalPages, setTotalPages] = useState(1);
   // Start in a loading state so Android never flashes a blank grid while
   // the first mirror request is being established.
-  const [isLoading, setIsLoading] = useState(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Rotation animation for refresh button
   const spinAnim = useRef(new Animated.Value(0)).current;
-  const flatListRef = useRef<any>(null);
+  const flatListRef = useRef<FlashList<Gallery>>(null);
   const latestRequestRef = useRef(0);
+  const loadingMoreRef = useRef(false);
+  const galleriesRef = useRef<Gallery[]>([]);
 
   const { settings: readerSettings } = useReaderSettings();
 
@@ -165,23 +185,7 @@ export default function HomeScreen() {
     (width - horizontalPadding * 2 - cardGap * (numColumns - 1)) / numColumns
   );
 
-  // Synchronize tag clicks
-  useEffect(() => {
-    if (params.tag) {
-      const type = params.type || "tag";
-      const cleanTag = String(params.tag).trim();
-      const q = cleanTag.includes(" ") ? `${type}:"${cleanTag}"` : `${type}:${cleanTag}`;
-      setSearchQuery(q);
-      setActiveQuery(q);
-      setIsSearchOpen(true);
-      setPage(1);
-    } else if (params.query) {
-      setSearchQuery(params.query);
-      setActiveQuery(params.query);
-      setIsSearchOpen(true);
-      setPage(1);
-    }
-  }, [params.tag, params.query, params.type]);
+  galleriesRef.current = galleries;
 
   const fetchGalleries = useCallback(
     async (
@@ -190,13 +194,20 @@ export default function HomeScreen() {
       p: number
     ) => {
       const requestId = ++latestRequestRef.current;
-      setIsLoading(true);
+      const infinite = getReaderSettings().infiniteScroll;
+      const isPagination = p > 1 && infinite && galleriesRef.current.length > 0;
+      if (isPagination) {
+        setIsFetchingMore(true);
+        loadingMoreRef.current = true;
+      } else if (galleriesRef.current.length === 0) {
+        setIsInitialLoading(true);
+      }
       setError(null);
 
       const isHomeFeed =
         !q.trim() &&
         opts.sort === "recent" &&
-        opts.language === "all" &&
+        opts.language === "english" &&
         opts.pageRange === "all" &&
         opts.dateFilter === "all";
 
@@ -217,7 +228,7 @@ export default function HomeScreen() {
         if (q.trim()) {
           queryParts.push(q.trim());
         }
-        if (opts.language && opts.language !== "all") {
+        if (opts.language && opts.language !== "all" && !q.toLowerCase().includes("language:")) {
           queryParts.push(`language:${opts.language}`);
         }
         if (opts.pageRange && opts.pageRange !== "all") {
@@ -228,10 +239,17 @@ export default function HomeScreen() {
         }
 
         const effectiveQuery = queryParts.join(" ");
+        const sort: "recent" | "popular" | "popular-today" | "popular-week" =
+          opts.sort === "popular" ||
+          opts.sort === "popular-today" ||
+          opts.sort === "popular-week"
+            ? opts.sort
+            : "recent";
+        const popQuery = opts.language && opts.language !== "all" ? `language:${opts.language}` : "";
         const [response, popularResponse] = await Promise.all([
-          searchGalleries(effectiveQuery, p, opts.sort as any),
-          isHomeFeed
-            ? searchGalleries("", 1, "popular-today").catch((popularError) => {
+          searchGalleries(effectiveQuery, p, sort),
+          isHomeFeed && p === 1
+            ? searchGalleries(popQuery, 1, "popular-today").catch((popularError) => {
                 // A failed popularity request must not hide the usable upload
                 // feed; the website's main content remains the priority.
                 console.warn("Popular Now unavailable:", popularError);
@@ -242,7 +260,7 @@ export default function HomeScreen() {
         if (requestId !== latestRequestRef.current) return;
 
         const newItems = response.result || [];
-        if (p > 1 && readerSettings.infiniteScroll) {
+        if (isPagination) {
           setGalleries((prev) => {
             const existingIds = new Set(prev.map((g) => g.id));
             const fresh = newItems.filter((g) => !existingIds.has(g.id));
@@ -251,21 +269,26 @@ export default function HomeScreen() {
         } else {
           setGalleries(newItems);
         }
-        setPopularGalleries(
-          isHomeFeed ? (popularResponse?.result || []).slice(0, 5) : []
-        );
+        if (isHomeFeed && p === 1) {
+          setPopularGalleries((popularResponse?.result || []).slice(0, 5));
+        } else if (!isHomeFeed) {
+          setPopularGalleries([]);
+        }
         setTotalPages(Math.max(1, response.num_pages || 1));
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (requestId !== latestRequestRef.current) return;
         console.error("Fetch galleries error:", err);
-        setError(err?.message || "Erreur de chargement des galeries.");
+        const message = err instanceof Error ? err.message : "Erreur de chargement des galeries.";
+        setError(message);
       } finally {
         if (requestId === latestRequestRef.current) {
-          setIsLoading(false);
+          setIsInitialLoading(false);
+          setIsFetchingMore(false);
+          loadingMoreRef.current = false;
         }
       }
     },
-    [readerSettings.infiniteScroll, spinAnim]
+    [spinAnim]
   );
 
   useEffect(() => {
@@ -277,6 +300,32 @@ export default function HomeScreen() {
   useEffect(() => {
     fetchGalleries(activeQuery, filterOptions, page);
   }, [activeQuery, filterOptions, page, fetchGalleries]);
+
+  useEffect(() => {
+    setHomeSearchQuery(activeQuery);
+  }, [activeQuery]);
+
+  const searchIdentity = `${activeQuery}|${filterOptions.sort}|${filterOptions.language}|${filterOptions.pageRange}|${filterOptions.dateFilter}`;
+  const prevSearchIdentity = useRef(searchIdentity);
+  useEffect(() => {
+    if (prevSearchIdentity.current === searchIdentity) return;
+    prevSearchIdentity.current = searchIdentity;
+    if (galleriesRef.current.length > 0) {
+      flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+    }
+  }, [searchIdentity]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const stored = getHomeSearchQuery();
+      if (stored !== activeQuery) {
+        setSearchQuery(stored);
+        setActiveQuery(stored);
+        if (stored.trim()) setIsSearchOpen(true);
+        setPage(1);
+      }
+    }, [activeQuery])
+  );
 
   const handleSearchSubmit = () => {
     const clean = searchQuery.trim();
@@ -532,10 +581,14 @@ export default function HomeScreen() {
             showRandomButton={false}
             onImageSearch={() => setIsImageSearchOpen(true)}
             onClear={() => {
-              setSearchQuery("");
-              setActiveQuery("");
-              setPage(1);
-              router.setParams({ tag: undefined, query: undefined, type: undefined });
+              applySearchQuery("", false);
+              setIsSearchOpen(true);
+              router.setParams({
+                tag: undefined,
+                query: undefined,
+                type: undefined,
+                appendTag: undefined,
+              });
             }}
             autoFocus
             placeholder="Rechercher tags, artistes, parodies ou code..."
@@ -705,8 +758,8 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* Main Grid View */}
-      {isLoading ? (
+      {/* Main Grid View — never unmount FlashList once data exists */}
+      {isInitialLoading && galleries.length === 0 ? (
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={colors.accent} />
           <Text style={styles.loadingText}>Chargement des mangas...</Text>
@@ -742,9 +795,24 @@ export default function HomeScreen() {
           drawDistance={500}
           numColumns={numColumns}
           ListHeaderComponent={homeHeader}
-          onEndReachedThreshold={0.5}
+          ListFooterComponent={
+            isFetchingMore ? (
+              <View style={{ paddingVertical: 16 }}>
+                <ActivityIndicator size="small" color={colors.accent} />
+              </View>
+            ) : null
+          }
+          onEndReachedThreshold={0.35}
           onEndReached={() => {
-            if (readerSettings.infiniteScroll && !isLoading && page < totalPages) {
+            if (
+              readerSettings.infiniteScroll &&
+              !isInitialLoading &&
+              !isFetchingMore &&
+              !loadingMoreRef.current &&
+              page < totalPages &&
+              galleries.length > 0
+            ) {
+              loadingMoreRef.current = true;
               setPage((prev) => prev + 1);
             }
           }}
@@ -773,7 +841,7 @@ export default function HomeScreen() {
         <TouchableOpacity
           activeOpacity={0.7}
           onPress={() => handlePageChange(page - 1)}
-          disabled={page <= 1 || isLoading}
+          disabled={page <= 1 || isInitialLoading}
           style={[
             styles.pageNavBtn,
             { backgroundColor: colors.page },
@@ -808,7 +876,7 @@ export default function HomeScreen() {
         <TouchableOpacity
           activeOpacity={0.7}
           onPress={() => handlePageChange(page + 1)}
-          disabled={page >= totalPages || isLoading}
+          disabled={page >= totalPages || isInitialLoading}
           style={[
             styles.pageNavBtn,
             { backgroundColor: colors.page },

@@ -23,7 +23,7 @@ export function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeQuery, setActiveQuery] = useState("");
   const [sort, setSort] = useState<SortOption>("date");
-  const [selectedLanguage, setSelectedLanguage] = useState<string>("all");
+  const [selectedLanguage, setSelectedLanguage] = useState<string>("english");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [galleries, setGalleries] = useState<Gallery[]>([]);
@@ -72,8 +72,8 @@ export function App() {
         queryParts.push(q.trim());
       }
 
-      // Add language filter if not "all"
-      if (lang && lang !== "all") {
+      // Add language filter if not "all" and not already in query
+      if (lang && lang !== "all" && !q.toLowerCase().includes("language:")) {
         queryParts.push(`language:${lang}`);
       }
 

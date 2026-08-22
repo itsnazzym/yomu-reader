@@ -5,6 +5,7 @@ import {
   ViewStyle,
   Animated,
 } from "react-native";
+import { useReduceMotion } from "@/lib/reduceMotion";
 
 /**
  * Échelle au press pour les petites puces cliquables (chips, tags, lignes).
@@ -37,24 +38,30 @@ export function CardPressable({
   ...rest
 }: CardPressableProps) {
   const scale = useRef(new Animated.Value(1)).current;
+  const reduceMotion = useReduceMotion();
 
   const onPressIn = useCallback(() => {
+    if (reduceMotion) return;
     Animated.spring(scale, {
       toValue: pressedScale,
       useNativeDriver: true,
       speed: 50,
       bounciness: 2,
     }).start();
-  }, [scale, pressedScale]);
+  }, [scale, pressedScale, reduceMotion]);
 
   const onPressOut = useCallback(() => {
+    if (reduceMotion) {
+      scale.setValue(1);
+      return;
+    }
     Animated.spring(scale, {
       toValue: 1,
       useNativeDriver: true,
       speed: 50,
       bounciness: 4,
     }).start();
-  }, [scale]);
+  }, [scale, reduceMotion]);
 
   return (
     <TouchableOpacity

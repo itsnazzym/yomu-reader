@@ -43,7 +43,7 @@ export const GalleryGrid: React.FC<GalleryGridProps> = ({
   sort,
   onSortChange,
   currentSearchQuery,
-  selectedLanguage = "all",
+  selectedLanguage = "english",
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     try {

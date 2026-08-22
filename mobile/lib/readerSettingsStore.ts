@@ -25,6 +25,10 @@ export interface ReaderSettings {
   catalogMinCardWidth: number;
   infiniteScroll: boolean;
   respectActiveTags: boolean;
+  pinchToZoom: boolean;
+  doubleTapZoom: number;
+  resetZoomOnPageChange: boolean;
+  autoHideControls: boolean;
 }
 
 const defaultSettings: ReaderSettings = {
@@ -46,6 +50,10 @@ const defaultSettings: ReaderSettings = {
   catalogMinCardWidth: 130,
   infiniteScroll: true,
   respectActiveTags: true,
+  pinchToZoom: true,
+  doubleTapZoom: 1.8,
+  resetZoomOnPageChange: true,
+  autoHideControls: true,
 };
 
 let currentSettings: ReaderSettings = { ...defaultSettings };

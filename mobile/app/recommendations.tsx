@@ -495,7 +495,7 @@ export default function RecommendationsScreen() {
         </View>
       </View>
 
-      {loading ? (
+      {loading && books.length === 0 ? (
         <View style={styles.centerContainer}>
           <View style={[styles.loadingIcon, { backgroundColor: colors.accent + "22" }]}> 
             <Animated.View style={{ transform: [{ rotate: spin }] }}>

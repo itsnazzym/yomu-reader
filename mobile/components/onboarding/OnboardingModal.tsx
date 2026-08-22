@@ -18,6 +18,7 @@ import { useOnboarding } from "@/lib/useOnboarding";
 import { StepWelcome } from "./StepWelcome";
 import { StepTheme } from "./StepTheme";
 import { StepReader } from "./StepReader";
+import { StepDownloadFolder } from "./StepDownloadFolder";
 import { StepAccount } from "./StepAccount";
 
 export function OnboardingModal() {
@@ -89,7 +90,8 @@ export function OnboardingModal() {
           {currentStep === 0 && <StepWelcome />}
           {currentStep === 1 && <StepTheme />}
           {currentStep === 2 && <StepReader />}
-          {currentStep === 3 && <StepAccount onFinish={complete} />}
+          {currentStep === 3 && <StepDownloadFolder />}
+          {currentStep === 4 && <StepAccount onFinish={complete} />}
         </ScrollView>
 
         {/* Footer Controls */}

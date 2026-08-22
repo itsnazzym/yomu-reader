@@ -38,6 +38,7 @@ import { useFavorites } from "@/lib/favoritesStore";
 import { CardPressable } from "@/components/ui/CardPressable";
 import { IconBtn } from "@/components/ui/IconBtn";
 import { SignInModal } from "@/components/modals/SignInModal";
+import { AvatarCropModal, AvatarCropResult } from "@/components/modals/AvatarCropModal";
 import SmartImage from "@/components/SmartImage";
 import { lightTap } from "@/lib/haptics";
 
@@ -56,6 +57,17 @@ export function resolveAvatarCandidates(url?: string, username?: string): string
   }
 
   const clean = url.trim();
+
+  // Local storage, content URI or data URI (persisted avatar)
+  if (
+    clean.startsWith("file:") ||
+    clean.startsWith("content:") ||
+    clean.startsWith("data:") ||
+    clean.startsWith("blob:")
+  ) {
+    return [clean];
+  }
+
   if (clean.startsWith("//")) {
     return resolveAvatarCandidates(`https:${clean}`, username);
   }
@@ -124,9 +136,8 @@ export default function ProfileScreen() {
 
   const [refreshing, setRefreshing] = useState(false);
   const [isSignInOpen, setIsSignInOpen] = useState(false);
-  const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
-  const [newAvatarInput, setNewAvatarInput] = useState("");
-  const [savingAvatar, setSavingAvatar] = useState(false);
+  const [isAvatarCropOpen, setIsAvatarCropOpen] = useState(false);
+  const [isAvatarOptionsOpen, setIsAvatarOptionsOpen] = useState(false);
   const [avatarCandidateIndex, setAvatarCandidateIndex] = useState(0);
 
   // Password change form state
@@ -193,25 +204,47 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleSaveAvatar = async (urlToSave?: string) => {
-    const rawUrl = (urlToSave || newAvatarInput).trim();
-    if (!rawUrl) return;
-    // Keep the URL entered by the user. In particular, an extensionless
-    // Imgur asset needs the GIF/PNG/JPG candidates on the next render.
-    const targetUrl = rawUrl;
-    setSavingAvatar(true);
+  const handleSaveCroppedAvatar = async (result: AvatarCropResult) => {
     try {
-      const res = await updateAvatar(targetUrl);
+      const res = await updateAvatar(result.uri);
       if (res.success) {
-        Alert.alert("Avatar mis à jour ✧✦", "Votre photo de profil a été mise à jour avec succès.");
-        setIsAvatarModalOpen(false);
-        setNewAvatarInput("");
+        Alert.alert("Avatar mis à jour ✧✦", "Votre photo de profil a été recadrée et mise à jour avec succès.");
+        setIsAvatarOptionsOpen(false);
         await loadData();
       } else {
         Alert.alert("Échec", res.error || "Impossible de mettre à jour l'avatar.");
       }
-    } finally {
-      setSavingAvatar(false);
+    } catch (err: unknown) {
+      console.warn("Save avatar error:", err);
+      Alert.alert("Erreur", "Une erreur est survenue lors de l'enregistrement de l'avatar.");
+    }
+  };
+
+  const handleChoosePreset = async (presetUrl: string) => {
+    try {
+      const res = await updateAvatar(presetUrl);
+      if (res.success) {
+        Alert.alert("Avatar mis à jour ✧✦", "Le style d'avatar sélectionné a été appliqué.");
+        setIsAvatarOptionsOpen(false);
+        await loadData();
+      } else {
+        Alert.alert("Échec", res.error || "Impossible de mettre à jour l'avatar.");
+      }
+    } catch (err: unknown) {
+      console.warn("Preset avatar error:", err);
+    }
+  };
+
+  const handleResetAvatar = async () => {
+    try {
+      const res = await updateAvatar("");
+      if (res.success) {
+        Alert.alert("Avatar réinitialisé", "La photo de profil par défaut a été rétablie.");
+        setIsAvatarOptionsOpen(false);
+        await loadData();
+      }
+    } catch (err: unknown) {
+      console.warn("Reset avatar error:", err);
     }
   };
 
@@ -316,7 +349,7 @@ export default function ProfileScreen() {
               <Pressable
                 onPress={() => {
                   lightTap();
-                  setIsAvatarModalOpen(true);
+                  setIsAvatarOptionsOpen(true);
                 }}
                 style={styles.avatarWrap}
               >
@@ -638,48 +671,58 @@ export default function ProfileScreen() {
         </ScrollView>
       )}
 
-      {/* Modal Modifier l'Avatar */}
+      {/* Modal Options Avatar */}
       <Modal
-        visible={isAvatarModalOpen}
+        visible={isAvatarOptionsOpen}
         transparent
         animationType="fade"
-        onRequestClose={() => setIsAvatarModalOpen(false)}
+        onRequestClose={() => setIsAvatarOptionsOpen(false)}
       >
-        <Pressable style={styles.modalBackdrop} onPress={() => setIsAvatarModalOpen(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setIsAvatarOptionsOpen(false)}>
           <Pressable
             style={[styles.modalCard, { backgroundColor: "#14141e", borderColor: "#28283a" }]}
             onPress={(e) => e.stopPropagation()}
           >
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Modifier la photo de profil</Text>
-              <Pressable onPress={() => setIsAvatarModalOpen(false)} hitSlop={6}>
+              <View>
+                <Text style={styles.modalTitle}>Photo de profil</Text>
+                <Text style={styles.modalSub}>
+                  Sélectionnez une image de votre appareil (GIF, PNG, JPG...)
+                </Text>
+              </View>
+              <Pressable onPress={() => setIsAvatarOptionsOpen(false)} hitSlop={6}>
                 <IconX size={18} color="#9ca3af" stroke={2} />
               </Pressable>
             </View>
 
-            <Text style={styles.modalSub}>
-              Saisissez l'URL directe d'une image (ex: Imgur, Discord, Gravatar) :
-            </Text>
+            {/* Main Option: Select from device & crop */}
+            <Pressable
+              onPress={() => {
+                lightTap();
+                setIsAvatarOptionsOpen(false);
+                setIsAvatarCropOpen(true);
+              }}
+              style={[styles.chooseStorageBtn, { backgroundColor: colors.accent }]}
+            >
+              <IconPhoto size={20} color="#fff" stroke={2.2} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.chooseStorageTitle}>Choisir depuis l'appareil</Text>
+                <Text style={styles.chooseStorageSub}>
+                  GIF animé, PNG, JPG, WebP avec recadreur
+                </Text>
+              </View>
+              <IconChevronRight size={18} color="#fff" stroke={2} />
+            </Pressable>
 
-            <TextInput
-              value={newAvatarInput}
-              onChangeText={setNewAvatarInput}
-              placeholder="https://i.imgur.com/image.jpg..."
-              placeholderTextColor="#6b7280"
-              autoCapitalize="none"
-              autoCorrect={false}
-              style={[styles.avatarInput, { backgroundColor: "#191928", borderColor: "#2c2c40", color: "#f3f4f6" }]}
-            />
-
-            {/* Quick Presets */}
-            <Text style={styles.presetsTitle}>Ou choisissez un style généré :</Text>
+            {/* Quick Color Presets */}
+            <Text style={styles.presetsTitle}>Ou style d'initiales coloré :</Text>
             <View style={styles.presetsRow}>
               {["#ec4899", "#8b5cf6", "#3b82f6", "#10b981", "#f59e0b"].map((bg) => {
                 const presetUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=${bg.replace("#", "")}&color=fff&bold=true&size=256`;
                 return (
                   <Pressable
                     key={bg}
-                    onPress={() => handleSaveAvatar(presetUrl)}
+                    onPress={() => handleChoosePreset(presetUrl)}
                     style={styles.presetItem}
                   >
                     <Image source={{ uri: presetUrl }} style={styles.presetImg} />
@@ -688,23 +731,27 @@ export default function ProfileScreen() {
               })}
             </View>
 
-            <Pressable
-              onPress={() => handleSaveAvatar()}
-              disabled={savingAvatar || !newAvatarInput.trim()}
-              style={[
-                styles.saveAvatarBtn,
-                { backgroundColor: newAvatarInput.trim() ? colors.accent : "#2d2d40" },
-              ]}
-            >
-              {savingAvatar ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={styles.saveAvatarText}>Enregistrer la photo</Text>
-              )}
-            </Pressable>
+            {/* Reset to Default */}
+            {profile?.avatar_url && (
+              <Pressable
+                onPress={handleResetAvatar}
+                style={[styles.resetAvatarBtn, { borderColor: "#2d2d40" }]}
+              >
+                <IconRefresh size={15} color="#9ca3af" stroke={2} />
+                <Text style={styles.resetAvatarText}>Rétablir l'avatar par défaut</Text>
+              </Pressable>
+            )}
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Interactive Avatar Crop Modal */}
+      <AvatarCropModal
+        visible={isAvatarCropOpen}
+        username={username}
+        onClose={() => setIsAvatarCropOpen(false)}
+        onSave={handleSaveCroppedAvatar}
+      />
 
       {/* Sign In Modal if user wants to re-auth */}
       <SignInModal
@@ -1133,16 +1180,38 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
   },
-  saveAvatarBtn: {
-    height: 40,
-    borderRadius: 10,
+  chooseStorageBtn: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 14,
     marginTop: 4,
   },
-  saveAvatarText: {
-    color: "#fff",
-    fontSize: 13,
+  chooseStorageTitle: {
+    fontSize: 14,
     fontWeight: "800",
+    color: "#fff",
+  },
+  chooseStorageSub: {
+    fontSize: 11,
+    color: "rgba(255, 255, 255, 0.8)",
+    marginTop: 1,
+  },
+  resetAvatarBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 11,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginTop: 2,
+  },
+  resetAvatarText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#9ca3af",
   },
 });

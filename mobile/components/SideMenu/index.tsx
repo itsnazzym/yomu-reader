@@ -29,10 +29,12 @@ import {
 } from "@tabler/icons-react-native";
 import { usePathname, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Image } from "expo-image";
 import { useTheme } from "@/lib/ThemeContext";
 import { getRandomGallery } from "@/lib/api/nhentai";
 import { SignInModal } from "@/components/modals/SignInModal";
 import { useAccount } from "@/lib/accountStore";
+import { resolveAvatarUrl } from "@/app/profile";
 
 interface SideMenuProps {
   closeDrawer: () => void;
@@ -261,7 +263,15 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
         >
           <View style={styles.signInContent}>
             {isLoggedIn ? (
-              <IconUserCheck size={18} color="#52c41a" stroke={2} />
+              session.profile?.avatar_url ? (
+                <Image
+                  source={{ uri: resolveAvatarUrl(session.profile.avatar_url, session.username) }}
+                  style={{ width: 22, height: 22, borderRadius: 11 }}
+                  contentFit="cover"
+                />
+              ) : (
+                <IconUserCheck size={18} color="#52c41a" stroke={2} />
+              )
             ) : (
               <IconLogin size={18} color={colors.accent} stroke={2} />
             )}

@@ -12,6 +12,7 @@ import { DrawerProvider, useDrawer } from "@/lib/DrawerContext";
 import { SideMenu } from "@/components/SideMenu";
 import { TexturedBackground } from "@/components/ui/TexturedBackground";
 import { OnboardingModal } from "@/components/onboarding/OnboardingModal";
+import { FolderPromptModal } from "@/components/modals/FolderPromptModal";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 enableScreens(true);
@@ -34,7 +35,7 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
 
 function AppShell() {
   const { colors } = useTheme();
-  const { isOpen, openDrawer, closeDrawer } = useDrawer();
+  const { isOpen, openDrawer, closeDrawer, swipeEnabled } = useDrawer();
 
   return (
     <TexturedBackground backgroundColor={colors.bg}>
@@ -45,6 +46,7 @@ function AppShell() {
         onClose={closeDrawer}
         drawerType="front"
         drawerPosition="left"
+        swipeEnabled={swipeEnabled}
         swipeEdgeWidth={35}
         style={styles.flex}
         drawerStyle={{ width: "82%", maxWidth: 320, backgroundColor: colors.menuBg }}
@@ -78,6 +80,7 @@ function AppShell() {
       </Drawer>
 
       <OnboardingModal />
+      <FolderPromptModal />
     </TexturedBackground>
   );
 }
