@@ -430,71 +430,81 @@ export default function TagsScreen() {
 
       {/* Collections Tab Content */}
       {activeTab === "collections" ? (
-        <ScrollView
-          contentContainerStyle={[
-            styles.collectionsContainer,
-            { paddingBottom: insets.bottom + 40 },
-          ]}
-          showsVerticalScrollIndicator={false}
-        >
-          {collections.map((col) => (
-            <View
-              key={col.id}
-              style={[
-                styles.colCard,
-                { backgroundColor: "#14141e", borderColor: col.color + "50" },
-              ]}
-            >
-              <View style={styles.colHeader}>
-                <View style={styles.colTitleRow}>
-                  <View style={[styles.colColorDot, { backgroundColor: col.color }]} />
-                  <Text style={styles.colName}>{col.name}</Text>
+        collections.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <IconFolder size={44} color="#6b7280" stroke={1.5} style={{ opacity: 0.6 }} />
+            <Text style={styles.emptyTitle}>Aucun pack de tags</Text>
+            <Text style={styles.emptySub}>
+              Appuyez sur « Nouveau pack » ci-dessus pour regrouper vos tags favoris en pack de recherche personnalisé.
+            </Text>
+          </View>
+        ) : (
+          <ScrollView
+            contentContainerStyle={[
+              styles.collectionsContainer,
+              { paddingBottom: insets.bottom + 40 },
+            ]}
+            showsVerticalScrollIndicator={false}
+          >
+            {collections.map((col) => (
+              <View
+                key={col.id}
+                style={[
+                  styles.colCard,
+                  { backgroundColor: "#14141e", borderColor: col.color + "50" },
+                ]}
+              >
+                <View style={styles.colHeader}>
+                  <View style={styles.colTitleRow}>
+                    <View style={[styles.colColorDot, { backgroundColor: col.color }]} />
+                    <Text style={styles.colName}>{col.name}</Text>
+                  </View>
+
+                  <Pressable
+                    onPress={() => {
+                      lightTap();
+                      deleteCollection(col.id);
+                    }}
+                    hitSlop={8}
+                  >
+                    <IconTrash size={16} color="#ef4444" stroke={1.8} />
+                  </Pressable>
                 </View>
 
+                {col.description ? (
+                  <Text style={styles.colDesc}>{col.description}</Text>
+                ) : null}
+
+                {/* Tags included */}
+                <View style={styles.colTagsWrap}>
+                  {col.tags.map((t, idx) => (
+                    <View key={idx} style={[styles.colTagBadge, { backgroundColor: col.color + "20" }]}>
+                      <Text style={[styles.colTagBadgeText, { color: col.color }]}>
+                        +{t.name}
+                      </Text>
+                    </View>
+                  ))}
+                  {col.excludeTags?.map((t, idx) => (
+                    <View key={`ex_${idx}`} style={[styles.colTagBadge, { backgroundColor: "rgba(239, 68, 68, 0.15)" }]}>
+                      <Text style={[styles.colTagBadgeText, { color: "#ef4444" }]}>
+                        -{t.name}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+
+                {/* Launch Search Button */}
                 <Pressable
-                  onPress={() => {
-                    lightTap();
-                    deleteCollection(col.id);
-                  }}
-                  hitSlop={8}
+                  onPress={() => handleSearchCollection(col)}
+                  style={[styles.colSearchBtn, { backgroundColor: col.color }]}
                 >
-                  <IconTrash size={16} color="#ef4444" stroke={1.8} />
+                  <IconSearch size={14} color="#fff" stroke={2.5} />
+                  <Text style={styles.colSearchBtnText}>Rechercher le pack</Text>
                 </Pressable>
               </View>
-
-              {col.description ? (
-                <Text style={styles.colDesc}>{col.description}</Text>
-              ) : null}
-
-              {/* Tags included */}
-              <View style={styles.colTagsWrap}>
-                {col.tags.map((t, idx) => (
-                  <View key={idx} style={[styles.colTagBadge, { backgroundColor: col.color + "20" }]}>
-                    <Text style={[styles.colTagBadgeText, { color: col.color }]}>
-                      +{t.name}
-                    </Text>
-                  </View>
-                ))}
-                {col.excludeTags?.map((t, idx) => (
-                  <View key={`ex_${idx}`} style={[styles.colTagBadge, { backgroundColor: "rgba(239, 68, 68, 0.15)" }]}>
-                    <Text style={[styles.colTagBadgeText, { color: "#ef4444" }]}>
-                      -{t.name}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-
-              {/* Launch Search Button */}
-              <Pressable
-                onPress={() => handleSearchCollection(col)}
-                style={[styles.colSearchBtn, { backgroundColor: col.color }]}
-              >
-                <IconSearch size={14} color="#fff" stroke={2.5} />
-                <Text style={styles.colSearchBtnText}>Rechercher le pack</Text>
-              </Pressable>
-            </View>
-          ))}
-        </ScrollView>
+            ))}
+          </ScrollView>
+        )
       ) : filteredItems.length === 0 ? (
         <View style={styles.emptyContainer}>
           <IconSearchOff size={44} color="#6b7280" stroke={1.5} style={{ opacity: 0.6 }} />

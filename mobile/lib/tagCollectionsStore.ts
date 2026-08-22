@@ -20,38 +20,9 @@ export interface TagCollection {
   updatedAt: number;
 }
 
-const DEFAULT_COLLECTIONS: TagCollection[] = [
-  {
-    id: "col_vanilla_romance",
-    name: "Vanilla Romance",
-    description: "Doujinshis purs, romantiques et sans drame",
-    color: "#ec4899",
-    tags: [
-      { type: "tag", name: "sole female" },
-      { type: "tag", name: "sole male" },
-    ],
-    excludeTags: [
-      { type: "tag", name: "netorare" },
-      { type: "tag", name: "guro" },
-      { type: "tag", name: "ugly bastard" },
-    ],
-    createdAt: Date.now() - 86400000,
-    updatedAt: Date.now() - 86400000,
-  },
-  {
-    id: "col_fgo_spotlight",
-    name: "Fate / Grand Order",
-    description: "Les meilleures parodies de l'univers Fate",
-    color: "#8b5cf6",
-    tags: [
-      { type: "parody", name: "fate grand order" },
-    ],
-    createdAt: Date.now() - 43200000,
-    updatedAt: Date.now() - 43200000,
-  },
-];
+const DEFAULT_COLLECTIONS: TagCollection[] = [];
 
-let currentCollections: TagCollection[] = [...DEFAULT_COLLECTIONS];
+let currentCollections: TagCollection[] = [];
 const listeners = new Set<() => void>();
 const writes = createWriteQueue();
 
