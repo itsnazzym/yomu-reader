@@ -50,9 +50,13 @@ import { useAccount } from "@/lib/accountStore";
 import { addFavorite, isFavorited, removeFavorite } from "@/lib/api/v2/galleries";
 import { useHomeSearch } from "@/lib/homeSearchStore";
 import { queryContainsTerm } from "@/lib/searchQuery";
+import { getSource } from "@/lib/sources/registry";
+import type { SourceId } from "@/lib/sources/types";
 
 export default function BookDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, src } = useLocalSearchParams<{ id: string; src?: string }>();
+  const sourceId = (src as SourceId) || "nhentai";
+  const isNhentai = sourceId === "nhentai";
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -104,32 +108,79 @@ export default function BookDetailScreen() {
     setRelatedLoading(true);
     scrollRef.current?.scrollTo({ y: 0, animated: false });
 
-    Promise.all([
-      getGallery(id),
-      getComments(id).catch(() => []),
-    ])
-      .then(([g, c]) => {
-        setGallery(g);
-        setComments(c);
-      })
-      .catch((err) => {
-        setError(err?.message || "Impossible de charger la galerie");
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+    if (isNhentai) {
+      // Flux nhentai existant : API + commentaires + suggestions.
+      Promise.all([
+        getGallery(id),
+        getComments(id).catch(() => []),
+      ])
+        .then(([g, c]) => {
+          setGallery(g);
+          setComments(c);
+        })
+        .catch((err) => {
+          setError(err?.message || "Impossible de charger la galerie");
+        })
+        .finally(() => {
+          setLoading(false);
+        });
 
-    getRelatedGalleryCards(id)
-      .then((cards) => {
-        setRelated(cards);
-      })
-      .catch(() => {
-        setRelated([]);
-      })
-      .finally(() => {
-        setRelatedLoading(false);
-      });
-  }, [id]);
+      getRelatedGalleryCards(id)
+        .then((cards) => {
+          setRelated(cards);
+        })
+        .catch(() => {
+          setRelated([]);
+        })
+        .finally(() => {
+          setRelatedLoading(false);
+        });
+    } else {
+      // Sources alternatives : adaptateur dédié, pas de commentaires ni
+      // de suggestions (non supportés par ces sites).
+      getSource(sourceId)
+        .getGallery(id)
+        .then((sg) => {
+          // Map vers Gallery pour réutiliser toute l'UI existante.
+          const mapped: Gallery = {
+            id: Number(sg.nativeId) || 0,
+            media_id: sg.nativeId,
+            title: { english: sg.title, japanese: "", pretty: sg.title },
+            images: {
+              pages: sg.pageUrls.map((p) => ({
+                t: "j" as const,
+                w: p.width || 0,
+                h: p.height || 0,
+                url: p.url,
+              })),
+              cover: { t: "j", w: 0, h: 0, url: sg.coverUrl },
+              thumbnail: { t: "j", w: 0, h: 0, url: sg.coverUrl },
+            },
+            scanlator: sourceId,
+            upload_date: sg.uploadDate || 0,
+            tags: sg.tags.map((t, i) => ({
+              id: i,
+              type: (t.type || "tag") as any,
+              name: t.name,
+              url: "",
+              count: 0,
+            })),
+            num_pages: sg.numPages,
+            num_favorites: 0,
+            globalId: sg.globalId,
+            origin: "local",
+          };
+          setGallery(mapped);
+        })
+        .catch((err) => {
+          setError(err?.message || "Impossible de charger la galerie");
+        })
+        .finally(() => {
+          setLoading(false);
+          setRelatedLoading(false);
+        });
+    }
+  }, [id, sourceId]);
 
   const handleShare = async () => {
     if (!gallery) return;
@@ -160,6 +211,7 @@ export default function BookDetailScreen() {
       params: {
         id: String(gallery.id),
         initialPage: String(initialPage),
+        ...(sourceId !== "nhentai" ? { src: sourceId } : {}),
       },
     });
   };

@@ -28,6 +28,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import PagerView from "react-native-pager-view";
 import { useTheme } from "@/lib/ThemeContext";
 import { getGallery, resolvePageUrl } from "@/lib/api/nhentai";
+import { getSource } from "@/lib/sources/registry";
 import { readLocalGallery } from "@/lib/localLibrary";
 import { Gallery } from "@/lib/api/types";
 import SmartImage, { preloadSmartImage } from "@/components/SmartImage";
@@ -50,11 +51,12 @@ export function parseReaderInitialPage(value?: string): number {
 }
 
 export default function ReaderScreen() {
-  const { id, initialPage, local, localId } = useLocalSearchParams<{
+  const { id, initialPage, local, localId, src } = useLocalSearchParams<{
     id: string;
     initialPage?: string;
     local?: string;
     localId?: string;
+    src?: string;
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -112,6 +114,42 @@ export default function ReaderScreen() {
           return;
         }
 
+        // Sources alternatives (src=3hentai|doujins) : chargement via
+        // l'adaptateur, pages déjà résolues avec URLs fraîches.
+        if (src && src !== "nhentai") {
+          const sg = await getSource(src).getGallery(id);
+          if (!cancelled) {
+            setGallery({
+              id: Number(sg.nativeId) || 0,
+              media_id: sg.nativeId,
+              title: { english: sg.title, japanese: "", pretty: sg.title },
+              images: {
+                pages: sg.pageUrls.map((p) => ({
+                  t: "j" as const,
+                  w: p.width || 0,
+                  h: p.height || 0,
+                  url: p.url,
+                })),
+                cover: { t: "j", w: 0, h: 0, url: sg.coverUrl },
+                thumbnail: { t: "j", w: 0, h: 0, url: sg.coverUrl },
+              },
+              scanlator: src,
+              upload_date: sg.uploadDate || 0,
+              tags: sg.tags.map((t, i) => ({
+                id: i,
+                type: (t.type || "tag") as any,
+                name: t.name,
+                url: "",
+                count: 0,
+              })),
+              num_pages: sg.numPages,
+              num_favorites: 0,
+              globalId: sg.globalId,
+            });
+          }
+          return;
+        }
+
         const remoteGallery = await getGallery(id);
         if (!cancelled) setGallery(remoteGallery);
       } catch (err) {
@@ -133,7 +171,7 @@ export default function ReaderScreen() {
     return () => {
       cancelled = true;
     };
-  }, [id, local, localId]);
+  }, [id, local, localId, src]);
 
   useEffect(() => {
     setCurrentPage(parseReaderInitialPage(initialPage));
