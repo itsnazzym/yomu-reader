@@ -22,6 +22,12 @@ impl AppState {
     }
 }
 
+impl Default for AppState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[tauri::command]
 pub async fn search_galleries(
     query: String,
