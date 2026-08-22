@@ -62,7 +62,7 @@ export function OnboardingModal() {
             accessibilityLabel="Passer la présentation"
           >
             <Text style={[styles.skipBtnText, { color: colors.sub }]}>Passer</Text>
-            <IconChevronRight size={14} color={colors.sub} stroke={2} />
+            <IconChevronRight size={14} color={colors.sub} strokeWidth={2} />
           </TouchableOpacity>
         </View>
 
@@ -104,7 +104,7 @@ export function OnboardingModal() {
               accessibilityRole="button"
               accessibilityLabel="Étape précédente"
             >
-              <IconArrowLeft size={16} color={colors.sub} stroke={2} />
+              <IconArrowLeft size={16} color={colors.sub} strokeWidth={2} />
               <Text style={[styles.backBtnText, { color: colors.sub }]}>Retour</Text>
             </TouchableOpacity>
           ) : (
@@ -123,9 +123,9 @@ export function OnboardingModal() {
                 {currentStep === totalSteps - 1 ? "Terminer" : "Continuer"}
               </Text>
               {currentStep === totalSteps - 1 ? (
-                <IconCheck size={16} color="#fff" stroke={2.5} />
+                <IconCheck size={16} color="#fff" strokeWidth={2.5} />
               ) : (
-                <IconArrowRight size={16} color="#fff" stroke={2.5} />
+                <IconArrowRight size={16} color="#fff" strokeWidth={2.5} />
               )}
             </View>
           </TouchableOpacity>

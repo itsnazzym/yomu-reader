@@ -3,7 +3,8 @@ import { useState, useEffect } from "react";
 import { Gallery } from "./api/types";
 import { createInitOnce, createWriteQueue } from "./persistQueue";
 
-const BLACKLIST_KEY = "@nhentai_blacklist_tags";
+export const BLACKLIST_STORAGE_KEY = "@nhentai_blacklist_tags";
+const BLACKLIST_KEY = BLACKLIST_STORAGE_KEY;
 
 let cachedTags: string[] = [];
 const listeners = new Set<() => void>();
@@ -51,7 +52,7 @@ export async function removeBlacklistTag(tag: string) {
   await setBlacklistedTags(next);
 }
 
-export function isGalleryBlacklisted(gallery: Gallery): boolean {
+export function isGalleryBlacklisted(gallery: Pick<Gallery, "tags"> | null | undefined): boolean {
   if (!cachedTags.length || !gallery || !Array.isArray(gallery.tags)) return false;
   const tagNames = gallery.tags
     .map((t) => (t?.name ? String(t.name).toLowerCase() : ""))

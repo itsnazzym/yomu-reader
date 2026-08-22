@@ -33,7 +33,7 @@ export function StepWelcome() {
     <View style={styles.container}>
       {/* Icon Badge */}
       <View style={[styles.iconBox, { backgroundColor: colors.accent + "18", borderColor: colors.accent + "35" }]}>
-        <IconBook2 size={32} color={colors.accent} stroke={1.6} />
+        <IconBook2 size={32} color={colors.accent} strokeWidth={1.6} />
       </View>
 
       <Text style={[styles.title, { color: colors.txt }]}>Bienvenue sur le Launcher</Text>
@@ -54,7 +54,7 @@ export function StepWelcome() {
               ]}
             >
               <View style={[styles.featureIconWrap, { backgroundColor: colors.bg }]}>
-                <IconComp size={18} color={colors.accent} stroke={1.8} />
+                <IconComp size={18} color={colors.accent} strokeWidth={1.8} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.featureTitle, { color: colors.txt }]}>{f.title}</Text>

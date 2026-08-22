@@ -118,7 +118,8 @@ function withAndroidDoh(config) {
     }
 
     if (!modConfig.modResults.contents.includes('abiFilters "arm64-v8a"')) {
-      const defaultConfMarker = 'versionName "1.0.0"';
+      // SDK 54 : versionName est injecté depuis app.json (plus de "1.0.0" en dur).
+      const defaultConfMarker = 'versionName "1.1.0"';
       if (modConfig.modResults.contents.includes(defaultConfMarker)) {
         modConfig.modResults.contents = modConfig.modResults.contents.replace(
           defaultConfMarker,
@@ -135,15 +136,9 @@ function withAndroidDoh(config) {
       return modConfig;
     }
 
-    const importMarker = "import com.facebook.soloader.SoLoader";
-    if (!modConfig.modResults.contents.includes(importMarker)) {
-      throw new Error("Impossible de trouver MainApplication.kt");
-    }
-    modConfig.modResults.contents = modConfig.modResults.contents.replace(
-      importMarker,
-      `${DOH_IMPORTS}\n${importMarker}`
-    );
-
+    // SDK 54 : le template MainApplication.kt n'importe plus SoLoader.
+    // On s'ancre sur la déclaration de classe, toujours présente, et on
+    // insère les imports juste avant `class MainApplication`.
     const classMarker =
       "class MainApplication : Application(), ReactApplication {";
     if (!modConfig.modResults.contents.includes(classMarker)) {
@@ -151,7 +146,7 @@ function withAndroidDoh(config) {
     }
     modConfig.modResults.contents = modConfig.modResults.contents.replace(
       classMarker,
-      `${DOH_SUPPORT}\n${classMarker}`
+      `${DOH_IMPORTS}\n\n${DOH_SUPPORT}\n\n${classMarker}`
     );
 
     const onCreateMarker = `  override fun onCreate() {

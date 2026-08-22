@@ -200,12 +200,12 @@ export function WebViewLoginModal({
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             style={styles.headerBtn}
           >
-            <IconX size={22} color="#f3f4f6" stroke={2} />
+            <IconX size={22} color="#f3f4f6" strokeWidth={2} />
           </Pressable>
 
           <View style={styles.headerCenter}>
             <View style={styles.titleRow}>
-              <IconShield size={16} color={colors.accent} stroke={2} />
+              <IconShield size={16} color={colors.accent} strokeWidth={2} />
               <Text style={styles.headerTitle}>Connexion Officielle nHentai</Text>
             </View>
             <Text style={styles.headerSubtitle} numberOfLines={1}>
@@ -218,13 +218,13 @@ export function WebViewLoginModal({
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             style={styles.headerBtn}
           >
-            <IconRotateClockwise size={18} color="#9ca3af" stroke={2} />
+            <IconRotateClockwise size={18} color="#9ca3af" strokeWidth={2} />
           </Pressable>
         </View>
 
         {/* Info banner */}
         <View style={styles.banner}>
-          <IconInfoCircle size={14} color="#60a5fa" stroke={1.8} />
+          <IconInfoCircle size={14} color="#60a5fa" strokeWidth={1.8} />
           <Text style={styles.bannerText}>
             Connectez-vous avec vos identifiants. Seule une session authentifiée vérifiable
             sera transmise à l'application.

@@ -297,7 +297,7 @@ export default function ProfileScreen() {
       {/* Top Header */}
       <View style={[styles.header, { borderBottomColor: colors.tagBg }]}>
         <IconBtn onPress={() => router.back()} size={36} style={styles.backBtn}>
-          <IconArrowLeft size={18} color={colors.txt} stroke={2} />
+          <IconArrowLeft size={18} color={colors.txt} strokeWidth={2} />
         </IconBtn>
         <View style={{ flex: 1 }}>
           <Text style={[styles.headerTitle, { color: colors.txt }]}>Profil</Text>
@@ -310,7 +310,7 @@ export default function ProfileScreen() {
             {refreshing ? (
               <ActivityIndicator size="small" color={colors.accent} />
             ) : (
-              <IconRotateClockwise size={16} color={colors.txt} stroke={2} />
+              <IconRotateClockwise size={16} color={colors.txt} strokeWidth={2} />
             )}
           </IconBtn>
         )}
@@ -319,7 +319,7 @@ export default function ProfileScreen() {
       {!isLoggedIn ? (
         <View style={styles.notLoggedInCenter}>
           <View style={[styles.emptyAvatarBox, { backgroundColor: colors.tagBg }]}>
-            <IconUser size={48} color={colors.sub} stroke={1.5} />
+            <IconUser size={48} color={colors.sub} strokeWidth={1.5} />
           </View>
           <Text style={[styles.emptyTitle, { color: colors.txt }]}>
             Connectez votre compte
@@ -333,7 +333,7 @@ export default function ProfileScreen() {
             style={[styles.connectBtn, { backgroundColor: colors.accent }]}
           >
             <View style={styles.connectBtnInner}>
-              <IconLogin size={18} color="#fff" stroke={2} />
+              <IconLogin size={18} color="#fff" strokeWidth={2} />
               <Text style={styles.connectBtnText}>Se connecter</Text>
             </View>
           </CardPressable>
@@ -364,11 +364,11 @@ export default function ProfileScreen() {
                   />
                 ) : (
                   <View style={styles.avatarFallback}>
-                    <IconUser size={28} color="#9ca3af" stroke={1.6} />
+                    <IconUser size={28} color="#9ca3af" strokeWidth={1.6} />
                   </View>
                 )}
                 <View style={[styles.avatarEditBadge, { backgroundColor: colors.accent }]}>
-                  <IconPhoto size={11} color="#fff" stroke={2.5} />
+                  <IconPhoto size={11} color="#fff" strokeWidth={2.5} />
                 </View>
               </Pressable>
 
@@ -378,13 +378,13 @@ export default function ProfileScreen() {
                     {username}
                   </Text>
                   <View style={styles.badgeOfficial}>
-                    <IconCheck size={10} color="#52c41a" stroke={3} />
+                    <IconCheck size={10} color="#52c41a" strokeWidth={3} />
                     <Text style={styles.badgeOfficialText}>Officiel</Text>
                   </View>
                 </View>
 
                 <View style={styles.emailRow}>
-                  <IconMail size={12} color={colors.sub} stroke={1.8} />
+                  <IconMail size={12} color={colors.sub} strokeWidth={1.8} />
                   <Text style={[styles.emailText, { color: colors.sub }]} numberOfLines={1}>
                     {email}
                   </Text>
@@ -423,7 +423,7 @@ export default function ProfileScreen() {
           <View style={styles.sectionWrap}>
             <View style={styles.sectionHeader}>
               <View style={styles.sectionTitleRow}>
-                <IconHeart size={16} color="#ff4757" stroke={2} fill="#ff4757" />
+                <IconHeart size={16} color="#ff4757" strokeWidth={2} fill="#ff4757" />
                 <Text style={[styles.sectionTitle, { color: colors.txt }]}>
                   Favoris récents
                 </Text>
@@ -434,7 +434,7 @@ export default function ProfileScreen() {
                   style={styles.viewAllBtn}
                 >
                   <Text style={[styles.viewAllText, { color: colors.accent }]}>Voir tout</Text>
-                  <IconChevronRight size={14} color={colors.accent} stroke={2} />
+                  <IconChevronRight size={14} color={colors.accent} strokeWidth={2} />
                 </Pressable>
               )}
             </View>
@@ -467,7 +467,7 @@ export default function ProfileScreen() {
                           <SmartImage uri={cover} style={styles.favCoverImg} contentFit="cover" />
                         ) : (
                           <View style={[styles.favCoverPlaceholder, { backgroundColor: colors.tagBg }]}>
-                            <IconPhoto size={20} color={colors.sub} stroke={1.8} />
+                            <IconPhoto size={20} color={colors.sub} strokeWidth={1.8} />
                           </View>
                         )}
                         <View style={styles.favIdBadge}>
@@ -488,7 +488,7 @@ export default function ProfileScreen() {
                     onPress={() => router.push("/favorites")}
                     style={[styles.favCard, styles.moreCard, { backgroundColor: colors.page, borderColor: colors.tagBg }]}
                   >
-                    <IconHeart size={24} color={colors.accent} stroke={1.8} />
+                    <IconHeart size={24} color={colors.accent} strokeWidth={1.8} />
                     <Text style={[styles.moreText, { color: colors.accent }]}>
                       +{favorites.length - 15} autres
                     </Text>
@@ -502,7 +502,7 @@ export default function ProfileScreen() {
           <View style={styles.sectionWrap}>
             <View style={styles.sectionHeader}>
               <View style={styles.sectionTitleRow}>
-                <IconMessageCircle size={16} color={colors.accent} stroke={2} />
+                <IconMessageCircle size={16} color={colors.accent} strokeWidth={2} />
                 <Text style={[styles.sectionTitle, { color: colors.txt }]}>
                   Mes commentaires ({userComments.length})
                 </Text>
@@ -554,15 +554,15 @@ export default function ProfileScreen() {
                 style={styles.securityHeader}
               >
                 <View style={styles.securityTitleRow}>
-                  <IconLock size={16} color={colors.accent} stroke={2} />
+                  <IconLock size={16} color={colors.accent} strokeWidth={2} />
                   <Text style={[styles.sectionTitle, { color: colors.txt }]}>
                     Changer le mot de passe
                   </Text>
                 </View>
                 {showPasswordForm ? (
-                  <IconChevronUp size={16} color={colors.sub} stroke={2} />
+                  <IconChevronUp size={16} color={colors.sub} strokeWidth={2} />
                 ) : (
-                  <IconChevronDown size={16} color={colors.sub} stroke={2} />
+                  <IconChevronDown size={16} color={colors.sub} strokeWidth={2} />
                 )}
               </Pressable>
 
@@ -608,7 +608,7 @@ export default function ProfileScreen() {
                       {changingPassword ? (
                         <ActivityIndicator size="small" color="#fff" />
                       ) : (
-                        <IconCheck size={16} color="#fff" stroke={2.5} />
+                        <IconCheck size={16} color="#fff" strokeWidth={2.5} />
                       )}
                       <Text style={styles.savePassText}>
                         {changingPassword ? "Mise à jour..." : "Enregistrer le mot de passe"}
@@ -633,7 +633,7 @@ export default function ProfileScreen() {
                   {syncingFavs ? (
                     <ActivityIndicator size="small" color={colors.accent} />
                   ) : (
-                    <IconRefresh size={16} color={colors.accent} stroke={2} />
+                    <IconRefresh size={16} color={colors.accent} strokeWidth={2} />
                   )}
                   <Text style={[styles.actionBtnText, { color: colors.txt }]}>
                     Synchroniser les favoris
@@ -647,7 +647,7 @@ export default function ProfileScreen() {
                 style={[styles.actionBtn, { backgroundColor: colors.page, borderColor: colors.tagBg }]}
               >
                 <View style={styles.actionBtnInner}>
-                  <IconKey size={16} color="#60a5fa" stroke={2} />
+                  <IconKey size={16} color="#60a5fa" strokeWidth={2} />
                   <Text style={[styles.actionBtnText, { color: colors.txt }]}>
                     Clés API
                   </Text>
@@ -660,7 +660,7 @@ export default function ProfileScreen() {
                 style={[styles.actionBtn, { backgroundColor: "rgba(255, 71, 87, 0.1)", borderColor: "rgba(255, 71, 87, 0.3)" }]}
               >
                 <View style={styles.actionBtnInner}>
-                  <IconLogout size={16} color="#ff4757" stroke={2} />
+                  <IconLogout size={16} color="#ff4757" strokeWidth={2} />
                   <Text style={[styles.actionBtnText, { color: "#ff4757" }]}>
                     Déconnexion
                   </Text>
@@ -691,7 +691,7 @@ export default function ProfileScreen() {
                 </Text>
               </View>
               <Pressable onPress={() => setIsAvatarOptionsOpen(false)} hitSlop={6}>
-                <IconX size={18} color="#9ca3af" stroke={2} />
+                <IconX size={18} color="#9ca3af" strokeWidth={2} />
               </Pressable>
             </View>
 
@@ -704,14 +704,14 @@ export default function ProfileScreen() {
               }}
               style={[styles.chooseStorageBtn, { backgroundColor: colors.accent }]}
             >
-              <IconPhoto size={20} color="#fff" stroke={2.2} />
+              <IconPhoto size={20} color="#fff" strokeWidth={2.2} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.chooseStorageTitle}>Choisir depuis l'appareil</Text>
                 <Text style={styles.chooseStorageSub}>
                   GIF animé, PNG, JPG, WebP avec recadreur
                 </Text>
               </View>
-              <IconChevronRight size={18} color="#fff" stroke={2} />
+              <IconChevronRight size={18} color="#fff" strokeWidth={2} />
             </Pressable>
 
             {/* Quick Color Presets */}
@@ -737,7 +737,7 @@ export default function ProfileScreen() {
                 onPress={handleResetAvatar}
                 style={[styles.resetAvatarBtn, { borderColor: "#2d2d40" }]}
               >
-                <IconRefresh size={15} color="#9ca3af" stroke={2} />
+                <IconRefresh size={15} color="#9ca3af" strokeWidth={2} />
                 <Text style={styles.resetAvatarText}>Rétablir l'avatar par défaut</Text>
               </Pressable>
             )}

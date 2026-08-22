@@ -1,4 +1,4 @@
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import { Gallery } from "./api/types";
 
 /**
@@ -40,6 +40,21 @@ export interface LocalLibraryEntry {
 
 export function libraryRoot(): string {
   return `${FileSystem.documentDirectory}${LIBRARY_DIR_NAME}/`;
+}
+
+/** Empêche la galerie Photos d'indexer les pages (sandbox + copies locales). */
+export async function ensureNoMediaFile(dirUri: string): Promise<void> {
+  if (!dirUri) return;
+  const path = dirUri.endsWith("/") ? `${dirUri}.nomedia` : `${dirUri}/.nomedia`;
+  try {
+    const info = await FileSystem.getInfoAsync(path);
+    if (info.exists) return;
+    await FileSystem.writeAsStringAsync(path, "", {
+      encoding: FileSystem.EncodingType.UTF8,
+    });
+  } catch (error) {
+    console.warn("[library] .nomedia write failed:", error);
+  }
 }
 
 export function manifestPath(localId: string): string {

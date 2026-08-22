@@ -326,7 +326,7 @@ export default function SettingsScreen() {
       {/* Header */}
       <View style={[styles.header, { borderBottomColor: "#222232" }]}>
         <IconBtn onPress={() => router.back()} size={36} style={styles.backBtn}>
-          <IconArrowLeft size={18} color="#f3f4f6" stroke={2} />
+          <IconArrowLeft size={18} color="#f3f4f6" strokeWidth={2} />
         </IconBtn>
         <Text style={styles.headerTitle}>Paramètres</Text>
       </View>
@@ -344,7 +344,7 @@ export default function SettingsScreen() {
         <View style={styles.sectionBlock}>
           <View style={styles.sectionTitleRow}>
             <View style={[styles.sectionIconBadge, { backgroundColor: colors.accent + "20" }]}>
-              <IconUser size={14} color={colors.accent} stroke={2} />
+              <IconUser size={14} color={colors.accent} strokeWidth={2} />
             </View>
             <Text style={styles.sectionHeaderTitle}>Compte</Text>
           </View>
@@ -382,7 +382,7 @@ export default function SettingsScreen() {
                     {session.cloudFavoritesCount || 0} favoris · {session.credentialType === "apiKey" ? "Clé API" : "Session API v2"}
                   </Text>
                 </View>
-                <IconChevronRight size={18} color="#6b7280" stroke={2} />
+                <IconChevronRight size={18} color="#6b7280" strokeWidth={2} />
               </View>
 
               <View style={styles.accountQuickActions}>
@@ -394,7 +394,7 @@ export default function SettingsScreen() {
                   {syncingCloud ? (
                     <ActivityIndicator size="small" color={colors.accent} />
                   ) : (
-                    <IconRefresh size={12} color={colors.accent} stroke={2} />
+                    <IconRefresh size={12} color={colors.accent} strokeWidth={2} />
                   )}
                   <Text style={[styles.quickActionText, { color: colors.accent }]}>
                     {syncingCloud ? "Synchro..." : "Synchroniser"}
@@ -419,7 +419,7 @@ export default function SettingsScreen() {
             >
               <View style={styles.loginPromptRow}>
                 <View style={[styles.avatarBox, { backgroundColor: "#222232" }]}>
-                  <IconLogin size={18} color={colors.accent} stroke={2} />
+                  <IconLogin size={18} color={colors.accent} strokeWidth={2} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.loginPromptTitle}>Connecter mon compte nHentai</Text>
@@ -427,7 +427,7 @@ export default function SettingsScreen() {
                     Retrouvez vos favoris Cloud et accédez à votre profil.
                   </Text>
                 </View>
-                <IconArrowRight size={18} color={colors.accent} stroke={2} />
+                <IconArrowRight size={18} color={colors.accent} strokeWidth={2} />
               </View>
             </CardPressable>
           )}
@@ -439,7 +439,7 @@ export default function SettingsScreen() {
         <View style={styles.sectionBlock}>
           <View style={styles.sectionTitleRow}>
             <View style={[styles.sectionIconBadge, { backgroundColor: "rgba(235, 47, 150, 0.15)" }]}>
-              <IconPalette size={14} color="#eb2f96" stroke={2} />
+              <IconPalette size={14} color="#eb2f96" strokeWidth={2} />
             </View>
             <Text style={styles.sectionHeaderTitle}>Interface & Thème</Text>
           </View>
@@ -461,7 +461,7 @@ export default function SettingsScreen() {
                       isSelected && styles.colorSwatchActive,
                     ]}
                   >
-                    {isSelected && <IconCheck size={12} color="#fff" stroke={2.5} />}
+                    {isSelected && <IconCheck size={12} color="#fff" strokeWidth={2.5} />}
                   </Pressable>
                 );
               })}
@@ -532,9 +532,9 @@ export default function SettingsScreen() {
                 </Text>
               </View>
               {showGridCustomizer ? (
-                <IconChevronUp size={18} color="#9ca3af" stroke={2} />
+                <IconChevronUp size={18} color="#9ca3af" strokeWidth={2} />
               ) : (
-                <IconChevronDown size={18} color="#9ca3af" stroke={2} />
+                <IconChevronDown size={18} color="#9ca3af" strokeWidth={2} />
               )}
             </Pressable>
 
@@ -690,7 +690,7 @@ export default function SettingsScreen() {
         <View style={styles.sectionBlock}>
           <View style={styles.sectionTitleRow}>
             <View style={[styles.sectionIconBadge, { backgroundColor: "rgba(96, 165, 250, 0.15)" }]}>
-              <IconBook2 size={14} color="#60a5fa" stroke={1.8} />
+              <IconBook2 size={14} color="#60a5fa" strokeWidth={1.8} />
             </View>
             <Text style={styles.sectionHeaderTitle}>Lecteur</Text>
           </View>
@@ -713,9 +713,9 @@ export default function SettingsScreen() {
                     ]}
                   >
                     {m.key === "webtoon" ? (
-                      <IconLayoutList size={14} color={active ? "#fff" : "#9ca3af"} stroke={2} />
+                      <IconLayoutList size={14} color={active ? "#fff" : "#9ca3af"} strokeWidth={2} />
                     ) : (
-                      <IconBook2 size={14} color={active ? "#fff" : "#9ca3af"} stroke={1.8} />
+                      <IconBook2 size={14} color={active ? "#fff" : "#9ca3af"} strokeWidth={1.8} />
                     )}
                     <Text
                       style={[
@@ -841,7 +841,7 @@ export default function SettingsScreen() {
         <View style={styles.sectionBlock}>
           <View style={styles.sectionTitleRow}>
             <View style={[styles.sectionIconBadge, { backgroundColor: "rgba(52, 199, 89, 0.15)" }]}>
-              <IconCloudDownload size={14} color="#34c759" stroke={2} />
+              <IconCloudDownload size={14} color="#34c759" strokeWidth={2} />
             </View>
             <Text style={styles.sectionHeaderTitle}>Téléchargements</Text>
           </View>
@@ -921,7 +921,7 @@ export default function SettingsScreen() {
                   }}
                   style={[styles.linkRow, { flex: 1 }]}
                 >
-                  <IconFolder size={16} color={colors.accent} stroke={2} />
+                  <IconFolder size={16} color={colors.accent} strokeWidth={2} />
                   <Text style={styles.linkRowText}>Modifier</Text>
                 </CardPressable>
                 <CardPressable
@@ -929,7 +929,7 @@ export default function SettingsScreen() {
                   onPress={() => void resetFolder()}
                   style={[styles.linkRow, { flex: 1 }]}
                 >
-                  <IconRefresh size={16} color={colors.sub} stroke={2} />
+                  <IconRefresh size={16} color={colors.sub} strokeWidth={2} />
                   <Text style={[styles.linkRowText, { color: colors.sub }]}>Réinitialiser</Text>
                 </CardPressable>
               </View>
@@ -942,9 +942,9 @@ export default function SettingsScreen() {
               onPress={() => router.push("/downloaded")}
               style={styles.linkRow}
             >
-              <IconFolder size={16} color={colors.accent} stroke={2} />
+              <IconFolder size={16} color={colors.accent} strokeWidth={2} />
               <Text style={styles.linkRowText}>Voir les téléchargements</Text>
-              <IconChevronRight size={16} color="#6b7280" stroke={2} />
+              <IconChevronRight size={16} color="#6b7280" strokeWidth={2} />
             </CardPressable>
           </View>
         </View>
@@ -955,7 +955,7 @@ export default function SettingsScreen() {
         <View style={styles.sectionBlock}>
           <View style={styles.sectionTitleRow}>
             <View style={[styles.sectionIconBadge, { backgroundColor: "rgba(250, 173, 20, 0.15)" }]}>
-              <IconDatabase size={14} color="#faad14" stroke={2} />
+              <IconDatabase size={14} color="#faad14" strokeWidth={2} />
             </View>
             <Text style={styles.sectionHeaderTitle}>Stockage & Cache</Text>
           </View>
@@ -976,7 +976,7 @@ export default function SettingsScreen() {
                 {clearingCache ? (
                   <ActivityIndicator size="small" color="#ff4757" />
                 ) : (
-                  <IconTrash size={14} color="#ff4757" stroke={2} />
+                  <IconTrash size={14} color="#ff4757" strokeWidth={2} />
                 )}
                 <Text style={styles.clearCacheText}>Vider le cache</Text>
               </Pressable>
@@ -986,7 +986,7 @@ export default function SettingsScreen() {
 
             {/* Clear History */}
             <Pressable onPress={handleClearHistory} style={styles.dangerRow}>
-              <IconClock size={16} color="#ff4757" stroke={2} />
+              <IconClock size={16} color="#ff4757" strokeWidth={2} />
               <Text style={styles.dangerRowText}>Effacer l'historique</Text>
             </Pressable>
           </View>
@@ -998,7 +998,7 @@ export default function SettingsScreen() {
         <View style={styles.sectionBlock}>
           <View style={styles.sectionTitleRow}>
             <View style={[styles.sectionIconBadge, { backgroundColor: "rgba(255, 71, 87, 0.15)" }]}>
-              <IconBan size={14} color="#ff4757" stroke={2} />
+              <IconBan size={14} color="#ff4757" strokeWidth={2} />
             </View>
             <Text style={styles.sectionHeaderTitle}>Tags masqués</Text>
           </View>
@@ -1076,7 +1076,7 @@ export default function SettingsScreen() {
               onPress={() => setPinModalOpen(true)}
               style={styles.pinRow}
             >
-              <IconLock size={14} color={colors.accent} stroke={2} />
+              <IconLock size={14} color={colors.accent} strokeWidth={2} />
               <Text style={[styles.pinRowText, { color: colors.accent }]}>
                 Définir / changer le PIN
               </Text>
@@ -1137,7 +1137,7 @@ export default function SettingsScreen() {
                 onPress={handleAddTag}
                 style={[styles.addTagBtn, { backgroundColor: colors.accent }]}
               >
-                <IconPlus size={18} color="#fff" stroke={2.5} />
+                <IconPlus size={18} color="#fff" strokeWidth={2.5} />
               </Pressable>
             </View>
 
@@ -1156,9 +1156,9 @@ export default function SettingsScreen() {
                     ]}
                   >
                     {isAlready ? (
-                      <IconCheck size={11} color="#ff4757" stroke={2.5} />
+                      <IconCheck size={11} color="#ff4757" strokeWidth={2.5} />
                     ) : (
-                      <IconPlus size={11} color="#9ca3af" stroke={2} />
+                      <IconPlus size={11} color="#9ca3af" strokeWidth={2} />
                     )}
                     <Text
                       style={[
@@ -1184,7 +1184,7 @@ export default function SettingsScreen() {
                   <View key={tag} style={styles.blackTagChip}>
                     <Text style={styles.blackTagText}>{tag}</Text>
                     <Pressable onPress={() => removeTag(tag)} style={{ padding: 2 }}>
-                      <IconX size={13} color="#ff4757" stroke={2} />
+                      <IconX size={13} color="#ff4757" strokeWidth={2} />
                     </Pressable>
                   </View>
                 ))
@@ -1199,7 +1199,7 @@ export default function SettingsScreen() {
         <View style={styles.sectionBlock}>
           <View style={styles.sectionTitleRow}>
             <View style={[styles.sectionIconBadge, { backgroundColor: "rgba(168, 85, 247, 0.15)" }]}>
-              <IconDeviceFloppy size={14} color="#a855f7" stroke={2} />
+              <IconDeviceFloppy size={14} color="#a855f7" strokeWidth={2} />
             </View>
             <Text style={styles.sectionHeaderTitle}>Sauvegarde</Text>
           </View>
@@ -1222,7 +1222,7 @@ export default function SettingsScreen() {
               }}
               style={[styles.btnActionRow, { backgroundColor: colors.accent }]}
             >
-              <IconCloudDownload size={16} color="#fff" stroke={2} />
+              <IconCloudDownload size={16} color="#fff" strokeWidth={2} />
               <Text style={styles.btnActionText}>Exporter la sauvegarde</Text>
             </CardPressable>
 
@@ -1244,7 +1244,7 @@ export default function SettingsScreen() {
               }}
               style={[styles.btnActionRow, { backgroundColor: colors.accent }]}
             >
-              <IconUpload size={16} color="#fff" stroke={2} />
+              <IconUpload size={16} color="#fff" strokeWidth={2} />
               <Text style={styles.btnActionText}>Restaurer depuis un fichier</Text>
             </CardPressable>
 
@@ -1271,7 +1271,7 @@ export default function SettingsScreen() {
               }}
               style={[styles.btnActionRow, { backgroundColor: "#1e1e2c", borderColor: "#2f2f44", borderWidth: 1 }]}
             >
-              <IconUpload size={16} color={colors.accent} stroke={2} />
+              <IconUpload size={16} color={colors.accent} strokeWidth={2} />
               <Text style={[styles.btnActionText, { color: colors.txt }]}>
                 Restaurer depuis le presse-papier
               </Text>
@@ -1285,7 +1285,7 @@ export default function SettingsScreen() {
         <View style={styles.sectionBlock}>
           <View style={styles.sectionTitleRow}>
             <View style={[styles.sectionIconBadge, { backgroundColor: "rgba(168, 85, 247, 0.15)" }]}>
-              <IconWorld size={14} color="#a855f7" stroke={2} />
+              <IconWorld size={14} color="#a855f7" strokeWidth={2} />
             </View>
             <Text style={styles.sectionHeaderTitle}>Réseau</Text>
           </View>
@@ -1313,9 +1313,9 @@ export default function SettingsScreen() {
               onPress={() => router.push("/api-keys")}
               style={styles.linkRow}
             >
-              <IconKey size={16} color="#60a5fa" stroke={2} />
+              <IconKey size={16} color="#60a5fa" strokeWidth={2} />
               <Text style={styles.linkRowText}>Clés API</Text>
-              <IconChevronRight size={16} color="#6b7280" stroke={2} />
+              <IconChevronRight size={16} color="#6b7280" strokeWidth={2} />
             </CardPressable>
 
             <View style={styles.divider} />
@@ -1329,9 +1329,9 @@ export default function SettingsScreen() {
               }}
               style={styles.linkRow}
             >
-              <IconHelpCircle size={16} color={colors.accent} stroke={2} />
+              <IconHelpCircle size={16} color={colors.accent} strokeWidth={2} />
               <Text style={styles.linkRowText}>Revoir l'introduction</Text>
-              <IconChevronRight size={16} color="#6b7280" stroke={2} />
+              <IconChevronRight size={16} color="#6b7280" strokeWidth={2} />
             </CardPressable>
 
             <View style={styles.divider} />

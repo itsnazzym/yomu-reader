@@ -210,10 +210,10 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
                   accessibilityLabel={`Langue : ${getLangLabel()}`}
                 >
                   <View style={styles.optionLeft}>
-                    <IconWorld size={16} color={colors.accent} stroke={1.8} style={styles.optionIcon} />
+                    <IconWorld size={16} color={colors.accent} strokeWidth={1.8} style={styles.optionIcon} />
                     <Text style={styles.optionTitle}>Langue : {getLangLabel()}</Text>
                   </View>
-                  <IconChevronRight size={16} color="#6b7280" stroke={2} />
+                  <IconChevronRight size={16} color="#6b7280" strokeWidth={2} />
                 </TouchableOpacity>
 
                 {/* Pages Row */}
@@ -225,12 +225,12 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
                   accessibilityLabel={`Pages${currentPageRange !== "all" ? ` : ${getPageLabel()}` : ""}`}
                 >
                   <View style={styles.optionLeft}>
-                    <IconFileText size={16} color={colors.accent} stroke={1.8} style={styles.optionIcon} />
+                    <IconFileText size={16} color={colors.accent} strokeWidth={1.8} style={styles.optionIcon} />
                     <Text style={styles.optionTitle}>
                       Pages {currentPageRange !== "all" ? `(${getPageLabel()})` : ""}
                     </Text>
                   </View>
-                  <IconChevronRight size={16} color="#6b7280" stroke={2} />
+                  <IconChevronRight size={16} color="#6b7280" strokeWidth={2} />
                 </TouchableOpacity>
 
                 {/* Date Filter Row */}
@@ -242,12 +242,12 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
                   accessibilityLabel={`Filtre de date${currentDateFilter !== "all" ? ` : ${getDateLabel()}` : ""}`}
                 >
                   <View style={styles.optionLeft}>
-                    <IconCalendar size={16} color={colors.accent} stroke={1.8} style={styles.optionIcon} />
+                    <IconCalendar size={16} color={colors.accent} strokeWidth={1.8} style={styles.optionIcon} />
                     <Text style={styles.optionTitle}>
                       Date de mise en ligne {currentDateFilter !== "all" ? `(${getDateLabel()})` : ""}
                     </Text>
                   </View>
-                  <IconChevronRight size={16} color="#6b7280" stroke={2} />
+                  <IconChevronRight size={16} color="#6b7280" strokeWidth={2} />
                 </TouchableOpacity>
               </View>
 
@@ -340,7 +340,7 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
                       accessibilityRole="button"
                       accessibilityLabel="Réinitialiser les filtres"
                     >
-                      <IconRotateClockwise size={16} color={colors.accent} stroke={2} />
+                      <IconRotateClockwise size={16} color={colors.accent} strokeWidth={2} />
                       <Text style={styles.resetBtnText}>Réinitialiser les filtres</Text>
                     </TouchableOpacity>
                   </View>
@@ -359,7 +359,7 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
                 accessibilityRole="button"
                 accessibilityLabel="Retour aux filtres"
               >
-                <IconArrowLeft size={16} color={colors.accent} stroke={2} />
+                <IconArrowLeft size={16} color={colors.accent} strokeWidth={2} />
                 <Text style={styles.submenuTitle}>Choisir une langue</Text>
               </TouchableOpacity>
 
@@ -394,7 +394,7 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
                     >
                       {l.label}
                     </Text>
-                    {currentLang === l.key && <IconCheck size={16} color={colors.accent} stroke={2.5} />}
+                    {currentLang === l.key && <IconCheck size={16} color={colors.accent} strokeWidth={2.5} />}
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -411,7 +411,7 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
                 accessibilityRole="button"
                 accessibilityLabel="Retour aux filtres"
               >
-                <IconArrowLeft size={16} color={colors.accent} stroke={2} />
+                <IconArrowLeft size={16} color={colors.accent} strokeWidth={2} />
                 <Text style={styles.submenuTitle}>Filtrer par nombre de pages</Text>
               </TouchableOpacity>
 
@@ -446,7 +446,7 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
                     >
                       {p.label}
                     </Text>
-                    {currentPageRange === p.key && <IconCheck size={16} color={colors.accent} stroke={2.5} />}
+                    {currentPageRange === p.key && <IconCheck size={16} color={colors.accent} strokeWidth={2.5} />}
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -463,7 +463,7 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
                 accessibilityRole="button"
                 accessibilityLabel="Retour aux filtres"
               >
-                <IconArrowLeft size={16} color={colors.accent} stroke={2} />
+                <IconArrowLeft size={16} color={colors.accent} strokeWidth={2} />
                 <Text style={styles.submenuTitle}>Filtrer par date de mise en ligne</Text>
               </TouchableOpacity>
 
@@ -498,7 +498,7 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
                     >
                       {d.label}
                     </Text>
-                    {currentDateFilter === d.key && <IconCheck size={16} color={colors.accent} stroke={2.5} />}
+                    {currentDateFilter === d.key && <IconCheck size={16} color={colors.accent} strokeWidth={2.5} />}
                   </TouchableOpacity>
                 ))}
               </ScrollView>

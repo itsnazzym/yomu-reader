@@ -206,7 +206,7 @@ export function SmartImage({
           onPress={handleManualRetry}
           style={[StyleSheet.absoluteFillObject, styles.errorBox, { backgroundColor: "#13131d" }]}
         >
-          <IconReload size={18} color="#6b7280" stroke={1.8} />
+          <IconReload size={18} color="#6b7280" strokeWidth={1.8} />
         </Pressable>
       )}
     </View>

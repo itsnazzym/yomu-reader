@@ -24,9 +24,9 @@ export function StepAccount({ onFinish }: StepAccountProps) {
     <View style={styles.container}>
       <View style={[styles.iconBox, { backgroundColor: colors.accent + "18", borderColor: colors.accent + "35" }]}>
         {isLoggedIn ? (
-          <IconCircleCheck size={30} color={colors.accent} stroke={1.8} />
+          <IconCircleCheck size={30} color={colors.accent} strokeWidth={1.8} />
         ) : (
-          <IconUserCheck size={30} color={colors.accent} stroke={1.8} />
+          <IconUserCheck size={30} color={colors.accent} strokeWidth={1.8} />
         )}
       </View>
 
@@ -44,7 +44,7 @@ export function StepAccount({ onFinish }: StepAccountProps) {
         {isLoggedIn ? (
           <View style={styles.connectedRow}>
             <View style={[styles.userBadge, { backgroundColor: colors.accent }]}>
-              <IconUser size={16} color="#fff" stroke={2} />
+              <IconUser size={16} color="#fff" strokeWidth={2} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[styles.connectedName, { color: colors.txt }]}>
@@ -54,7 +54,7 @@ export function StepAccount({ onFinish }: StepAccountProps) {
                 {session.cloudFavoritesCount || 0} favoris synchronisés
               </Text>
             </View>
-            <IconCheck size={18} color="#52c41a" stroke={2.5} />
+            <IconCheck size={18} color="#52c41a" strokeWidth={2.5} />
           </View>
         ) : (
           <Pressable
@@ -63,7 +63,7 @@ export function StepAccount({ onFinish }: StepAccountProps) {
             accessibilityRole="button"
             accessibilityLabel="Se connecter à mon compte nHentai"
           >
-            <IconLogin size={16} color="#fff" stroke={2} />
+            <IconLogin size={16} color="#fff" strokeWidth={2} />
             <Text style={styles.loginBtnText}>Se connecter à mon compte nHentai</Text>
           </Pressable>
         )}

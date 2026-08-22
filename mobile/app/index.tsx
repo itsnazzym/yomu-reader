@@ -13,7 +13,7 @@ import {
   Modal,
   Pressable,
 } from "react-native";
-import { FlashList } from "@shopify/flash-list";
+import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import {
   IconMenu2,
   IconRefresh,
@@ -161,7 +161,7 @@ export default function HomeScreen() {
 
   // Rotation animation for refresh button
   const spinAnim = useRef(new Animated.Value(0)).current;
-  const flatListRef = useRef<FlashList<Gallery>>(null);
+  const flatListRef = useRef<FlashListRef<Gallery>>(null);
   const latestRequestRef = useRef(0);
   const loadingMoreRef = useRef(false);
   const galleriesRef = useRef<Gallery[]>([]);
@@ -456,7 +456,7 @@ export default function HomeScreen() {
           accessibilityRole="button"
           accessibilityLabel="Ouvrir le menu"
         >
-          <IconMenu2 size={20} color={colors.txt} stroke={2} style={{ marginRight: 10 }} />
+          <IconMenu2 size={20} color={colors.txt} strokeWidth={2} style={{ marginRight: 10 }} />
           <Text style={[styles.headerTitle, { color: colors.txt }]}>Accueil</Text>
         </TouchableOpacity>
 
@@ -472,7 +472,7 @@ export default function HomeScreen() {
             accessibilityLabel="Actualiser les galeries"
           >
             <Animated.View style={{ transform: [{ rotate: spin }] }}>
-              <IconRefresh size={18} color={colors.accent} stroke={2} />
+              <IconRefresh size={18} color={colors.accent} strokeWidth={2} />
             </Animated.View>
           </TouchableOpacity>
 
@@ -485,7 +485,7 @@ export default function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel={isSearchOpen ? "Fermer la recherche" : "Ouvrir la recherche"}
           >
-            <IconSearch size={18} color={colors.accent} stroke={2} />
+            <IconSearch size={18} color={colors.accent} strokeWidth={2} />
           </TouchableOpacity>
 
           {/* Filter & Sort Trigger */}
@@ -497,7 +497,7 @@ export default function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel="Ouvrir les filtres"
           >
-            <IconAdjustmentsHorizontal size={18} color={colors.accent} stroke={1.8} />
+            <IconAdjustmentsHorizontal size={18} color={colors.accent} strokeWidth={1.8} />
             {hasActiveFilters && <View style={styles.filterBadgeDot} />}
           </TouchableOpacity>
 
@@ -510,7 +510,7 @@ export default function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel="Explorer les tags"
           >
-            <IconTag size={18} color={colors.accent} stroke={1.8} />
+            <IconTag size={18} color={colors.accent} strokeWidth={1.8} />
           </TouchableOpacity>
         </View>
       </View>
@@ -553,7 +553,7 @@ export default function HomeScreen() {
             </Text>
           </View>
           <View style={[styles.resumeAction, { backgroundColor: colors.accent + "29" }]}>
-            <IconBook2 size={18} color={colors.accent} stroke={2} />
+            <IconBook2 size={18} color={colors.accent} strokeWidth={2} />
           </View>
         </TouchableOpacity>
       ) : null}
@@ -653,7 +653,7 @@ export default function HomeScreen() {
               accessibilityState={{ selected: searchQuery.includes("french") }}
               accessibilityLabel="Filtrer les galeries françaises"
             >
-              <IconWorld size={14} color={searchQuery.includes("french") ? "#ffffff" : colors.accent} stroke={2} />
+              <IconWorld size={14} color={searchQuery.includes("french") ? "#ffffff" : colors.accent} strokeWidth={2} />
               <Text style={[styles.quickChipText, searchQuery.includes("french") && styles.quickChipTextActive]}>
                 Français
               </Text>
@@ -679,7 +679,7 @@ export default function HomeScreen() {
               accessibilityState={{ selected: searchQuery.includes("english") }}
               accessibilityLabel="Filtrer les galeries anglaises"
             >
-              <IconWorld size={14} color={searchQuery.includes("english") ? "#ffffff" : colors.accent} stroke={2} />
+              <IconWorld size={14} color={searchQuery.includes("english") ? "#ffffff" : colors.accent} strokeWidth={2} />
               <Text style={[styles.quickChipText, searchQuery.includes("english") && styles.quickChipTextActive]}>
                 Anglais
               </Text>
@@ -706,7 +706,7 @@ export default function HomeScreen() {
               accessibilityState={{ selected: filterOptions.sort.includes("popular") }}
               accessibilityLabel="Trier par popularité"
             >
-              <IconFlame size={14} color={filterOptions.sort.includes("popular") ? "#ffffff" : colors.accent} stroke={2} />
+              <IconFlame size={14} color={filterOptions.sort.includes("popular") ? "#ffffff" : colors.accent} strokeWidth={2} />
               <Text style={[styles.quickChipText, filterOptions.sort.includes("popular") && styles.quickChipTextActive]}>
                 Populaires
               </Text>
@@ -749,7 +749,7 @@ export default function HomeScreen() {
               accessibilityRole="button"
               accessibilityLabel="Explorer les tags"
             >
-              <IconTags size={14} color={colors.accent} stroke={2} />
+              <IconTags size={14} color={colors.accent} strokeWidth={2} />
               <Text style={styles.quickChipText}>
                 Explorer Tags
               </Text>
@@ -766,7 +766,7 @@ export default function HomeScreen() {
         </View>
       ) : error && galleries.length === 0 ? (
         <View style={styles.centerContainer}>
-          <IconAlertCircle size={48} color="#ff4757" stroke={1.5} />
+          <IconAlertCircle size={48} color="#ff4757" strokeWidth={1.5} />
           <Text style={styles.errorTitle}>Impossible de charger les galeries</Text>
           <Text style={styles.errorSub}>{error}</Text>
           <TouchableOpacity
@@ -779,7 +779,7 @@ export default function HomeScreen() {
         </View>
       ) : filteredGalleries.length === 0 ? (
         <View style={styles.centerContainer}>
-          <IconInbox size={48} color="#6b7280" stroke={1.5} style={{ opacity: 0.5 }} />
+          <IconInbox size={48} color="#6b7280" strokeWidth={1.5} style={{ opacity: 0.5 }} />
           <Text style={styles.emptyTitle}>Aucun résultat trouvé</Text>
           <Text style={styles.emptySub}>
             Essayez de modifier votre recherche ou vos filtres de page/langue.
@@ -790,7 +790,6 @@ export default function HomeScreen() {
           ref={flatListRef}
           data={filteredGalleries}
           renderItem={renderItem}
-          estimatedItemSize={240}
           getItemType={() => "gallery_card"}
           drawDistance={500}
           numColumns={numColumns}
@@ -850,7 +849,7 @@ export default function HomeScreen() {
           accessibilityRole="button"
           accessibilityLabel="Page précédente"
         >
-          <IconChevronLeft size={22} color={colors.txt} stroke={2} />
+          <IconChevronLeft size={22} color={colors.txt} strokeWidth={2} />
         </TouchableOpacity>
 
         {/* Page Indicator (Clickable to jump - Android, iOS, Web compatible) */}
@@ -885,7 +884,7 @@ export default function HomeScreen() {
           accessibilityRole="button"
           accessibilityLabel="Page suivante"
         >
-          <IconChevronRight size={22} color={colors.txt} stroke={2} />
+          <IconChevronRight size={22} color={colors.txt} strokeWidth={2} />
         </TouchableOpacity>
       </View>
       )}
@@ -957,7 +956,7 @@ export default function HomeScreen() {
                 accessibilityLabel="Aller à la page"
               >
                 <Text style={styles.jumpSubmitText}>Aller</Text>
-                <IconArrowRight size={16} color="#1c191a" stroke={2.5} />
+                <IconArrowRight size={16} color="#1c191a" strokeWidth={2.5} />
               </TouchableOpacity>
             </View>
           </Pressable>

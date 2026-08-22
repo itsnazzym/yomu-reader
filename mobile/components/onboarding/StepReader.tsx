@@ -16,7 +16,7 @@ export function StepReader() {
   return (
     <View style={styles.container}>
       <View style={[styles.iconBox, { backgroundColor: colors.accent + "18", borderColor: colors.accent + "35" }]}>
-        <IconEye size={30} color={colors.accent} stroke={1.7} />
+        <IconEye size={30} color={colors.accent} strokeWidth={1.7} />
       </View>
 
       <Text style={[styles.title, { color: colors.txt }]}>Confort de Lecture</Text>
@@ -41,7 +41,7 @@ export function StepReader() {
             <IconLayoutList
               size={18}
               color={settings.defaultMode === "webtoon" ? colors.accent : colors.sub}
-              stroke={1.8}
+              strokeWidth={1.8}
             />
             <Text
               style={[
@@ -52,7 +52,7 @@ export function StepReader() {
               Webtoon (Vertical)
             </Text>
             {settings.defaultMode === "webtoon" && (
-              <IconCircleCheck size={18} color={colors.accent} stroke={2} style={{ marginLeft: "auto" }} />
+              <IconCircleCheck size={18} color={colors.accent} strokeWidth={2} style={{ marginLeft: "auto" }} />
             )}
           </View>
           <Text style={[styles.modeCardDesc, { color: colors.sub }]}>
@@ -75,7 +75,7 @@ export function StepReader() {
             <IconBook2
               size={18}
               color={settings.defaultMode === "pager" ? colors.accent : colors.sub}
-              stroke={1.8}
+              strokeWidth={1.8}
             />
             <Text
               style={[
@@ -86,7 +86,7 @@ export function StepReader() {
               Manga (Page par page)
             </Text>
             {settings.defaultMode === "pager" && (
-              <IconCircleCheck size={18} color={colors.accent} stroke={2} style={{ marginLeft: "auto" }} />
+              <IconCircleCheck size={18} color={colors.accent} strokeWidth={2} style={{ marginLeft: "auto" }} />
             )}
           </View>
           <Text style={[styles.modeCardDesc, { color: colors.sub }]}>

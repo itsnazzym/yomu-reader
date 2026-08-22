@@ -113,7 +113,7 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
           <View style={styles.header}>
             <View style={styles.headerTitleRow}>
               <View style={[styles.iconCircle, { backgroundColor: colors.accent }]}>
-                <IconShare size={18} color="#ffffff" stroke={2} />
+                <IconShare size={18} color="#ffffff" strokeWidth={2} />
               </View>
               <View>
                 <Text style={styles.headerTitle}>Partage rapide</Text>
@@ -130,7 +130,7 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
               accessibilityRole="button"
               accessibilityLabel="Fermer le partage"
             >
-              <IconX size={20} color={colors.sub} stroke={2} />
+              <IconX size={20} color={colors.sub} strokeWidth={2} />
             </TouchableOpacity>
           </View>
 
@@ -151,7 +151,7 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
             accessibilityLabel="Partager avec le partage système"
           >
             <View style={styles.airdropBtnContent}>
-              <IconDevices size={20} color="#ffffff" stroke={2} />
+              <IconDevices size={20} color="#ffffff" strokeWidth={2} />
               <Text style={styles.airdropBtnText}>
                 {Platform.OS === "ios"
                   ? "Envoyer via AirDrop / Partage iOS"
@@ -175,7 +175,7 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
               <IconQrcode
                 size={16}
                 color={activeTab === "qr" ? colors.accent : colors.sub}
-                stroke={2}
+                strokeWidth={2}
               />
               <Text
                 style={[
@@ -201,7 +201,7 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
               <IconCopy
                 size={15}
                 color={activeTab === "links" ? colors.accent : colors.sub}
-                stroke={2}
+                strokeWidth={2}
               />
               <Text
                 style={[

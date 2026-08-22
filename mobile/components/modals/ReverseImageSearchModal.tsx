@@ -90,7 +90,7 @@ export function ReverseImageSearchModal({
           <View style={[styles.header, { borderBottomColor: "#222232" }]}>
             <View style={styles.headerTitleWrap}>
               <View style={[styles.iconWrap, { backgroundColor: "rgba(96, 165, 250, 0.15)" }]}>
-                <IconPhotoSearch size={18} color="#60a5fa" stroke={2} />
+                <IconPhotoSearch size={18} color="#60a5fa" strokeWidth={2} />
               </View>
               <View>
                 <Text style={styles.headerTitle}>Recherche Visuelle d'Image</Text>
@@ -98,7 +98,7 @@ export function ReverseImageSearchModal({
               </View>
             </View>
             <Pressable onPress={onClose} hitSlop={8} style={styles.closeBtn}>
-              <IconX size={18} color="#9ca3af" stroke={2} />
+              <IconX size={18} color="#9ca3af" strokeWidth={2} />
             </Pressable>
           </View>
 
@@ -125,7 +125,7 @@ export function ReverseImageSearchModal({
                 {loading ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <IconSearch size={16} color="#fff" stroke={2.5} />
+                  <IconSearch size={16} color="#fff" strokeWidth={2.5} />
                 )}
               </Pressable>
             </View>
@@ -164,7 +164,7 @@ export function ReverseImageSearchModal({
                   <View style={styles.resultMeta}>
                     <View style={styles.scoreRow}>
                       <View style={[styles.scoreBadge, { backgroundColor: "rgba(52, 211, 153, 0.15)" }]}>
-                        <IconSparkles size={11} color="#34d399" stroke={2} />
+                        <IconSparkles size={11} color="#34d399" strokeWidth={2} />
                         <Text style={styles.scoreText}>{r.score}% Match</Text>
                       </View>
                       {r.page ? (
@@ -175,7 +175,7 @@ export function ReverseImageSearchModal({
                       {r.title}
                     </Text>
                     <View style={styles.actionPrompt}>
-                      <IconBook2 size={12} color={colors.accent} stroke={2} />
+                      <IconBook2 size={12} color={colors.accent} strokeWidth={2} />
                       <Text style={[styles.actionPromptText, { color: colors.accent }]}>
                         Ouvrir le manga #{r.galleryId}
                       </Text>

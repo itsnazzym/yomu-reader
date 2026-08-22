@@ -1,4 +1,5 @@
-import type { ComponentType } from "react";
+
+import type { Icon as TablerIcon } from "@tabler/icons-react-native";
 import {
   IconTag,
   IconDeviceTv,
@@ -17,7 +18,7 @@ export interface TaxonomyItem {
 }
 
 interface CategoryMetaItem {
-  icon: ComponentType<{ size?: number; color?: string; stroke?: number }>;
+  icon: TablerIcon;
   color: string;
   label: string;
   type: string;

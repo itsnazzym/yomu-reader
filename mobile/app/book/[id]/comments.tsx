@@ -104,7 +104,7 @@ export default function CommentsScreen() {
       {/* Header */}
       <View style={[styles.header, { borderBottomColor: colors.tagBg }]}>
         <IconBtn onPress={() => router.back()} size={40}>
-          <IconArrowLeft size={22} color={colors.txt} stroke={2} />
+          <IconArrowLeft size={22} color={colors.txt} strokeWidth={2} />
         </IconBtn>
         <Text style={[styles.headerTitle, { color: colors.txt }]}>
           Commentaires (#{id})
@@ -121,7 +121,7 @@ export default function CommentsScreen() {
         </View>
       ) : comments.length === 0 ? (
         <View style={styles.centerContainer}>
-          <IconMessageCircle size={48} color={colors.sub} stroke={1.5} style={{ opacity: 0.5 }} />
+          <IconMessageCircle size={48} color={colors.sub} strokeWidth={1.5} style={{ opacity: 0.5 }} />
           <Text style={[styles.emptyTitle, { color: colors.txt }]}>
             Aucun commentaire
           </Text>
@@ -133,7 +133,6 @@ export default function CommentsScreen() {
         <FlashList
           data={comments}
           renderItem={renderItem}
-          estimatedItemSize={100}
           contentContainerStyle={{
             padding: 16,
             paddingBottom: insets.bottom + 20,

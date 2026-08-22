@@ -273,7 +273,7 @@ export default function TagsScreen() {
                 { backgroundColor: meta.color + "18", borderColor: meta.color + "30" },
               ]}
             >
-              <IconComp size={15} color={meta.color} stroke={1.8} />
+              <IconComp size={15} color={meta.color} strokeWidth={1.8} />
             </View>
 
             <View style={{ flex: 1 }}>
@@ -299,9 +299,9 @@ export default function TagsScreen() {
             accessibilityLabel={inSearch ? `Retirer ${item.name} de la recherche` : `Ajouter ${item.name}`}
           >
             {inSearch ? (
-              <IconMinus size={16} color="#fff" stroke={2.5} />
+              <IconMinus size={16} color="#fff" strokeWidth={2.5} />
             ) : (
-              <IconPlus size={16} color={colors.accent} stroke={2.5} />
+              <IconPlus size={16} color={colors.accent} strokeWidth={2.5} />
             )}
           </Pressable>
 
@@ -315,7 +315,7 @@ export default function TagsScreen() {
               size={16}
               color={favorited ? "#f43f5e" : "#9ca3af"}
               fill={favorited ? "#f43f5e" : "transparent"}
-              stroke={1.8}
+              strokeWidth={1.8}
             />
           </Pressable>
         </View>
@@ -344,7 +344,7 @@ export default function TagsScreen() {
       {/* Header */}
       <View style={[styles.header, { borderBottomColor: "#222232" }]}>
         <IconBtn onPress={() => router.back()} size={36} style={styles.backBtn}>
-          <IconArrowLeft size={18} color="#f3f4f6" stroke={2} />
+          <IconArrowLeft size={18} color="#f3f4f6" strokeWidth={2} />
         </IconBtn>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>Tags & Packs</Text>
@@ -362,7 +362,7 @@ export default function TagsScreen() {
             onPress={() => setIsCreateModalOpen(true)}
             style={[styles.headerActionBtn, { backgroundColor: colors.accent }]}
           >
-            <IconPlus size={15} color="#fff" stroke={2.5} />
+            <IconPlus size={15} color="#fff" strokeWidth={2.5} />
             <Text style={styles.headerActionText}>Créer</Text>
           </Pressable>
         )}
@@ -378,7 +378,7 @@ export default function TagsScreen() {
       {activeTab !== "collections" && (
         <View style={styles.searchBarWrapper}>
           <View style={[styles.searchBarBox, { backgroundColor: "#14141e", borderColor: "#232332" }]}>
-            <IconSearch size={16} color="#9ca3af" stroke={2} />
+            <IconSearch size={16} color="#9ca3af" strokeWidth={2} />
             <TextInput
               value={searchFilter}
               onChangeText={setSearchFilter}
@@ -391,7 +391,7 @@ export default function TagsScreen() {
             />
             {searchFilter.length > 0 && (
               <Pressable onPress={() => setSearchFilter("")} hitSlop={6}>
-                <IconX size={15} color="#9ca3af" stroke={2} />
+                <IconX size={15} color="#9ca3af" strokeWidth={2} />
               </Pressable>
             )}
           </View>
@@ -426,7 +426,7 @@ export default function TagsScreen() {
                 <TabIcon
                   size={14}
                   color={isActive ? "#ffffff" : "#9ca3af"}
-                  stroke={2}
+                  strokeWidth={2}
                   fill={item.key === "favs" && isActive ? "#ffffff" : "transparent"}
                 />
                 <Text
@@ -454,7 +454,7 @@ export default function TagsScreen() {
             onPress={handleSearchAllFavorites}
             style={[styles.searchAllFavsBtn, { backgroundColor: colors.accent }]}
           >
-            <IconSearch size={15} color="#fff" stroke={2.5} />
+            <IconSearch size={15} color="#fff" strokeWidth={2.5} />
             <Text style={styles.searchAllFavsText}>
               Rechercher les favoris ({favoriteList.length})
             </Text>
@@ -466,7 +466,7 @@ export default function TagsScreen() {
       {activeTab === "collections" ? (
         collections.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <IconFolder size={44} color="#6b7280" stroke={1.5} style={{ opacity: 0.6 }} />
+            <IconFolder size={44} color="#6b7280" strokeWidth={1.5} style={{ opacity: 0.6 }} />
             <Text style={styles.emptyTitle}>Aucun pack de tags</Text>
             <Text style={styles.emptySub}>
               Appuyez sur « Nouveau pack » ci-dessus pour regrouper vos tags favoris en pack de recherche personnalisé.
@@ -501,7 +501,7 @@ export default function TagsScreen() {
                     }}
                     hitSlop={8}
                   >
-                    <IconTrash size={16} color="#ef4444" stroke={1.8} />
+                    <IconTrash size={16} color="#ef4444" strokeWidth={1.8} />
                   </Pressable>
                 </View>
 
@@ -532,7 +532,7 @@ export default function TagsScreen() {
                   onPress={() => handleSearchCollection(col)}
                   style={[styles.colSearchBtn, { backgroundColor: col.color }]}
                 >
-                  <IconSearch size={14} color="#fff" stroke={2.5} />
+                  <IconSearch size={14} color="#fff" strokeWidth={2.5} />
                   <Text style={styles.colSearchBtnText}>Rechercher le pack</Text>
                 </Pressable>
               </View>
@@ -541,7 +541,7 @@ export default function TagsScreen() {
         )
       ) : filteredItems.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <IconSearchOff size={44} color="#6b7280" stroke={1.5} style={{ opacity: 0.6 }} />
+          <IconSearchOff size={44} color="#6b7280" strokeWidth={1.5} style={{ opacity: 0.6 }} />
           <Text style={styles.emptyTitle}>
             {activeTab === "favs" ? "Aucun favori" : "Aucun résultat"}
           </Text>
@@ -555,7 +555,6 @@ export default function TagsScreen() {
         <FlashList
           data={filteredItems}
           renderItem={renderItem}
-          estimatedItemSize={58}
           drawDistance={400}
           keyExtractor={(item) => `${item.category}_${item.name}`}
           contentContainerStyle={{
@@ -581,7 +580,7 @@ export default function TagsScreen() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Nouveau pack</Text>
               <Pressable onPress={() => setIsCreateModalOpen(false)} hitSlop={6}>
-                <IconX size={18} color="#9ca3af" stroke={2} />
+                <IconX size={18} color="#9ca3af" strokeWidth={2} />
               </Pressable>
             </View>
 
@@ -614,7 +613,7 @@ export default function TagsScreen() {
                     newColColor === c && styles.paletteDotSelected,
                   ]}
                 >
-                  {newColColor === c && <IconCheck size={14} color="#fff" stroke={3} />}
+                  {newColColor === c && <IconCheck size={14} color="#fff" strokeWidth={3} />}
                 </Pressable>
               ))}
             </View>

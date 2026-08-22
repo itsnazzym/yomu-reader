@@ -119,7 +119,7 @@ export default function HistoryScreen() {
             }}
             style={({ pressed }) => [styles.deleteBtn, { opacity: pressed ? 0.6 : 1 }]}
           >
-            <IconTrash size={16} color={colors.sub} stroke={1.8} />
+            <IconTrash size={16} color={colors.sub} strokeWidth={1.8} />
           </Pressable>
         </View>
       </CardPressable>
@@ -154,7 +154,7 @@ export default function HistoryScreen() {
               { backgroundColor: colors.tagBg, opacity: pressed ? 0.7 : 1 },
             ]}
           >
-            <IconTrash size={14} color="#ff4757" stroke={2} style={{ marginRight: 6 }} />
+            <IconTrash size={14} color="#ff4757" strokeWidth={2} style={{ marginRight: 6 }} />
             <Text style={[styles.clearAllText, { color: "#ff4757" }]}>Tout effacer</Text>
           </Pressable>
         )}
@@ -170,7 +170,6 @@ export default function HistoryScreen() {
         <FlashList
           data={history}
           renderItem={renderItem}
-          estimatedItemSize={90}
           contentContainerStyle={{
             padding: 14,
             paddingBottom: insets.bottom + 24,

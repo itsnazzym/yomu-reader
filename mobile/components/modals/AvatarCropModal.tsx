@@ -11,7 +11,7 @@ import {
   Dimensions,
 } from "react-native";
 import { Image } from "expo-image";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
 import {
   IconX,
@@ -254,7 +254,7 @@ export function AvatarCropModal({
               </Text>
             </View>
             <Pressable onPress={onClose} hitSlop={8} style={styles.closeBtn}>
-              <IconX size={20} color="#9ca3af" stroke={2} />
+              <IconX size={20} color="#9ca3af" strokeWidth={2} />
             </Pressable>
           </View>
 
@@ -295,7 +295,7 @@ export function AvatarCropModal({
 
               {/* Drag Hint Pill */}
               <View style={styles.dragHintPill} pointerEvents="none">
-                <IconMove size={12} color="#fff" stroke={2} />
+                <IconMove size={12} color="#fff" strokeWidth={2} />
                 <Text style={styles.dragHintText}>Glisser pour déplacer</Text>
               </View>
             </View>
@@ -369,7 +369,7 @@ export function AvatarCropModal({
                 style={[styles.toolBtn, scale <= 1 && styles.toolBtnDisabled]}
                 accessibilityLabel="Zoom arrière"
               >
-                <IconZoomOut size={16} color={scale <= 1 ? "#555" : "#f3f4f6"} stroke={2} />
+                <IconZoomOut size={16} color={scale <= 1 ? "#555" : "#f3f4f6"} strokeWidth={2} />
               </Pressable>
 
               <View style={styles.scaleDisplay}>
@@ -382,7 +382,7 @@ export function AvatarCropModal({
                 style={[styles.toolBtn, scale >= 3.5 && styles.toolBtnDisabled]}
                 accessibilityLabel="Zoom avant"
               >
-                <IconZoomIn size={16} color={scale >= 3.5 ? "#555" : "#f3f4f6"} stroke={2} />
+                <IconZoomIn size={16} color={scale >= 3.5 ? "#555" : "#f3f4f6"} strokeWidth={2} />
               </Pressable>
             </View>
 
@@ -393,7 +393,7 @@ export function AvatarCropModal({
                 style={styles.toolBtnWithLabel}
                 accessibilityLabel="Pivoter de 90 degrés"
               >
-                <IconRotateClockwise size={16} color="#f3f4f6" stroke={2} />
+                <IconRotateClockwise size={16} color="#f3f4f6" strokeWidth={2} />
                 <Text style={styles.toolBtnLabel}>{rotation}°</Text>
               </Pressable>
 
@@ -402,7 +402,7 @@ export function AvatarCropModal({
                 style={styles.toolBtnWithLabel}
                 accessibilityLabel="Réinitialiser le cadrage"
               >
-                <IconRefresh size={15} color="#9ca3af" stroke={2} />
+                <IconRefresh size={15} color="#9ca3af" strokeWidth={2} />
                 <Text style={styles.toolBtnLabel}>Centrer</Text>
               </Pressable>
             </View>
@@ -414,7 +414,7 @@ export function AvatarCropModal({
               onPress={handlePickImage}
               style={[styles.changeImageBtn, { borderColor: "#2c2c3e", backgroundColor: "#181826" }]}
             >
-              <IconPhoto size={16} color="#f3f4f6" stroke={2} />
+              <IconPhoto size={16} color="#f3f4f6" strokeWidth={2} />
               <Text style={styles.changeImageText}>Autre image</Text>
             </Pressable>
 
@@ -430,7 +430,7 @@ export function AvatarCropModal({
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <>
-                  <IconCheck size={18} color="#fff" stroke={2.5} />
+                  <IconCheck size={18} color="#fff" strokeWidth={2.5} />
                   <Text style={styles.saveBtnText}>Valider l'Avatar</Text>
                 </>
               )}

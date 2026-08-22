@@ -50,7 +50,7 @@ export function PermissionModal({
           ]}
         >
           <View style={[styles.iconCircle, { backgroundColor: colors.accent + "20" }]}>
-            <IconFolder size={32} color={colors.accent} stroke={1.8} />
+            <IconFolder size={32} color={colors.accent} strokeWidth={1.8} />
           </View>
 
           <Text style={[styles.title, { color: colors.txt }]}>{title}</Text>
@@ -66,7 +66,7 @@ export function PermissionModal({
                 accessibilityLabel="Ouvrir les paramètres"
               >
                 <View style={styles.btnContent}>
-                  <IconSettings size={16} color="#fff" stroke={2} />
+                  <IconSettings size={16} color="#fff" strokeWidth={2} />
                   <Text style={styles.grantBtnText}>Ouvrir les Paramètres</Text>
                 </View>
               </CardPressable>
@@ -79,7 +79,7 @@ export function PermissionModal({
                 accessibilityLabel="Accorder l'autorisation"
               >
                 <View style={styles.btnContent}>
-                  <IconCircleCheck size={16} color="#fff" stroke={2.5} />
+                  <IconCircleCheck size={16} color="#fff" strokeWidth={2.5} />
                   <Text style={styles.grantBtnText}>Accorder l'autorisation</Text>
                 </View>
               </CardPressable>

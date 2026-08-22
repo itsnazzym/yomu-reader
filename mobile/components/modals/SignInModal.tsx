@@ -354,7 +354,7 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerLeft}>
-              <IconCloud size={20} color={colors.accent} stroke={1.8} />
+              <IconCloud size={20} color={colors.accent} strokeWidth={1.8} />
               <Text style={styles.headerTitle}>Compte nHentai</Text>
             </View>
             <Pressable
@@ -363,7 +363,7 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
               accessibilityRole="button"
               accessibilityLabel="Fermer le compte"
             >
-              <IconX size={20} color={colors.sub} stroke={2} />
+              <IconX size={20} color={colors.sub} strokeWidth={2} />
             </Pressable>
           </View>
 
@@ -372,7 +372,7 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
             <View style={styles.loggedInBox}>
               <View style={[styles.userRow, { backgroundColor: colors.bg, borderColor: colors.tagBg }]}>
                 <View style={[styles.avatar, { backgroundColor: colors.accent }]}>
-                  <IconUser size={22} color="#fff" stroke={2} />
+                  <IconUser size={22} color="#fff" strokeWidth={2} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.userName}>{session.username || "Membre nHentai"}</Text>
@@ -410,7 +410,7 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
                   {loading ? (
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
-                    <IconRefresh size={16} color="#fff" stroke={2} />
+                    <IconRefresh size={16} color="#fff" strokeWidth={2} />
                   )}
                   <Text style={styles.syncBtnText}>
                     {loading ? (syncStatus || "Synchronisation...") : "Synchroniser les favoris maintenant"}
@@ -490,7 +490,7 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
                 <View style={styles.inputGroup}>
                   <Text style={styles.inputLabel}>Identifiant</Text>
                   <View style={[styles.inputWrapper, { backgroundColor: colors.bg, borderColor: colors.tagBg }]}>
-                    <IconUser size={16} color="#9ca3af" stroke={1.8} />
+                    <IconUser size={16} color="#9ca3af" strokeWidth={1.8} />
                     <TextInput
                       value={usernameInput}
                       onChangeText={setUsernameInput}
@@ -509,7 +509,7 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
                 <View style={styles.inputGroup}>
                   <Text style={styles.inputLabel}>Adresse Email</Text>
                   <View style={[styles.inputWrapper, { backgroundColor: colors.bg, borderColor: colors.tagBg }]}>
-                    <IconMail size={16} color="#9ca3af" stroke={1.8} />
+                    <IconMail size={16} color="#9ca3af" strokeWidth={1.8} />
                     <TextInput
                       value={emailInput}
                       onChangeText={setEmailInput}
@@ -529,7 +529,7 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
                 <View style={styles.inputGroup}>
                   <Text style={styles.inputLabel}>Mot de passe</Text>
                   <View style={[styles.inputWrapper, { backgroundColor: colors.bg, borderColor: colors.tagBg }]}>
-                    <IconLock size={16} color="#9ca3af" stroke={1.8} />
+                    <IconLock size={16} color="#9ca3af" strokeWidth={1.8} />
                     <TextInput
                       value={passwordInput}
                       onChangeText={setPasswordInput}
@@ -548,9 +548,9 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
                       accessibilityLabel={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
                     >
                       {showPassword ? (
-                        <IconEyeOff size={16} color="#9ca3af" stroke={1.8} />
+                        <IconEyeOff size={16} color="#9ca3af" strokeWidth={1.8} />
                       ) : (
-                        <IconEye size={16} color="#9ca3af" stroke={1.8} />
+                        <IconEye size={16} color="#9ca3af" strokeWidth={1.8} />
                       )}
                     </Pressable>
                   </View>
@@ -561,7 +561,7 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
                 <View style={styles.inputGroup}>
                   <Text style={styles.inputLabel}>Confirmer le mot de passe</Text>
                   <View style={[styles.inputWrapper, { backgroundColor: colors.bg, borderColor: colors.tagBg }]}>
-                    <IconLock size={16} color="#9ca3af" stroke={1.8} />
+                    <IconLock size={16} color="#9ca3af" strokeWidth={1.8} />
                     <TextInput
                       value={passwordConfirmInput}
                       onChangeText={setPasswordConfirmInput}
@@ -581,7 +581,7 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
                 <View style={styles.inputGroup}>
                   <Text style={styles.inputLabel}>Clé API nHentai (nhk_...)</Text>
                   <View style={[styles.inputWrapper, { backgroundColor: colors.bg, borderColor: colors.tagBg }]}>
-                    <IconKey size={16} color="#9ca3af" stroke={1.8} />
+                    <IconKey size={16} color="#9ca3af" strokeWidth={1.8} />
                     <TextInput
                       value={apiKeyInput}
                       onChangeText={setApiKeyInput}
@@ -612,7 +612,7 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
               {mode !== "apikey" && captchaInfo?.site_key && (
                 <View style={styles.captchaSection}>
                   <View style={styles.captchaHeader}>
-                    <IconShield size={14} color={colors.accent} stroke={2} />
+                    <IconShield size={14} color={colors.accent} strokeWidth={2} />
                     <Text style={styles.captchaTitle}>
                       Contrôle de sécurité ({captchaInfo.provider === "hcaptcha" ? "hCaptcha" : "Turnstile"})
                     </Text>
@@ -667,7 +667,7 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
                   {loading ? (
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
-                    <IconLogin size={18} color="#fff" stroke={2} />
+                    <IconLogin size={18} color="#fff" strokeWidth={2} />
                   )}
                   <Text style={styles.submitBtnText}>
                     {loading

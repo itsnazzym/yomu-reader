@@ -20,7 +20,7 @@ export function StepTheme() {
   return (
     <View style={styles.container}>
       <View style={[styles.iconBox, { backgroundColor: colors.accent + "18", borderColor: colors.accent + "35" }]}>
-        <IconDroplet size={30} color={colors.accent} stroke={1.7} />
+        <IconDroplet size={30} color={colors.accent} strokeWidth={1.7} />
       </View>
 
       <Text style={[styles.title, { color: colors.txt }]}>Couleur d'Accent & Thème</Text>
@@ -44,7 +44,7 @@ export function StepTheme() {
                   isSelected && styles.swatchBtnSelected,
                 ]}
               >
-                {isSelected && <IconCheck size={16} color="#fff" stroke={2.5} />}
+                {isSelected && <IconCheck size={16} color="#fff" strokeWidth={2.5} />}
               </Pressable>
             );
           })}

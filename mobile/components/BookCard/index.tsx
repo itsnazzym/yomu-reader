@@ -140,7 +140,7 @@ export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
           <IconBookmark
             size={12}
             color={fav ? "#fff" : "rgba(255,255,255,0.75)"}
-            stroke={fav ? 2.5 : 1.8}
+            strokeWidth={fav ? 2.5 : 1.8}
             fill={fav ? "#fff" : "none"}
           />
         </TouchableOpacity>
@@ -148,7 +148,7 @@ export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
         {/* Bottom Technical Spec Bar */}
         <View style={styles.specBar}>
           <View style={styles.specBadge}>
-            <IconBook2 size={10} color="#d1d5db" stroke={1.8} style={{ marginRight: 3 }} />
+            <IconBook2 size={10} color="#d1d5db" strokeWidth={1.8} style={{ marginRight: 3 }} />
             <Text style={styles.specText}>{numPages}p</Text>
           </View>
           {lang && (

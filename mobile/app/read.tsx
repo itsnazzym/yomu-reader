@@ -310,7 +310,7 @@ export default function ReaderScreen() {
   if (error || !gallery) {
     return (
       <View style={[styles.centerContainer, { backgroundColor: "#000" }]}>
-        <IconAlertCircle size={48} color="#ff4757" stroke={1.5} />
+        <IconAlertCircle size={48} color="#ff4757" strokeWidth={1.5} />
         <Text style={[styles.loadingText, { color: "#fff" }]}>
           {error || "Galerie introuvable"}
         </Text>
@@ -504,7 +504,7 @@ export default function ReaderScreen() {
           ]}
         >
           <IconBtn onPress={() => router.back()} size={40}>
-            <IconArrowLeft size={22} color="#fff" stroke={2} />
+            <IconArrowLeft size={22} color="#fff" strokeWidth={2} />
           </IconBtn>
 
           <View style={styles.titleWrapper}>
@@ -522,7 +522,7 @@ export default function ReaderScreen() {
               <IconEye
                 size={20}
                 color={readerSettings.colorFilter !== "none" ? colors.accent : "#fff"}
-                stroke={1.8}
+                strokeWidth={1.8}
               />
             </IconBtn>
 
@@ -532,7 +532,7 @@ export default function ReaderScreen() {
                 <IconColumns
                   size={20}
                   color={readerSettings.dualPageMode ? colors.accent : "#9ca3af"}
-                  stroke={1.8}
+                  strokeWidth={1.8}
                 />
               </IconBtn>
             )}
@@ -545,9 +545,9 @@ export default function ReaderScreen() {
               size={40}
             >
               {readMode === "webtoon" ? (
-                <IconLayoutList size={20} color={colors.accent} stroke={2} />
+                <IconLayoutList size={20} color={colors.accent} strokeWidth={2} />
               ) : (
-                <IconBook2 size={20} color={colors.accent} stroke={1.8} />
+                <IconBook2 size={20} color={colors.accent} strokeWidth={1.8} />
               )}
             </IconBtn>
 
@@ -560,9 +560,9 @@ export default function ReaderScreen() {
                 size={40}
               >
                 {readingDirection === "rtl" ? (
-                  <IconCircleArrowLeft size={20} color={colors.accent} stroke={2} />
+                  <IconCircleArrowLeft size={20} color={colors.accent} strokeWidth={2} />
                 ) : (
-                  <IconCircleArrowRight size={20} color={colors.accent} stroke={2} />
+                  <IconCircleArrowRight size={20} color={colors.accent} strokeWidth={2} />
                 )}
               </IconBtn>
             )}
@@ -572,12 +572,12 @@ export default function ReaderScreen() {
               size={40}
               accessibilityLabel="Réglages du lecteur"
             >
-              <IconSettings size={20} color="#fff" stroke={2} />
+              <IconSettings size={20} color="#fff" strokeWidth={2} />
             </IconBtn>
 
             {/* Share */}
             <IconBtn onPress={() => setIsShareOpen(true)} size={40}>
-              <IconShare size={20} color={colors.txt} stroke={2} />
+              <IconShare size={20} color={colors.txt} strokeWidth={2} />
             </IconBtn>
           </View>
         </View>

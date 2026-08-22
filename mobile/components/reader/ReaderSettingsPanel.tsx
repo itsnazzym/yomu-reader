@@ -86,7 +86,7 @@ export function ReaderSettingsPanel({
         >
           <View style={styles.header}>
             <View style={styles.headerLeft}>
-              <IconSettings size={18} color={colors.accent} stroke={2} />
+              <IconSettings size={18} color={colors.accent} strokeWidth={2} />
               <Text style={[styles.title, { color: colors.txt }]}>Réglages lecteur</Text>
             </View>
             <TouchableOpacity
@@ -95,7 +95,7 @@ export function ReaderSettingsPanel({
               accessibilityRole="button"
               accessibilityLabel="Fermer les réglages"
             >
-              <IconX size={20} color={colors.sub} stroke={2} />
+              <IconX size={20} color={colors.sub} strokeWidth={2} />
             </TouchableOpacity>
           </View>
 
@@ -103,7 +103,7 @@ export function ReaderSettingsPanel({
           <View style={styles.row}>
             <Chip
               label="Vertical"
-              icon={<IconLayoutList size={14} color={readMode === "webtoon" ? "#fff" : colors.sub} stroke={2} />}
+              icon={<IconLayoutList size={14} color={readMode === "webtoon" ? "#fff" : colors.sub} strokeWidth={2} />}
               active={readMode === "webtoon"}
               onPress={() => {
                 lightTap();
@@ -112,7 +112,7 @@ export function ReaderSettingsPanel({
             />
             <Chip
               label="Pages"
-              icon={<IconBook2 size={14} color={readMode === "pager" ? "#fff" : colors.sub} stroke={2} />}
+              icon={<IconBook2 size={14} color={readMode === "pager" ? "#fff" : colors.sub} strokeWidth={2} />}
               active={readMode === "pager"}
               onPress={() => {
                 lightTap();
@@ -169,7 +169,7 @@ export function ReaderSettingsPanel({
           />
           <View style={styles.sliderBlock}>
             <View style={styles.sliderHeader}>
-              <IconZoomIn size={14} color={colors.accent} stroke={2} />
+              <IconZoomIn size={14} color={colors.accent} strokeWidth={2} />
               <Text style={[styles.toggleTitle, { color: colors.txt }]}>
                 Zoom double-tap · {settings.doubleTapZoom.toFixed(1)}×
               </Text>
@@ -191,7 +191,7 @@ export function ReaderSettingsPanel({
               <Chip
                 key={filter}
                 label={filter === "none" ? "Normal" : filter}
-                icon={<IconEye size={13} color={settings.colorFilter === filter ? "#fff" : colors.sub} stroke={2} />}
+                icon={<IconEye size={13} color={settings.colorFilter === filter ? "#fff" : colors.sub} strokeWidth={2} />}
                 active={settings.colorFilter === filter}
                 onPress={() => {
                   lightTap();
@@ -202,7 +202,7 @@ export function ReaderSettingsPanel({
           </View>
           <View style={styles.sliderBlock}>
             <View style={styles.sliderHeader}>
-              <IconColumns size={14} color={colors.accent} stroke={2} />
+              <IconColumns size={14} color={colors.accent} strokeWidth={2} />
               <Text style={[styles.toggleTitle, { color: colors.txt }]}>
                 Luminosité · {Math.round(settings.readerBrightness * 100)}%
               </Text>

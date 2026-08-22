@@ -126,7 +126,7 @@ export function SearchBar({
             size={36}
             accessibilityLabel="Ouvrir le menu"
           >
-            <IconMenu2 size={20} color={colors.txt} stroke={2} />
+            <IconMenu2 size={20} color={colors.txt} strokeWidth={2} />
           </IconBtn>
         ) : null}
 
@@ -150,7 +150,7 @@ export function SearchBar({
             accessibilityRole="button"
             accessibilityLabel="Rechercher par image"
           >
-            <IconPhotoSearch size={17} color={colors.accent} stroke={2} />
+            <IconPhotoSearch size={17} color={colors.accent} strokeWidth={2} />
           </TouchableOpacity>
         ) : null}
 
@@ -163,7 +163,7 @@ export function SearchBar({
             accessibilityRole="button"
             accessibilityLabel="Effacer la recherche"
           >
-            <IconX size={16} color={colors.sub} stroke={2} />
+            <IconX size={16} color={colors.sub} strokeWidth={2} />
           </TouchableOpacity>
         ) : null}
 
@@ -176,7 +176,7 @@ export function SearchBar({
             <IconAdjustmentsHorizontal
               size={18}
               color={sort !== "recent" ? colors.accent : colors.sub}
-              stroke={1.8}
+              strokeWidth={1.8}
             />
           </IconBtn>
         ) : null}
@@ -191,7 +191,7 @@ export function SearchBar({
             {isRandomLoading ? (
               <ActivityIndicator size="small" color={colors.accent} />
             ) : (
-              <IconArrowsShuffle size={18} color={colors.accent} stroke={2} />
+              <IconArrowsShuffle size={18} color={colors.accent} strokeWidth={2} />
             )}
           </IconBtn>
         ) : null}
@@ -296,7 +296,7 @@ export function SearchBar({
                       {sortLabels[key]}
                     </Text>
                     {isSelected && (
-                      <IconCheck size={18} color={colors.accent} stroke={2.5} />
+                      <IconCheck size={18} color={colors.accent} strokeWidth={2.5} />
                     )}
                   </TouchableOpacity>
                 );

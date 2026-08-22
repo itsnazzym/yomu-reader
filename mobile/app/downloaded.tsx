@@ -242,7 +242,7 @@ export default function DownloadedScreen() {
                     : { borderColor: "rgba(255,255,255,0.7)" },
                 ]}
               >
-                {selected ? <IconCheck size={14} color="#fff" stroke={2.5} /> : null}
+                {selected ? <IconCheck size={14} color="#fff" strokeWidth={2.5} /> : null}
               </View>
             </View>
           ) : null}
@@ -254,7 +254,7 @@ export default function DownloadedScreen() {
             hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
             style={styles.trashBtn}
           >
-            <IconTrash size={15} color="#ff4757" stroke={2} />
+            <IconTrash size={15} color="#ff4757" strokeWidth={2} />
           </TouchableOpacity>
         ) : null}
       </View>
@@ -288,7 +288,7 @@ export default function DownloadedScreen() {
             onPress={exitSelection}
             style={[styles.cancelBtn, { backgroundColor: colors.tagBg }]}
           >
-            <IconX size={14} color={colors.txt} stroke={2} />
+            <IconX size={14} color={colors.txt} strokeWidth={2} />
             <Text style={[styles.cancelBtnText, { color: colors.txt }]}>Annuler</Text>
           </TouchableOpacity>
         ) : null}
@@ -312,7 +312,6 @@ export default function DownloadedScreen() {
           data={downloadedGalleries}
           renderItem={renderItem}
           extraData={extraData}
-          estimatedItemSize={240}
           numColumns={numColumns}
           contentContainerStyle={{
             paddingHorizontal: horizontalPadding,
@@ -346,7 +345,7 @@ export default function DownloadedScreen() {
               { backgroundColor: selectedCount === 0 ? colors.tagBg : "#ff4757" },
             ]}
           >
-            <IconTrash size={15} color={selectedCount === 0 ? colors.sub : "#fff"} stroke={2} />
+            <IconTrash size={15} color={selectedCount === 0 ? colors.sub : "#fff"} strokeWidth={2} />
             <Text
               style={[
                 styles.bulkDeleteText,

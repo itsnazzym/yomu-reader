@@ -235,21 +235,21 @@ export default function RecommendationsScreen() {
   const renderStats = () => (
     <View style={styles.statsGrid}>
       <View style={styles.statItem}>
-        <IconBookmark size={14} color={colors.accent} stroke={2} />
+        <IconBookmark size={14} color={colors.accent} strokeWidth={2} />
         <Text style={[styles.statValue, { color: colors.txt }]}>
           {profile?.totalFavorites || 0}
         </Text>
         <Text style={[styles.statLabel, { color: colors.sub }]}>favoris</Text>
       </View>
       <View style={styles.statItem}>
-        <IconBook2 size={14} color="#8b9cf6" stroke={1.8} />
+        <IconBook2 size={14} color="#8b9cf6" strokeWidth={1.8} />
         <Text style={[styles.statValue, { color: colors.txt }]}>
           {profile?.totalHistory || 0}
         </Text>
         <Text style={[styles.statLabel, { color: colors.sub }]}>lus</Text>
       </View>
       <View style={styles.statItem}>
-        <IconSearch size={14} color="#e6a86b" stroke={2} />
+        <IconSearch size={14} color="#e6a86b" strokeWidth={2} />
         <Text style={[styles.statValue, { color: colors.txt }]}>
           {profile?.totalSearches || 0}
         </Text>
@@ -268,7 +268,7 @@ export default function RecommendationsScreen() {
       >
         <View style={styles.heroTopRow}>
           <View style={[styles.heroIcon, { backgroundColor: colors.accent + "22" }]}>
-            <IconStar size={20} color={colors.accent} stroke={1.8} />
+            <IconStar size={20} color={colors.accent} strokeWidth={1.8} />
           </View>
           <View style={styles.heroCopy}>
             <Text style={[styles.heroEyebrow, { color: colors.accent }]}>POUR VOUS</Text>
@@ -319,7 +319,7 @@ export default function RecommendationsScreen() {
                       {formatCount(tag.count)}
                     </Text>
                   )}
-                  <IconChevronRight size={11} color={colors.sub} stroke={2} style={styles.preferenceChipChevron} />
+                  <IconChevronRight size={11} color={colors.sub} strokeWidth={2} style={styles.preferenceChipChevron} />
                 </CardPressable>
               ))}
             </ScrollView>
@@ -336,7 +336,7 @@ export default function RecommendationsScreen() {
             style={[styles.heroRefreshButton, { backgroundColor: colors.accent }]}
           >
             <Animated.View style={{ transform: [{ rotate: spin }] }}>
-              <IconRefresh size={14} color="#fff" stroke={2} />
+              <IconRefresh size={14} color="#fff" strokeWidth={2} />
             </Animated.View>
             <Text style={styles.heroRefreshText}>Actualiser</Text>
           </TouchableOpacity>
@@ -346,7 +346,7 @@ export default function RecommendationsScreen() {
             accessibilityRole="button"
             style={[styles.heroInfoButton, { borderColor: colors.tagBg }]}
           >
-            <IconInfoCircle size={14} color={colors.accent} stroke={2} />
+            <IconInfoCircle size={14} color={colors.accent} strokeWidth={2} />
             <Text style={[styles.heroInfoText, { color: colors.txt }]}>Comment ça marche ?</Text>
           </TouchableOpacity>
         </View>
@@ -359,7 +359,7 @@ export default function RecommendationsScreen() {
             { backgroundColor: "rgba(255,71,87,0.10)", borderColor: "rgba(255,71,87,0.28)" },
           ]}
         >
-          <IconAlertCircle size={16} color="#ff6b78" stroke={2} />
+          <IconAlertCircle size={16} color="#ff6b78" strokeWidth={2} />
           <Text style={styles.errorBannerText} numberOfLines={2}>{error}</Text>
           <TouchableOpacity onPress={() => void loadRecommendations(true)} disabled={refreshing}>
             <Text style={styles.errorRetryText}>Réessayer</Text>
@@ -374,7 +374,7 @@ export default function RecommendationsScreen() {
             <Text style={[styles.resultsSubtitle, { color: colors.sub }]}>Classées par affinité avec votre profil</Text>
           </View>
           <View style={[styles.resultBadge, { backgroundColor: colors.accent + "22" }]}>
-            <IconBolt size={12} color={colors.accent} stroke={2} />
+            <IconBolt size={12} color={colors.accent} strokeWidth={2} />
             <Text style={[styles.resultBadgeText, { color: colors.accent }]}>PERSONNALISÉ</Text>
           </View>
         </View>
@@ -402,9 +402,9 @@ export default function RecommendationsScreen() {
       <View style={[styles.emptyCard, { backgroundColor: colors.page, borderColor: colors.tagBg }]}> 
         <View style={[styles.emptyIcon, { backgroundColor: colors.tagBg }]}> 
           {isColdStart ? (
-            <IconCompass size={24} color={colors.accent} stroke={1.8} />
+            <IconCompass size={24} color={colors.accent} strokeWidth={1.8} />
           ) : (
-            <IconInbox size={24} color={colors.accent} stroke={1.8} />
+            <IconInbox size={24} color={colors.accent} strokeWidth={1.8} />
           )}
         </View>
         <Text style={[styles.emptyTitle, { color: colors.txt }]}> 
@@ -421,9 +421,9 @@ export default function RecommendationsScreen() {
           style={[styles.emptyAction, { backgroundColor: colors.accent }]}
         >
           {isColdStart ? (
-            <IconCompass size={15} color="#fff" stroke={2} />
+            <IconCompass size={15} color="#fff" strokeWidth={2} />
           ) : (
-            <IconRefresh size={15} color="#fff" stroke={2} />
+            <IconRefresh size={15} color="#fff" strokeWidth={2} />
           )}
           <Text style={styles.emptyActionText}>{isColdStart ? "Explorer les mangas" : "Chercher d'autres idées"}</Text>
         </TouchableOpacity>
@@ -434,7 +434,7 @@ export default function RecommendationsScreen() {
   const renderInitialError = () => (
     <View style={styles.centerContainer}>
       <View style={[styles.errorIcon, { backgroundColor: "rgba(255,71,87,0.12)" }]}> 
-        <IconWifiOff size={26} color="#ff6b78" stroke={1.8} />
+        <IconWifiOff size={26} color="#ff6b78" strokeWidth={1.8} />
       </View>
       <Text style={[styles.errorTitle, { color: colors.txt }]}>Connexion impossible</Text>
       <Text style={[styles.errorSub, { color: colors.sub }]}>{error}</Text>
@@ -443,7 +443,7 @@ export default function RecommendationsScreen() {
         onPress={() => void loadRecommendations()}
         style={[styles.retryButton, { backgroundColor: colors.accent }]}
       >
-        <IconRefresh size={15} color="#fff" stroke={2} />
+        <IconRefresh size={15} color="#fff" strokeWidth={2} />
         <Text style={styles.retryButtonText}>Réessayer</Text>
       </TouchableOpacity>
     </View>
@@ -459,7 +459,7 @@ export default function RecommendationsScreen() {
           accessibilityRole="button"
           accessibilityLabel="Retour"
         >
-          <IconArrowLeft size={20} color={colors.txt} stroke={2} />
+          <IconArrowLeft size={20} color={colors.txt} strokeWidth={2} />
         </TouchableOpacity>
         <View style={styles.headerCopy}>
           <Text style={[styles.headerTitle, { color: colors.txt }]}>Recommandations</Text>
@@ -473,7 +473,7 @@ export default function RecommendationsScreen() {
             accessibilityRole="button"
             accessibilityLabel="Voir le fonctionnement du moteur"
           >
-            <IconAdjustmentsHorizontal size={18} color={colors.sub} stroke={1.8} />
+            <IconAdjustmentsHorizontal size={18} color={colors.sub} strokeWidth={1.8} />
           </TouchableOpacity>
           <TouchableOpacity
             activeOpacity={0.7}
@@ -484,7 +484,7 @@ export default function RecommendationsScreen() {
             accessibilityLabel="Actualiser"
           >
             <Animated.View style={{ transform: [{ rotate: spin }] }}>
-              <IconRefresh size={18} color={colors.accent} stroke={2} />
+              <IconRefresh size={18} color={colors.accent} strokeWidth={2} />
             </Animated.View>
           </TouchableOpacity>
           {books.length > 0 && (
@@ -499,7 +499,7 @@ export default function RecommendationsScreen() {
         <View style={styles.centerContainer}>
           <View style={[styles.loadingIcon, { backgroundColor: colors.accent + "22" }]}> 
             <Animated.View style={{ transform: [{ rotate: spin }] }}>
-              <IconCpu size={26} color={colors.accent} stroke={1.8} />
+              <IconCpu size={26} color={colors.accent} strokeWidth={1.8} />
             </Animated.View>
           </View>
           <Text style={[styles.loadingTitle, { color: colors.txt }]}>Analyse de vos préférences…</Text>
@@ -518,7 +518,6 @@ export default function RecommendationsScreen() {
         <FlashList
           data={books}
           renderItem={renderItem}
-          estimatedItemSize={275}
           numColumns={numColumns}
           ListHeaderComponent={renderIntro()}
           refreshControl={
@@ -573,7 +572,7 @@ export default function RecommendationsScreen() {
             <View style={styles.handle} />
             <View style={styles.modalHeader}>
               <View style={[styles.modalIcon, { backgroundColor: colors.accent + "22" }]}> 
-                <IconCpu size={17} color={colors.accent} stroke={1.8} />
+                <IconCpu size={17} color={colors.accent} strokeWidth={1.8} />
               </View>
               <View style={styles.modalHeaderCopy}>
                 <Text style={[styles.modalTitle, { color: colors.txt }]}>Votre moteur</Text>
@@ -583,7 +582,7 @@ export default function RecommendationsScreen() {
                 onPress={() => closeSheet(() => setModalVisible(false))}
                 style={styles.closeButton}
               >
-                <IconX size={19} color={colors.sub} stroke={2} />
+                <IconX size={19} color={colors.sub} strokeWidth={2} />
               </TouchableOpacity>
             </View>
 
@@ -596,21 +595,21 @@ export default function RecommendationsScreen() {
               <View style={[styles.dataCard, { backgroundColor: colors.bg, borderColor: colors.tagBg }]}> 
                 <View style={styles.dataRow}>
                   <View style={styles.dataLabelWrap}>
-                    <IconBookmark size={14} color={colors.accent} stroke={2} />
+                    <IconBookmark size={14} color={colors.accent} strokeWidth={2} />
                     <Text style={[styles.dataLabel, { color: colors.txt }]}>Favoris locaux</Text>
                   </View>
                   <Text style={[styles.dataValue, { color: colors.accent }]}>{profile?.totalFavorites || 0}</Text>
                 </View>
                 <View style={styles.dataRow}>
                   <View style={styles.dataLabelWrap}>
-                    <IconBook2 size={14} color="#8b9cf6" stroke={1.8} />
+                    <IconBook2 size={14} color="#8b9cf6" strokeWidth={1.8} />
                     <Text style={[styles.dataLabel, { color: colors.txt }]}>Historique de lecture</Text>
                   </View>
                   <Text style={[styles.dataValue, { color: colors.accent }]}>{profile?.totalHistory || 0}</Text>
                 </View>
                 <View style={styles.dataRow}>
                   <View style={styles.dataLabelWrap}>
-                    <IconSearch size={14} color="#e6a86b" stroke={2} />
+                    <IconSearch size={14} color="#e6a86b" strokeWidth={2} />
                     <Text style={[styles.dataLabel, { color: colors.txt }]}>Recherches récentes</Text>
                   </View>
                   <Text style={[styles.dataValue, { color: colors.accent }]}>{profile?.totalSearches || 0}</Text>
@@ -640,7 +639,7 @@ export default function RecommendationsScreen() {
                           </View>
                         ))}
                         <Text style={[styles.termScore, { color: colors.accent }]}>{Math.round(tag.score)}</Text>
-                        <IconChevronRight size={12} color={colors.sub} stroke={2} />
+                        <IconChevronRight size={12} color={colors.sub} strokeWidth={2} />
                       </View>
                     </CardPressable>
                   ))}
@@ -677,7 +676,7 @@ export default function RecommendationsScreen() {
                           </Text>
                         )}
                         <Text style={[styles.termScore, { color: colors.accent }]}>{Math.round(artist.score)}</Text>
-                        <IconChevronRight size={12} color={colors.sub} stroke={2} />
+                        <IconChevronRight size={12} color={colors.sub} strokeWidth={2} />
                       </View>
                     </CardPressable>
                   ))}
@@ -707,7 +706,7 @@ export default function RecommendationsScreen() {
                           </View>
                         ))}
                         <Text style={[styles.termScore, { color: colors.accent }]}>{Math.round(parody.score)}</Text>
-                        <IconChevronRight size={12} color={colors.sub} stroke={2} />
+                        <IconChevronRight size={12} color={colors.sub} strokeWidth={2} />
                       </View>
                     </CardPressable>
                   ))}
@@ -728,7 +727,7 @@ export default function RecommendationsScreen() {
               )}
 
               <View style={[styles.noteBox, { backgroundColor: colors.accent + "12", borderColor: colors.accent + "30" }]}> 
-                <IconShield size={15} color={colors.accent} stroke={2} />
+                <IconShield size={15} color={colors.accent} strokeWidth={2} />
                 <Text style={[styles.noteText, { color: colors.sub }]}> 
                   Vos données restent sur l’appareil. Le moteur pondère les favoris, la récence des lectures et les recherches, exclut ce que vous avez déjà vu, puis ajoute un peu de popularité pour départager les résultats.
                 </Text>

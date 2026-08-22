@@ -202,7 +202,7 @@ export function AnimatedEmptyState({
             {config.kanji}
           </Text>
           <View style={[styles.iconDot, { backgroundColor: config.sealColor + "25" }]}>
-            <IconComp size={14} color={config.sealColor} stroke={2} />
+            <IconComp size={14} color={config.sealColor} strokeWidth={2} />
           </View>
         </View>
       </Animated.View>
@@ -221,7 +221,7 @@ export function AnimatedEmptyState({
               style={[styles.primaryActionBtn, { backgroundColor: colors.accent }]}
             >
               <Text style={styles.primaryActionText}>{actionLabel}</Text>
-              <IconArrowRight size={16} color="#fff" stroke={2.5} />
+              <IconArrowRight size={16} color="#fff" strokeWidth={2.5} />
             </TouchableOpacity>
           )}
 

@@ -1,4 +1,4 @@
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 
 export function formatBytes(bytes: number): string {
   if (!bytes || bytes <= 0) return "0 Mo";

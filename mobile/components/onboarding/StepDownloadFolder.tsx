@@ -34,7 +34,7 @@ export function StepDownloadFolder() {
     }
   };
 
-  const useDefault = async (): Promise<void> => {
+  const applyDefaultFolder = async (): Promise<void> => {
     lightTap();
     await updateSettings({
       mode: "app",
@@ -47,7 +47,7 @@ export function StepDownloadFolder() {
   return (
     <View style={styles.container}>
       <View style={[styles.iconBox, { backgroundColor: colors.accent + "18", borderColor: colors.accent + "35" }]}>
-        <IconFolder size={30} color={colors.accent} stroke={1.7} />
+        <IconFolder size={30} color={colors.accent} strokeWidth={1.7} />
       </View>
       <Text style={[styles.title, { color: colors.txt }]}>Choisissez votre dossier de téléchargement</Text>
       <Text style={[styles.subtitle, { color: colors.sub }]}>
@@ -73,18 +73,18 @@ export function StepDownloadFolder() {
         accessibilityRole="button"
         accessibilityLabel="Choisir un dossier"
       >
-        <IconFolderPlus size={18} color="#fff" stroke={2} />
+        <IconFolderPlus size={18} color="#fff" strokeWidth={2} />
         <Text style={styles.primaryText}>Choisir un dossier</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
         activeOpacity={0.85}
-        onPress={() => void useDefault()}
+        onPress={() => void applyDefaultFolder()}
         style={[styles.secondary, { borderColor: colors.tagBg, backgroundColor: colors.page }]}
         accessibilityRole="button"
         accessibilityLabel="Utiliser le dossier par défaut"
       >
-        {settings.mode === "app" ? <IconCircleCheck size={16} color={colors.accent} stroke={2} /> : null}
+        {settings.mode === "app" ? <IconCircleCheck size={16} color={colors.accent} strokeWidth={2} /> : null}
         <Text style={[styles.secondaryText, { color: colors.txt }]}>Garder le dossier de l'application</Text>
       </TouchableOpacity>
 

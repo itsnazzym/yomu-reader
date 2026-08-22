@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useState, useEffect } from "react";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import { createInitOnce, createWriteQueue } from "./persistQueue";
 import { LIBRARY_DIR_NAME } from "./localLibrary";
 
@@ -14,6 +14,7 @@ export interface DownloadSettings {
   safDirectoryUri: string | null;
   rememberFolder: boolean;
   folderPrompted: boolean;
+  wifiOnly: boolean;
 }
 
 const defaultSettings: DownloadSettings = {
@@ -21,6 +22,7 @@ const defaultSettings: DownloadSettings = {
   safDirectoryUri: null,
   rememberFolder: true,
   folderPrompted: false,
+  wifiOnly: false,
 };
 
 let currentSettings: DownloadSettings = { ...defaultSettings };

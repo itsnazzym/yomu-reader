@@ -280,7 +280,7 @@ export default function BookDetailScreen() {
   if (error || !gallery) {
     return (
       <View style={[styles.centerContainer, { backgroundColor: colors.bg }]}>
-        <IconAlertCircle size={48} color="#ff4757" stroke={1.5} />
+        <IconAlertCircle size={48} color="#ff4757" strokeWidth={1.5} />
         <Text style={[styles.errorTitle, { color: colors.txt }]}>Erreur</Text>
         <Text style={[styles.errorSub, { color: colors.sub }]}>
           {error || "Galerie introuvable"}
@@ -337,7 +337,7 @@ export default function BookDetailScreen() {
         ]}
       >
         <IconBtn onPress={() => router.back()} size={40}>
-          <IconArrowLeft size={22} color={colors.txt} stroke={2} />
+          <IconArrowLeft size={22} color={colors.txt} strokeWidth={2} />
         </IconBtn>
 
         <View style={styles.topBarActions}>
@@ -351,7 +351,7 @@ export default function BookDetailScreen() {
                 size={20}
                 color={accountFav ? "#f43f5e" : colors.txt}
                 fill={accountFav ? "#f43f5e" : "transparent"}
-                stroke={accountFav ? 2.4 : 1.8}
+                strokeWidth={accountFav ? 2.4 : 1.8}
               />
             </Animated.View>
           </IconBtn>
@@ -365,12 +365,12 @@ export default function BookDetailScreen() {
                 size={20}
                 color={fav ? colors.accent : colors.txt}
                 fill={fav ? colors.accent : "transparent"}
-                stroke={fav ? 2.5 : 1.8}
+                strokeWidth={fav ? 2.5 : 1.8}
               />
             </Animated.View>
           </IconBtn>
           <IconBtn onPress={handleShare} size={40}>
-            <IconShare size={20} color={colors.txt} stroke={2} />
+            <IconShare size={20} color={colors.txt} strokeWidth={2} />
           </IconBtn>
         </View>
       </View>
@@ -403,20 +403,20 @@ export default function BookDetailScreen() {
             {/* Stats Row */}
             <View style={styles.statsRow}>
               <View style={[styles.statChip, { backgroundColor: colors.tagBg }]}>
-                <IconFileText size={13} color={colors.accent} stroke={2} />
+                <IconFileText size={13} color={colors.accent} strokeWidth={2} />
                 <Text style={[styles.statText, { color: colors.txt }]}>
                   {gallery.num_pages || gallery.images?.pages?.length || 0} pages
                 </Text>
               </View>
               <View style={[styles.statChip, { backgroundColor: colors.tagBg }]}>
-                <IconHeart size={13} color="#ff4757" stroke={2} />
+                <IconHeart size={13} color="#ff4757" strokeWidth={2} />
                 <Text style={[styles.statText, { color: colors.txt }]}>
                   {gallery.num_favorites || 0}
                 </Text>
               </View>
               {gallery.upload_date ? (
                 <View style={[styles.statChip, { backgroundColor: colors.tagBg }]}>
-                  <IconCalendar size={13} color={colors.sub} stroke={2} />
+                  <IconCalendar size={13} color={colors.sub} strokeWidth={2} />
                   <Text style={[styles.statText, { color: colors.sub }]}>
                     {format(new Date(Number(gallery.upload_date) * 1000), "dd/MM/yyyy")}
                   </Text>
@@ -434,7 +434,7 @@ export default function BookDetailScreen() {
             style={[styles.primaryReadBtn, { backgroundColor: colors.accent }]}
           >
             <View style={styles.btnInner}>
-              <IconBook2 size={20} color="#fff" stroke={1.8} />
+              <IconBook2 size={20} color="#fff" strokeWidth={1.8} />
               <Text style={styles.primaryReadBtnText}>{readLabel}</Text>
             </View>
           </CardPressable>
@@ -445,7 +445,7 @@ export default function BookDetailScreen() {
             style={[styles.secondaryBtn, { backgroundColor: colors.page, borderColor: colors.tagBg }]}
           >
             <View style={styles.btnInner}>
-              <IconDownload size={18} color={colors.accent} stroke={2} />
+              <IconDownload size={18} color={colors.accent} strokeWidth={2} />
               <Text style={[styles.secondaryBtnText, { color: colors.txt }]}>Télécharger</Text>
             </View>
           </CardPressable>
@@ -516,9 +516,9 @@ export default function BookDetailScreen() {
                         }
                       >
                         {inSearch ? (
-                          <IconMinus size={13} color={colors.accent} stroke={2.5} />
+                          <IconMinus size={13} color={colors.accent} strokeWidth={2.5} />
                         ) : (
-                          <IconPlus size={13} color={colors.accent} stroke={2.5} />
+                          <IconPlus size={13} color={colors.accent} strokeWidth={2.5} />
                         )}
                       </TouchableOpacity>
 
@@ -536,7 +536,7 @@ export default function BookDetailScreen() {
                           size={13}
                           color={isTagFavorited ? "#f43f5e" : colors.sub}
                           fill={isTagFavorited ? "#f43f5e" : "transparent"}
-                          stroke={1.8}
+                          strokeWidth={1.8}
                         />
                       </TouchableOpacity>
                     </View>
@@ -653,7 +653,7 @@ export default function BookDetailScreen() {
                   onPress={() => setPreviewIndex(null)}
                   style={styles.previewCloseBtn}
                 >
-                  <IconX size={18} color="#9ca3af" stroke={2} />
+                  <IconX size={18} color="#9ca3af" strokeWidth={2} />
                 </TouchableOpacity>
               </View>
 
@@ -676,7 +676,7 @@ export default function BookDetailScreen() {
                     onPress={() => setPreviewIndex((prev) => (prev !== null ? Math.max(0, prev - 1) : 0))}
                     style={[styles.previewNavBtn, styles.previewNavLeft]}
                   >
-                    <IconChevronLeft size={22} color="#fff" stroke={2.5} />
+                    <IconChevronLeft size={22} color="#fff" strokeWidth={2.5} />
                   </TouchableOpacity>
                 )}
 
@@ -692,7 +692,7 @@ export default function BookDetailScreen() {
                     }
                     style={[styles.previewNavBtn, styles.previewNavRight]}
                   >
-                    <IconChevronRight size={22} color="#fff" stroke={2.5} />
+                    <IconChevronRight size={22} color="#fff" strokeWidth={2.5} />
                   </TouchableOpacity>
                 )}
               </View>

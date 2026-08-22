@@ -27,7 +27,7 @@ export function AuthRequiredModal({
       <View style={styles.backdrop}>
         <View style={[styles.box, { backgroundColor: colors.page, borderColor: colors.tagBg }]}>
           <View style={[styles.iconCircle, { backgroundColor: "#f43f5e20" }]}>
-            <IconHeart size={26} color="#f43f5e" stroke={1.8} />
+            <IconHeart size={26} color="#f43f5e" strokeWidth={1.8} />
           </View>
           <Text style={[styles.title, { color: colors.txt }]}>{title}</Text>
           <Text style={[styles.desc, { color: colors.sub }]}>{description}</Text>
@@ -39,7 +39,7 @@ export function AuthRequiredModal({
             accessibilityRole="button"
             accessibilityLabel="Se connecter"
           >
-            <IconLogin size={16} color="#fff" stroke={2} />
+            <IconLogin size={16} color="#fff" strokeWidth={2} />
             <Text style={styles.primaryText}>Se connecter</Text>
           </TouchableOpacity>
 
@@ -50,7 +50,7 @@ export function AuthRequiredModal({
             accessibilityRole="button"
             accessibilityLabel="Créer un compte"
           >
-            <IconUserPlus size={16} color={colors.accent} stroke={2} />
+            <IconUserPlus size={16} color={colors.accent} strokeWidth={2} />
             <Text style={[styles.secondaryText, { color: colors.txt }]}>Créer un compte</Text>
           </TouchableOpacity>
 
@@ -61,7 +61,7 @@ export function AuthRequiredModal({
             accessibilityRole="button"
             accessibilityLabel="Annuler"
           >
-            <IconX size={14} color={colors.sub} stroke={2} />
+            <IconX size={14} color={colors.sub} strokeWidth={2} />
             <Text style={[styles.cancelText, { color: colors.sub }]}>Annuler</Text>
           </TouchableOpacity>
         </View>

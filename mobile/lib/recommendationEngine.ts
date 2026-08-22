@@ -14,14 +14,16 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Gallery, SearchResult } from "@/lib/api/types";
 import { searchGalleries } from "@/lib/api/nhentai";
 import { getFavorites, initFavorites } from "@/lib/favoritesStore";
-import { getHistory, initHistory } from "@/lib/historyStore";
+import { getHistory, initHistory, type HistoryGallery } from "@/lib/historyStore";
 import {
   getBlacklistedTags,
   initBlacklist,
   isGalleryBlacklisted,
 } from "@/lib/blacklistFilter";
+import { isIncognito } from "@/lib/privacyStore";
 
-const SEARCH_HISTORY_KEY = "@nhentai_search_history_v1";
+export const SEARCH_HISTORY_STORAGE_KEY = "@nhentai_search_history_v1";
+const SEARCH_HISTORY_KEY = SEARCH_HISTORY_STORAGE_KEY;
 
 // ── Public types ──
 
@@ -99,7 +101,7 @@ function mapToSorted(map: ScoreMap): ScoredTerm[] {
 
 // ── History & Search storage ──
 
-export async function getReadHistory(): Promise<Gallery[]> {
+export async function getReadHistory(): Promise<HistoryGallery[]> {
   await initHistory();
   return getHistory().map((entry) => entry.gallery);
 }
@@ -116,6 +118,7 @@ export async function getSearchHistory(): Promise<string[]> {
 
 export async function addToSearchHistory(query: string): Promise<void> {
   try {
+    if (isIncognito()) return;
     const clean = query.trim();
     if (!clean || clean.length < 2) return;
 
@@ -126,10 +129,20 @@ export async function addToSearchHistory(query: string): Promise<void> {
   } catch {}
 }
 
+export async function removeFromSearchHistory(query: string): Promise<void> {
+  try {
+    const clean = query.trim().toLowerCase();
+    if (!clean) return;
+    const history = await getSearchHistory();
+    const updated = history.filter((item) => item.toLowerCase() !== clean);
+    await AsyncStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(updated));
+  } catch {}
+}
+
 // ── Profile builder ──
 
 function extractTagsFromGallery(
-  gallery: Gallery,
+  gallery: { tags?: Gallery["tags"] },
   tagMap: ScoreMap,
   artistMap: ScoreMap,
   parodyMap: ScoreMap,

@@ -135,9 +135,9 @@ export default function FavoritesScreen() {
               {syncing ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : isLoggedIn ? (
-                <IconRefresh size={15} color={colors.accent} stroke={2} />
+                <IconRefresh size={15} color={colors.accent} strokeWidth={2} />
               ) : (
-                <IconCloud size={15} color="#fff" stroke={2} />
+                <IconCloud size={15} color="#fff" strokeWidth={2} />
               )}
               <Text
                 style={[
@@ -189,7 +189,7 @@ export default function FavoritesScreen() {
         {/* Sync Status Banner */}
         {isLoggedIn && (
           <View style={styles.cloudBanner}>
-            <IconCircleCheck size={13} color="#52c41a" stroke={2.5} />
+            <IconCircleCheck size={13} color="#52c41a" strokeWidth={2.5} />
             <Text style={styles.cloudBannerText}>
               Compte : <Text style={{ color: "#fff", fontWeight: "700" }}>{session.username || "nHentai"}</Text>
               {session.lastSync ? ` · Synchro à ${session.lastSync}` : ""}
@@ -227,7 +227,7 @@ export default function FavoritesScreen() {
 
         {favorites.length > 0 && (
           <View style={styles.filterBar}>
-            <IconSearch size={16} color="#9ca3af" stroke={1.8} style={{ marginRight: 8 }} />
+            <IconSearch size={16} color="#9ca3af" strokeWidth={1.8} style={{ marginRight: 8 }} />
             <TextInput
               value={filterQuery}
               onChangeText={setFilterQuery}
@@ -255,7 +255,6 @@ export default function FavoritesScreen() {
         <FlashList
           data={filtered}
           renderItem={renderItem}
-          estimatedItemSize={240}
           numColumns={numColumns}
           contentContainerStyle={{
             paddingHorizontal: horizontalPadding,

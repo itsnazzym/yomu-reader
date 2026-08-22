@@ -197,7 +197,7 @@ export default function ApiKeysScreen() {
               { backgroundColor: isCurrentActive ? "rgba(168,85,247,0.18)" : colors.tagBg },
             ]}
           >
-            <IconKey size={18} color={isCurrentActive ? colors.accent : colors.sub} stroke={1.8} />
+            <IconKey size={18} color={isCurrentActive ? colors.accent : colors.sub} strokeWidth={1.8} />
           </View>
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -219,7 +219,7 @@ export default function ApiKeysScreen() {
             size={34}
             highlightColor="rgba(255,71,87,0.15)"
           >
-            <IconTrash size={16} color="#ff4757" stroke={1.8} />
+            <IconTrash size={16} color="#ff4757" strokeWidth={1.8} />
           </IconBtn>
         </View>
       </View>
@@ -236,7 +236,7 @@ export default function ApiKeysScreen() {
       {/* Header */}
       <View style={[styles.header, { borderBottomColor: colors.tagBg }]}>
         <IconBtn onPress={() => router.back()} size={36} style={styles.backBtn}>
-          <IconArrowLeft size={18} color={colors.txt} stroke={2} />
+          <IconArrowLeft size={18} color={colors.txt} strokeWidth={2} />
         </IconBtn>
         <View style={{ flex: 1 }}>
           <Text style={[styles.headerTitle, { color: colors.txt }]}>Clés API nHentai</Text>
@@ -253,7 +253,7 @@ export default function ApiKeysScreen() {
           size={36}
           highlightColor="rgba(96, 165, 250, 0.15)"
         >
-          <IconExternalLink size={17} color="#60a5fa" stroke={2} />
+          <IconExternalLink size={17} color="#60a5fa" strokeWidth={2} />
         </IconBtn>
       </View>
 
@@ -270,7 +270,7 @@ export default function ApiKeysScreen() {
         >
           {isApiKeyActive ? (
             <>
-              <IconBolt size={18} color={colors.accent} stroke={2} />
+              <IconBolt size={18} color={colors.accent} strokeWidth={2} />
               <View style={{ flex: 1 }}>
                 <Text style={[styles.statusBannerTitle, { color: colors.accent }]}>
                   Mode Clé API Actif
@@ -282,7 +282,7 @@ export default function ApiKeysScreen() {
             </>
           ) : isAuthed ? (
             <>
-              <IconShieldCheck size={18} color="#22c55e" stroke={2} />
+              <IconShieldCheck size={18} color="#22c55e" strokeWidth={2} />
               <View style={{ flex: 1 }}>
                 <Text style={[styles.statusBannerTitle, { color: "#22c55e" }]}>
                   Session Officielle Active ({session?.username || "Connecté"})
@@ -294,7 +294,7 @@ export default function ApiKeysScreen() {
             </>
           ) : (
             <>
-              <IconKey size={18} color="#fbbf24" stroke={2} />
+              <IconKey size={18} color="#fbbf24" strokeWidth={2} />
               <View style={{ flex: 1 }}>
                 <Text style={[styles.statusBannerTitle, { color: "#fbbf24" }]}>
                   Mode Invité (Clé API possible)
@@ -310,7 +310,7 @@ export default function ApiKeysScreen() {
         {/* 1. Activer directement une clé API */}
         <View style={[styles.card, { backgroundColor: colors.page, borderColor: colors.tagBg }]}>
           <View style={styles.cardHeader}>
-            <IconKey size={16} color={colors.accent} stroke={2} />
+            <IconKey size={16} color={colors.accent} strokeWidth={2} />
             <Text style={[styles.sectionTitle, { color: colors.txt }]}>
               Activer une clé
             </Text>
@@ -335,7 +335,7 @@ export default function ApiKeysScreen() {
               onPress={handlePasteFromClipboard}
               style={[styles.iconButtonSmall, { backgroundColor: colors.tagBg }]}
             >
-              <IconClipboard size={16} color={colors.txt} stroke={1.8} />
+              <IconClipboard size={16} color={colors.txt} strokeWidth={1.8} />
             </Pressable>
           </View>
 
@@ -355,7 +355,7 @@ export default function ApiKeysScreen() {
               {activating ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <IconCheck size={16} color={manualKeyInput.trim() ? "#fff" : colors.sub} stroke={2.5} />
+                <IconCheck size={16} color={manualKeyInput.trim() ? "#fff" : colors.sub} strokeWidth={2.5} />
               )}
               <Text
                 style={[
@@ -373,7 +373,7 @@ export default function ApiKeysScreen() {
         {isAuthed ? (
           <View style={[styles.card, { backgroundColor: colors.page, borderColor: colors.tagBg }]}>
             <View style={styles.cardHeader}>
-              <IconPlus size={16} color={colors.accent} stroke={2.5} />
+              <IconPlus size={16} color={colors.accent} strokeWidth={2.5} />
               <Text style={[styles.sectionTitle, { color: colors.txt }]}>Nouvelle clé</Text>
             </View>
             <Text style={[styles.sectionSub, { color: colors.sub }]}>
@@ -408,7 +408,7 @@ export default function ApiKeysScreen() {
                   {creating ? (
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
-                    <IconPlus size={15} color={name.trim() ? "#fff" : colors.sub} stroke={2.5} />
+                    <IconPlus size={15} color={name.trim() ? "#fff" : colors.sub} strokeWidth={2.5} />
                   )}
                   <Text
                     style={[
@@ -438,7 +438,7 @@ export default function ApiKeysScreen() {
 
         {!isAuthed ? (
           <View style={[styles.emptyBox, { backgroundColor: colors.page, borderColor: colors.tagBg }]}>
-            <IconLogin size={28} color={colors.sub} stroke={1.5} />
+            <IconLogin size={28} color={colors.sub} strokeWidth={1.5} />
             <Text style={[styles.emptyTitle, { color: colors.txt }]}>
               Connexion requise
             </Text>
@@ -460,7 +460,7 @@ export default function ApiKeysScreen() {
           </View>
         ) : keys.length === 0 ? (
           <View style={[styles.emptyBox, { backgroundColor: colors.page, borderColor: colors.tagBg }]}>
-            <IconKey size={26} color={colors.sub} stroke={1.5} style={{ opacity: 0.6 }} />
+            <IconKey size={26} color={colors.sub} strokeWidth={1.5} style={{ opacity: 0.6 }} />
             <Text style={[styles.emptyTitle, { color: colors.txt }]}>Aucune clé API créée</Text>
             <Text style={[styles.emptySub, { color: colors.sub }]}>
               Utilisez le formulaire ci-dessus pour générer votre première clé API nHentai.
@@ -480,7 +480,7 @@ export default function ApiKeysScreen() {
       >
         <View style={styles.backdrop}>
           <View style={[styles.keyModal, { backgroundColor: colors.page, borderColor: colors.tagBg }]}>
-            <IconCircleCheck size={32} color="#22c55e" stroke={2} />
+            <IconCircleCheck size={32} color="#22c55e" strokeWidth={2} />
             <Text style={[styles.keyModalTitle, { color: colors.txt }]}>Clé API Générée !</Text>
             <Text style={[styles.keyModalWarn, { color: colors.sub }]}>
               Copiez cette clé maintenant ou appliquez-la directement dans l'application :
@@ -507,7 +507,7 @@ export default function ApiKeysScreen() {
                 }}
                 style={[styles.keyModalBtn, { backgroundColor: colors.accent }]}
               >
-                <IconBolt size={16} color="#fff" stroke={2.5} />
+                <IconBolt size={16} color="#fff" strokeWidth={2.5} />
                 <Text style={styles.keyModalBtnText}>⚡ Utiliser directement dans l'app</Text>
               </Pressable>
 
@@ -517,9 +517,9 @@ export default function ApiKeysScreen() {
                 style={[styles.keyModalBtnSecondary, { backgroundColor: colors.tagBg }]}
               >
                 {copiedKey ? (
-                  <IconCheck size={16} color="#22c55e" stroke={2.5} />
+                  <IconCheck size={16} color="#22c55e" strokeWidth={2.5} />
                 ) : (
-                  <IconCopy size={16} color={colors.txt} stroke={2} />
+                  <IconCopy size={16} color={colors.txt} strokeWidth={2} />
                 )}
                 <Text style={[styles.keyModalBtnTextSecondary, { color: colors.txt }]}>
                   {copiedKey ? "Copié dans le presse-papier !" : "Copier la clé"}

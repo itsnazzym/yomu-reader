@@ -132,7 +132,7 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
               { backgroundColor: colors.page, borderColor: colors.tagBg, borderWidth: 1 },
             ]}
           >
-            <IconBook2 size={20} color={colors.accent} stroke={1.8} />
+            <IconBook2 size={20} color={colors.accent} strokeWidth={1.8} />
           </View>
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -175,7 +175,7 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
                   <IconComp
                     size={18}
                     color={tint}
-                    stroke={isActive ? 2 : 1.7}
+                    strokeWidth={isActive ? 2 : 1.7}
                     style={styles.menuIcon}
                   />
                   <Text
@@ -191,9 +191,9 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
                   </Text>
 
                   {item.isLocked ? (
-                    <IconLock size={14} color="#6b7280" stroke={1.8} />
+                    <IconLock size={14} color="#6b7280" strokeWidth={1.8} />
                   ) : item.hasArrow ? (
-                    <IconChevronRight size={16} color="#6b7280" stroke={2} />
+                    <IconChevronRight size={16} color="#6b7280" strokeWidth={2} />
                   ) : null}
                 </View>
               </TouchableOpacity>
@@ -215,7 +215,7 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
               {randomLoading ? (
                 <ActivityIndicator size="small" color={colors.bg} />
               ) : (
-                <IconArrowsShuffle size={17} color={colors.bg} stroke={2.2} />
+                <IconArrowsShuffle size={17} color={colors.bg} strokeWidth={2.2} />
               )}
               <Text style={styles.luckyText}>I'M FEELING LUCKY</Text>
               <Text style={styles.sparkleFloral}>✧ ✦</Text>
@@ -232,7 +232,7 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
           accessibilityLabel="Rejoindre le serveur Discord"
         >
           <View style={styles.discordContent}>
-            <IconBrandDiscord size={20} color={colors.accent} stroke={1.8} />
+            <IconBrandDiscord size={20} color={colors.accent} strokeWidth={1.8} />
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                 <Text style={styles.discordTitle}>Join Discord</Text>
@@ -270,10 +270,10 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
                   contentFit="cover"
                 />
               ) : (
-                <IconUserCheck size={18} color="#52c41a" stroke={2} />
+                <IconUserCheck size={18} color="#52c41a" strokeWidth={2} />
               )
             ) : (
-              <IconLogin size={18} color={colors.accent} stroke={2} />
+              <IconLogin size={18} color={colors.accent} strokeWidth={2} />
             )}
             <Text style={styles.signInText}>
               {isLoggedIn ? (session.username || "Mon Profil") : "Sign in"}

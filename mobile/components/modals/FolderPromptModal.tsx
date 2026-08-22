@@ -25,7 +25,7 @@ export function FolderPromptModal() {
       <View style={styles.backdrop}>
         <View style={[styles.box, { backgroundColor: colors.page, borderColor: colors.tagBg }]}>
           <View style={[styles.iconCircle, { backgroundColor: colors.accent + "20" }]}>
-            <IconFolder size={28} color={colors.accent} stroke={1.8} />
+            <IconFolder size={28} color={colors.accent} strokeWidth={1.8} />
           </View>
           <Text style={[styles.title, { color: colors.txt }]}>Choisissez votre dossier de téléchargement</Text>
           <Text style={[styles.desc, { color: colors.sub }]}>
