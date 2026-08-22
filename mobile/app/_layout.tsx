@@ -1,6 +1,8 @@
 import React, { useEffect } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { AppState, StyleSheet, Text, View, type AppStateStatus } from "react-native";
 import { ErrorBoundaryProps, Stack } from "expo-router";
+import { Feather } from "@expo/vector-icons";
+import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -13,20 +15,30 @@ import { SideMenu } from "@/components/SideMenu";
 import { TexturedBackground } from "@/components/ui/TexturedBackground";
 import { OnboardingModal } from "@/components/onboarding/OnboardingModal";
 import { FolderPromptModal } from "@/components/modals/FolderPromptModal";
+import { maybeRunAutobackup } from "@/lib/backupStore";
+import { refreshFollowsFeed } from "@/lib/followsFeedStore";
+import { AppLockGate } from "@/components/AppLockGate";
+import { usePrivacyGuard } from "@/lib/privacyCaptureStore";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 enableScreens(true);
 
-export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
-  const { colors } = useTheme();
+const ERROR_FALLBACK_COLORS = {
+  bg: "#121218",
+  txt: "#F2F2F5",
+  sub: "#9A9AA8",
+  accent: "#C45CFF",
+} as const;
 
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  // Expo Router renders this outside ThemeProvider. Never call useTheme here.
   return (
-    <View style={[styles.errorRoot, { backgroundColor: colors.bg }]}>
-      <Text style={[styles.errorTitle, { color: colors.txt }]}>Écran bloqué</Text>
-      <Text style={[styles.errorBody, { color: colors.sub }]}>
+    <View style={[styles.errorRoot, { backgroundColor: ERROR_FALLBACK_COLORS.bg }]}>
+      <Text style={[styles.errorTitle, { color: ERROR_FALLBACK_COLORS.txt }]}>Écran bloqué</Text>
+      <Text style={[styles.errorBody, { color: ERROR_FALLBACK_COLORS.sub }]}>
         {error?.message || "Erreur inconnue"}
       </Text>
-      <Text style={[styles.errorRetry, { color: colors.accent }]} onPress={retry}>
+      <Text style={[styles.errorRetry, { color: ERROR_FALLBACK_COLORS.accent }]} onPress={retry}>
         Réessayer
       </Text>
     </View>
@@ -36,6 +48,22 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
 function AppShell() {
   const { colors } = useTheme();
   const { isOpen, openDrawer, closeDrawer, swipeEnabled } = useDrawer();
+  // FLAG_SECURE : bloque captures d'écran + vignette multitâche (défaut ON).
+  usePrivacyGuard();
+
+  useEffect(() => {
+    void maybeRunAutobackup();
+    void refreshFollowsFeed(false);
+    const onAppState = (next: AppStateStatus): void => {
+      if (next === "active") {
+        void refreshFollowsFeed(false);
+      }
+    };
+    const sub = AppState.addEventListener("change", onAppState);
+    return () => {
+      sub.remove();
+    };
+  }, []);
 
   return (
     <TexturedBackground backgroundColor={colors.bg}>
@@ -65,6 +93,7 @@ function AppShell() {
             <Stack.Screen name="favorites" />
             <Stack.Screen name="downloaded" />
             <Stack.Screen name="history" />
+            <Stack.Screen name="updates" />
             <Stack.Screen name="batch" />
             <Stack.Screen name="recommendations" />
             <Stack.Screen name="profile" />
@@ -81,14 +110,25 @@ function AppShell() {
 
       <OnboardingModal />
       <FolderPromptModal />
+      <AppLockGate />
     </TexturedBackground>
   );
 }
 
 export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({
+    ...Feather.font,
+  });
+
   useEffect(() => {
-    SplashScreen.hideAsync().catch(() => {});
-  }, []);
+    if (fontsLoaded || fontError) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [fontsLoaded, fontError]);
+
+  if (!fontsLoaded && !fontError) {
+    return null;
+  }
 
   return (
     <GestureHandlerRootView style={styles.flex}>

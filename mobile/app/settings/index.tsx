@@ -36,10 +36,18 @@ import {
   IconHelpCircle,
   IconDeviceFloppy,
   IconUpload,
+  IconLock,
 } from "@tabler/icons-react-native";
 import * as Clipboard from "expo-clipboard";
 import { Image } from "expo-image";
-import { exportBackupToFile, restoreBackupFromJson } from "@/lib/backupStore";
+import { exportBackupToFile, restoreBackupFromFile, restoreBackupFromJson } from "@/lib/backupStore";
+import { usePrivacy } from "@/lib/privacyStore";
+import { hasStoredPin, useAppLock } from "@/lib/appLockStore";
+import {
+  setPreventScreenCapture,
+  usePreventScreenCapture,
+} from "@/lib/privacyCaptureStore";
+import { PinLockModal } from "@/components/modals/PinLockModal";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/lib/ThemeContext";
@@ -176,6 +184,16 @@ export default function SettingsScreen() {
     resetFolder,
   } = useDownloadSettings();
   const { tags: blacklistedTags, addTag, removeTag } = useBlacklist();
+  const { incognito, setIncognito } = usePrivacy();
+  const {
+    enabled: appLockEnabled,
+    biometric: appLockBiometric,
+    setEnabled: setAppLockEnabled,
+    setBiometric: setAppLockBiometric,
+    setPin: setAppLockPin,
+  } = useAppLock();
+  const preventCapture = usePreventScreenCapture();
+  const [pinModalOpen, setPinModalOpen] = useState(false);
   const [newTagInput, setNewTagInput] = useState("");
 
   // Interface & Grid preview states
@@ -852,6 +870,31 @@ export default function SettingsScreen() {
 
             <View style={styles.divider} />
 
+            <View style={styles.rowToggle}>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={styles.rowToggleTitle}>Wi‑Fi uniquement</Text>
+                <Text style={styles.rowToggleSub}>
+                  Les téléchargements restent en file hors Wi‑Fi. Ils reprennent automatiquement.
+                  {"\n"}Les DL s'arrêtent si l'app est tuée par le système (limite Expo).
+                </Text>
+              </View>
+              <Switch
+                value={downloadSettings.wifiOnly}
+                onValueChange={(val) => updateDownloadFolder({ wifiOnly: val })}
+                trackColor={{ false: "#28283a", true: colors.accent }}
+                thumbColor="#fff"
+              />
+            </View>
+
+            <View style={styles.divider} />
+
+            <Text style={styles.rowToggleSub}>
+              Export CBZ + ComicInfo.xml : bouton archive sur un titre hors-ligne
+              (compatible Mihon, Komga, Kavita).
+            </Text>
+
+            <View style={styles.divider} />
+
             <View style={{ gap: 6, paddingVertical: 4 }}>
               <Text style={styles.rowToggleTitle}>Dossier de téléchargement</Text>
               <Text style={styles.rowToggleSub}>
@@ -966,12 +1009,111 @@ export default function SettingsScreen() {
               <View style={{ flex: 1, paddingRight: 10 }}>
                 <Text style={styles.rowToggleTitle}>Mode discret (Flou)</Text>
                 <Text style={styles.rowToggleSub}>
-                  Floute les couvertures sur la page d'accueil pour la discrétion.
+                  Floute les couvertures dans les grilles (accueil, favoris, téléchargés).
                 </Text>
               </View>
               <Switch
                 value={readerSettings.blurNsfwCovers}
                 onValueChange={(val) => updateReaderSettings({ blurNsfwCovers: val })}
+                trackColor={{ false: "#28283a", true: colors.accent }}
+                thumbColor="#fff"
+              />
+            </View>
+
+            <View style={styles.divider} />
+
+            <View style={styles.rowToggle}>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={styles.rowToggleTitle}>Mode incognito</Text>
+                <Text style={styles.rowToggleSub}>
+                  N'écrit plus l'historique de lecture ni les recherches récentes.
+                </Text>
+              </View>
+              <Switch
+                value={incognito}
+                onValueChange={(val) => {
+                  void setIncognito(val);
+                }}
+                trackColor={{ false: "#28283a", true: colors.accent }}
+                thumbColor="#fff"
+              />
+            </View>
+
+            <View style={styles.divider} />
+
+            <View style={styles.rowToggle}>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={styles.rowToggleTitle}>Verrouillage de l'app</Text>
+                <Text style={styles.rowToggleSub}>
+                  Code PIN au lancement et au retour arrière-plan. La biométrie
+                  nécessite un APK / dev client.
+                </Text>
+              </View>
+              <Switch
+                value={appLockEnabled}
+                onValueChange={(val) => {
+                  void (async () => {
+                    try {
+                      if (val && !(await hasStoredPin())) {
+                        setPinModalOpen(true);
+                        return;
+                      }
+                      await setAppLockEnabled(val);
+                    } catch (error) {
+                      Alert.alert(
+                        "Verrouillage",
+                        error instanceof Error ? error.message : "Impossible d'activer le verrou."
+                      );
+                    }
+                  })();
+                }}
+                trackColor={{ false: "#28283a", true: colors.accent }}
+                thumbColor="#fff"
+              />
+            </View>
+
+            <Pressable
+              onPress={() => setPinModalOpen(true)}
+              style={styles.pinRow}
+            >
+              <IconLock size={14} color={colors.accent} stroke={2} />
+              <Text style={[styles.pinRowText, { color: colors.accent }]}>
+                Définir / changer le PIN
+              </Text>
+            </Pressable>
+
+            <View style={styles.rowToggle}>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={styles.rowToggleTitle}>Empreinte / Face ID</Text>
+                <Text style={styles.rowToggleSub}>
+                  Déverrouille sans taper le PIN si le capteur est disponible.
+                </Text>
+              </View>
+              <Switch
+                value={appLockBiometric}
+                onValueChange={(val) => {
+                  void setAppLockBiometric(val);
+                }}
+                disabled={!appLockEnabled}
+                trackColor={{ false: "#28283a", true: colors.accent }}
+                thumbColor="#fff"
+              />
+            </View>
+
+            <View style={styles.divider} />
+
+            {/* Anti-capture d'écran (FLAG_SECURE) */}
+            <View style={styles.rowToggle}>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={styles.rowToggleTitle}>Bloquer les captures d'écran</Text>
+                <Text style={styles.rowToggleSub}>
+                  Empêche les screenshots et masque l'aperçu dans le
+                  multitâche. Recommandé pour la discrétion.
+                </Text>
+              </View>
+              <Switch
+                value={preventCapture}
+                onValueChange={setPreventScreenCapture}
                 trackColor={{ false: "#28283a", true: colors.accent }}
                 thumbColor="#fff"
               />
@@ -1064,7 +1206,8 @@ export default function SettingsScreen() {
 
           <View style={styles.groupCard}>
             <Text style={styles.rowToggleSub}>
-              Exportez ou restaurez vos favoris, tags, packs et historique en fichier JSON portable.
+              Exportez ou restaurez favoris, tags, packs, historique, filtres et recherches.
+              Une copie automatique est écrite chaque jour dans NHAppAndroid/autobackup.
             </Text>
 
             <CardPressable
@@ -1088,11 +1231,31 @@ export default function SettingsScreen() {
             <CardPressable
               radius={10}
               onPress={async () => {
+                const res = await restoreBackupFromFile();
+                if (res.error === "Import annulé") return;
+                if (res.success) {
+                  Alert.alert(
+                    "Restauration réussie !",
+                    `Restauré :\n• ${res.restoredItems.favorites} favoris\n• ${res.restoredItems.tagFavorites} tags\n• ${res.restoredItems.tagCollections} packs\n• ${res.restoredItems.history} historique\n• ${res.restoredItems.blacklist} tags masqués\n• ${res.restoredItems.searchHistory} recherches\n• ${res.restoredItems.libraryCollections} collections\n• ${res.restoredItems.follows} recherches suivies`
+                  );
+                } else {
+                  Alert.alert("Erreur de restauration", res.error);
+                }
+              }}
+              style={[styles.btnActionRow, { backgroundColor: colors.accent }]}
+            >
+              <IconUpload size={16} color="#fff" stroke={2} />
+              <Text style={styles.btnActionText}>Restaurer depuis un fichier</Text>
+            </CardPressable>
+
+            <CardPressable
+              radius={10}
+              onPress={async () => {
                 const clip = await Clipboard.getStringAsync();
                 if (!clip || !clip.trim().startsWith("{")) {
                   Alert.alert(
                     "Presse-papier vide",
-                    "Veuillez copier le contenu JSON de votre sauvegarde dans le presse-papier avant d'importer."
+                    "Copiez le JSON de sauvegarde, ou utilisez Restaurer depuis un fichier."
                   );
                   return;
                 }
@@ -1100,7 +1263,7 @@ export default function SettingsScreen() {
                 if (res.success) {
                   Alert.alert(
                     "Restauration réussie !",
-                    `Restauré avec succès :\n• ${res.restoredItems.favorites} favoris\n• ${res.restoredItems.tagFavorites} tags favoris\n• ${res.restoredItems.tagCollections} packs\n• ${res.restoredItems.history} mangas dans l'historique`
+                    `Restauré :\n• ${res.restoredItems.favorites} favoris\n• ${res.restoredItems.tagFavorites} tags\n• ${res.restoredItems.tagCollections} packs\n• ${res.restoredItems.history} historique\n• ${res.restoredItems.libraryCollections} collections`
                   );
                 } else {
                   Alert.alert("Erreur de restauration", res.error);
@@ -1110,7 +1273,7 @@ export default function SettingsScreen() {
             >
               <IconUpload size={16} color={colors.accent} stroke={2} />
               <Text style={[styles.btnActionText, { color: colors.txt }]}>
-                Restaurer la sauvegarde (JSON)
+                Restaurer depuis le presse-papier
               </Text>
             </CardPressable>
           </View>
@@ -1184,6 +1347,26 @@ export default function SettingsScreen() {
 
       {/* Modal de connexion */}
       <SignInModal visible={isSignInOpen} onClose={() => setIsSignInOpen(false)} />
+      <PinLockModal
+        visible={pinModalOpen}
+        title="Code de verrouillage"
+        subtitle="4 à 8 chiffres. Requis au lancement et au retour arrière-plan."
+        onClose={() => setPinModalOpen(false)}
+        onSubmit={async (pin) => {
+          const saved = await setAppLockPin(pin);
+          if (saved) {
+            try {
+              await setAppLockEnabled(true);
+            } catch (error) {
+              Alert.alert(
+                "Verrouillage",
+                error instanceof Error ? error.message : "PIN enregistré, activation impossible."
+              );
+            }
+          }
+          return saved;
+        }}
+      />
     </View>
   );
 }
@@ -1257,6 +1440,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+  },
+  pinRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 4,
+  },
+  pinRowText: {
+    fontSize: 13,
+    fontWeight: "700",
   },
   rowToggleTitle: {
     fontSize: 13.5,

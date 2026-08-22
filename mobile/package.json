@@ -40,6 +40,7 @@
     "expo-navigation-bar": "~4.0.4",
     "expo-notifications": "^0.29.14",
     "expo-router": "~4.0.6",
+    "expo-screen-capture": "^7.2.0",
     "expo-secure-store": "~14.0.1",
     "expo-sharing": "~13.0.0",
     "expo-splash-screen": "~0.29.11",
