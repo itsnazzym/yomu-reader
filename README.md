@@ -1,13 +1,26 @@
 <div align="center">
 
-  <img src="public/tauri.svg" alt="nHentai Launcher Logo" width="100" height="100" style="margin-bottom: 8px;" />
+  <img src="public/app-icon.png" alt="Yomu Reader & nHentai Launcher Logo" width="110" height="110" style="border-radius: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); margin-bottom: 10px;" />
 
-  # 🌸 nHentai Launcher Ecosystem
+  # 🌸 nHentai Launcher & Yomu Reader
   ### Client Desktop & Application Mobile Tactile Nouvelle Génération
 
   <p align="center">
     <strong>L'écosystème open-source ultime, ultra-rapide et anti-blocage pour nHentai.</strong><br>
     <em>Liseuse Manga & Webtoon, Téléchargements CBZ multi-flux avec ComicInfo.xml, Proxy Miroir Photon avec solveur PoW SHA-256 et Bibliothèque hors-ligne.</em>
+  </p>
+
+  <p align="center">
+    <a href="https://github.com/itsnazzym/nHentai-Laucher--unofficial-/releases/latest">
+      <img src="https://img.shields.io/badge/⬇️_TÉLÉCHARGER_LA_DERNIÈRE_VERSION-RELEASES_OFFICIELLES-ff0055?style=for-the-badge&logo=github&logoColor=white" alt="Download Latest Release" height="38" />
+    </a>
+  </p>
+
+  <p align="center">
+    <a href="https://github.com/itsnazzym/nHentai-Laucher--unofficial-/releases/latest"><img src="https://img.shields.io/badge/Android_APK-ARM64_%7C_Universel-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Android APK" /></a>
+    <a href="https://github.com/itsnazzym/nHentai-Laucher--unofficial-/releases/latest"><img src="https://img.shields.io/badge/Windows_EXE-Portable_64--bit-0078D6?style=flat-square&logo=windows&logoColor=white" alt="Windows EXE" /></a>
+    <a href="https://github.com/itsnazzym/nHentai-Laucher--unofficial-/releases/latest"><img src="https://img.shields.io/badge/Code_Source-ZIP_Archive-orange?style=flat-square&logo=zip&logoColor=white" alt="Source ZIP" /></a>
+    <a href="https://github.com/itsnazzym/nHentai-Laucher--unofficial-/releases"><img src="https://img.shields.io/github/v/release/itsnazzym/nHentai-Laucher--unofficial-?style=flat-square&label=Version&color=7928ca" alt="Release Version" /></a>
   </p>
 
   <p align="center">
@@ -37,6 +50,7 @@
 <details open>
 <summary><b>Cliquez pour déplier le sommaire</b></summary>
 
+- [📥 Téléchargements & Releases](#-téléchargements--releases)
 - [✨ Points Forts & Fonctionnalités](#-points-forts--fonctionnalités)
 - [📱 Comparatif Fonctionnel (Desktop vs Mobile)](#-comparatif-fonctionnel-desktop-vs-mobile)
 - [📐 Architecture](#-architecture)
@@ -50,6 +64,19 @@
 - [⚠️ Avertissement Légal](#️-avertissement-légal)
 
 </details>
+
+---
+
+## 📥 Téléchargements & Releases
+
+Tous les paquets prêts à l'emploi sont disponibles sur la page **[Releases Officielles](https://github.com/itsnazzym/nHentai-Laucher--unofficial-/releases/latest)** :
+
+| Paquet / Fichier | Plateforme | Description | Téléchargement direct |
+| :--- | :--- | :--- | :---: |
+| 📱 **`YomuReader-arm64-v8a-release.apk`** | Android 64-bit | Version ultra-légère et fluide (~35 Mo) pour smartphones récents *(Recommandé)* | [⬇️ Télécharger](https://github.com/itsnazzym/nHentai-Laucher--unofficial-/releases/latest) |
+| 📱 **`YomuReader-universal-full-release.apk`** | Android Universel | Compatible 100% avec tous les appareils Android (ARMv7, ARM64, x86) | [⬇️ Télécharger](https://github.com/itsnazzym/nHentai-Laucher--unofficial-/releases/latest) |
+| 💻 **`nHentai-Launcher-Portable.exe`** | Windows 64-bit | Exécutable Desktop portable autonome sans installation | [⬇️ Télécharger](https://github.com/itsnazzym/nHentai-Laucher--unofficial-/releases/latest) |
+| 🗜️ **`nhentai-launcher-source.zip`** | Tous OS | Archive complète du code source du projet | [⬇️ Télécharger](https://github.com/itsnazzym/nHentai-Laucher--unofficial-/releases/latest) |
 
 ---
 

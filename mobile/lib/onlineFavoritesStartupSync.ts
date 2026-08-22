@@ -24,6 +24,20 @@ function formatWait(milliseconds: number): string {
     : `${seconds} s`;
 }
 
+function getErrorMessage(error: unknown): string | undefined {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string"
+  ) {
+    return error.message;
+  }
+  return undefined;
+}
+
 function isRetryablePageError(error: unknown): boolean {
   if (!(error instanceof ApiError)) return true;
   return error.status === 429 || error.status >= 500;
@@ -148,11 +162,12 @@ export async function syncOnlineFavoritesFullOnLaunch(
       let res;
       try {
         res = await fetchPage(page);
-      } catch (pageErr: any) {
-        console.warn(`[onlineFavorites] error on page ${page}:`, pageErr?.message);
+      } catch (pageErr: unknown) {
+        const pageErrorMessage = getErrorMessage(pageErr);
+        console.warn(`[onlineFavorites] error on page ${page}:`, pageErrorMessage);
         // If we already collected some favorites, don't fail completely
         if (collectedById.size > 0) {
-          partialError = pageErr?.message || `Échec de la page ${page}`;
+          partialError = pageErrorMessage || `Échec de la page ${page}`;
           break;
         }
         throw pageErr;
@@ -160,7 +175,7 @@ export async function syncOnlineFavoritesFullOnLaunch(
 
       const responseTotal = Number(res?.total);
       if (Number.isFinite(responseTotal) && responseTotal > 0) {
-        total = responseTotal;
+        total = Math.max(total, responseTotal);
       }
 
       const responsePageSize = Number(res?.per_page);
@@ -243,9 +258,13 @@ export async function syncOnlineFavoritesFullOnLaunch(
       };
     }
     return { success: true, count: collected.length };
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.warn("[onlineFavorites] sync error:", e);
-    return { success: false, count: 0, error: e?.message || "Erreur de synchronisation" };
+    return {
+      success: false,
+      count: 0,
+      error: getErrorMessage(e) || "Erreur de synchronisation",
+    };
   } finally {
     syncRunning = false;
   }

@@ -74,13 +74,14 @@ export function resolveAvatarCandidates(url?: string, username?: string): string
 
         if (!isAlbum && fileName) {
           const normalizedName = fileName.replace(/\.gifv$/i, ".gif");
-          const directUrl = `https://i.imgur.com/${normalizedName}${parsed.search}`;
+          const urlSuffix = `${parsed.search}${parsed.hash}`;
+          const directUrl = `https://i.imgur.com/${normalizedName}${urlSuffix}`;
           if (isImage) return uniqueUrls([directUrl, clean]);
 
           return uniqueUrls([
-            `${directUrl}.gif`,
-            `${directUrl}.png`,
-            `${directUrl}.jpg`,
+            `https://i.imgur.com/${normalizedName}.gif${urlSuffix}`,
+            `https://i.imgur.com/${normalizedName}.png${urlSuffix}`,
+            `https://i.imgur.com/${normalizedName}.jpg${urlSuffix}`,
             clean,
           ]);
         }
