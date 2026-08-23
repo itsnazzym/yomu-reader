@@ -1,3 +1,5 @@
+import { getNodeBuffer } from "./nodeBuffer";
+
 /** ZIP STORE (no compression) — enough for CBZ / ComicInfo. */
 
 const CRC_TABLE = (() => {
@@ -135,16 +137,18 @@ export function bytesToBase64(bytes: Uint8Array): string {
   if (typeof globalThis.btoa === "function") {
     return globalThis.btoa(binary);
   }
-  if (typeof Buffer !== "undefined") {
-    return Buffer.from(bytes).toString("base64");
+  const nodeBuffer = getNodeBuffer();
+  if (nodeBuffer) {
+    return nodeBuffer.from(bytes).toString("base64");
   }
   throw new Error("Base64 encoder unavailable");
 }
 
 export function base64ToBytes(base64: string): Uint8Array {
   const clean = base64.replace(/[^A-Za-z0-9+/=]/g, "");
-  if (typeof Buffer !== "undefined") {
-    return Uint8Array.from(Buffer.from(clean, "base64"));
+  const nodeBuffer = getNodeBuffer();
+  if (nodeBuffer) {
+    return Uint8Array.from(nodeBuffer.from(clean, "base64").subarray());
   }
   const binary = globalThis.atob(clean);
   const bytes = new Uint8Array(binary.length);

@@ -1,3 +1,5 @@
+import { getNodeBuffer } from "./nodeBuffer";
+
 const JPEG = [0xff, 0xd8, 0xff];
 const PNG = [0x89, 0x50, 0x4e, 0x47];
 const GIF = [0x47, 0x49, 0x46, 0x38];
@@ -23,8 +25,9 @@ export function isValidImageMagic(bytes: Uint8Array | number[]): boolean {
 
 export function decodeBase64Header(base64: string, maxBytes = 16): Uint8Array {
   const slice = base64.replace(/[^A-Za-z0-9+/=]/g, "").slice(0, Math.ceil((maxBytes * 4) / 3) + 4);
-  if (typeof Buffer !== "undefined") {
-    return Uint8Array.from(Buffer.from(slice, "base64").subarray(0, maxBytes));
+  const nodeBuffer = getNodeBuffer();
+  if (nodeBuffer) {
+    return Uint8Array.from(nodeBuffer.from(slice, "base64").subarray(0, maxBytes));
   }
   const binary = globalThis.atob(slice);
   const bytes = new Uint8Array(Math.min(maxBytes, binary.length));
