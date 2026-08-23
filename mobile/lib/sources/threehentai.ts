@@ -60,7 +60,7 @@ async function fetchHtml(url: string): Promise<string> {
 
 /** Carte d'un listing : href, mediaId (cover), titre. */
 const CARD_RE =
-  /<a href="https:\/\/fr\.3hentai\.net\/d\/(\d+)"[^>]*class="cover"[^>]*>\s*<img[^>]*data-src="([^"]+)"[\s\S]*?<div class="title[^"]*">\s*([\s\S]*?)\s*<\/div>/g;
+  /<a href="https?:\/\/(?:fr\.)?3hentai\.net\/d\/(\d+)"[^>]*class="cover"[^>]*>\s*<img[^>]*data-src="([^"]+)"[\s\S]*?<div class="title[^"]*">\s*([\s\S]*?)\s*<\/div>/g;
 
 /** Bloc tag de la page galerie : libellé de section + liens. */
 const TAG_BLOCK_RE =
@@ -153,7 +153,7 @@ export class ThreeHentaiSource implements SourceAdapter {
     // Nombre de pages : dernier lien de pagination /d/<id>/<n> du bloc thumbnails.
     const pageLinks = extractMatches(
       html,
-      /href="https:\/\/fr\.3hentai\.net\/d\/\d+\/(\d+)"[^>]*rel="nofollow"/g
+      /href="https?:\/\/(?:fr\.)?3hentai\.net\/d\/\d+\/(\d+)"[^>]*rel="nofollow"/g
     );
     const numPages = pageLinks.reduce((max, p) => Math.max(max, parseInt(p[1], 10)), 0);
 
@@ -207,19 +207,20 @@ export class ThreeHentaiSource implements SourceAdapter {
   }
 
   async getRandomNativeId(): Promise<string> {
-    // /random redirige vers /d/<id> : on suit la redirection manuellement.
+    // /random redirige vers https://3hentai.net/random puis vers /d/<id> :
+    // on suit toute la chaîne de redirections (redirect: "follow") et on
+    // lit l'id dans l'URL finale.
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     try {
       const res = await fetch(`${BASE}/random`, {
         headers: HEADERS,
-        redirect: "manual",
+        redirect: "follow",
         signal: controller.signal,
       });
-      const loc = res.headers.get("location") || "";
-      const m = loc.match(/\/d\/(\d+)/);
+      const m = res.url.match(/\/d\/(\d+)/);
       if (m) return m[1];
-      throw new Error("3Hentai random: redirection sans id");
+      throw new Error("3Hentai random: URL finale sans id (" + res.url + ")");
     } finally {
       clearTimeout(timer);
     }
