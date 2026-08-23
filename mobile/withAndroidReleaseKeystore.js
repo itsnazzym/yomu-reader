@@ -4,44 +4,17 @@ const {
   createRunOncePlugin,
   withAppBuildGradle,
   withGradleProperties,
+  withDangerousMod,
 } = require("@expo/config-plugins");
+const { resolveReleaseCredentials } = require("./releaseSigning.cjs");
 
 // Resolve signing credentials from (in priority order):
 //   1. CI environment (GitHub Secrets injected as env vars)
-//   2. a local android/gradle.properties that already carries MYAPP_UPLOAD_*
-// If neither is available the release build falls back to the debug keystore
-// (standard Expo behaviour) so local dev without a keystore still builds.
+//   2. mobile/keys/release.properties + keys/release-key.keystore (local)
+//   3. android/gradle.properties MYAPP_UPLOAD_* (already applied)
+// If none is available the release build falls back to the debug keystore.
 function resolveCredentials() {
-  if (process.env.KEYSTORE_BASE64) {
-    // CI path: the keystore file is restored by the workflow into
-    // android/app/release-key.keystore before the Gradle build runs.
-    return {
-      storeFile: "release-key.keystore",
-      storePassword: process.env.KEYSTORE_PASSWORD,
-      keyAlias: process.env.KEY_ALIAS,
-      keyPassword: process.env.KEY_PASSWORD,
-    };
-  }
-
-  const gradleProps = path.join(process.cwd(), "android", "gradle.properties");
-  if (fs.existsSync(gradleProps)) {
-    const text = fs.readFileSync(gradleProps, "utf8");
-    const get = (key) => {
-      const m = text.match(new RegExp(`^${key}\\s*=\\s*(.+)$`, "m"));
-      return m ? m[1].trim() : undefined;
-    };
-    const storeFile = get("MYAPP_UPLOAD_STORE_FILE");
-    if (storeFile) {
-      return {
-        storeFile,
-        storePassword: get("MYAPP_UPLOAD_STORE_PASSWORD"),
-        keyAlias: get("MYAPP_UPLOAD_KEY_ALIAS"),
-        keyPassword: get("MYAPP_UPLOAD_KEY_PASSWORD"),
-      };
-    }
-  }
-
-  return null;
+  return resolveReleaseCredentials(process.cwd());
 }
 
 function setGradleProperty(properties, key, value) {
@@ -61,7 +34,23 @@ function withAndroidReleaseKeystore(config) {
     return config;
   }
 
-  // 1. Publish the signing properties consumed by app/build.gradle.
+  config = withDangerousMod(config, [
+    "android",
+    async (modConfig) => {
+      const localKeystore = path.join(process.cwd(), "keys", "release-key.keystore");
+      if (fs.existsSync(localKeystore)) {
+        const dest = path.join(
+          modConfig.modRequest.platformProjectRoot,
+          "app",
+          "release-key.keystore"
+        );
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.copyFileSync(localKeystore, dest);
+      }
+      return modConfig;
+    },
+  ]);
+
   config = withGradleProperties(config, (modConfig) => {
     setGradleProperty(
       modConfig.modResults,
@@ -86,11 +75,9 @@ function withAndroidReleaseKeystore(config) {
     return modConfig;
   });
 
-  // 2. Inject the release signing config into app/build.gradle.
   config = withAppBuildGradle(config, (modConfig) => {
     const contents = modConfig.modResults.contents;
 
-    // Add the `release` signing config inside the existing signingConfigs { } block.
     if (!contents.includes("MYAPP_UPLOAD_STORE_FILE")) {
       const signingMarker = "signingConfigs {";
       if (contents.includes(signingMarker)) {
@@ -108,7 +95,6 @@ function withAndroidReleaseKeystore(config) {
       }
     }
 
-    // Point the release build type at the release signing config instead of debug.
     const debugInRelease =
       "signingConfig signingConfigs.debug\n            def enableShrinkResources";
     const releaseInRelease =
@@ -132,5 +118,5 @@ function withAndroidReleaseKeystore(config) {
 module.exports = createRunOncePlugin(
   withAndroidReleaseKeystore,
   "with-android-release-keystore",
-  "1.0.0"
+  "1.1.0"
 );

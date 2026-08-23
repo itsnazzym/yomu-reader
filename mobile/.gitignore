@@ -15,6 +15,7 @@ dist/
 # Local environment & secrets
 .env
 .env.*.local
+# mobile/keys/release.properties — mots de passe (voir scripts/release.properties.example)
 
 # Test & bundle artifacts
 screen_*.png

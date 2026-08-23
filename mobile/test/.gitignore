@@ -1,1 +1,2 @@
 *.cjs
+!tablerIcons.test.cjs

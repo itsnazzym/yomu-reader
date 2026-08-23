@@ -8,10 +8,13 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "eslint .",
-    "test": "node test/bundle.mjs && node --test test/engine.test.cjs",
+    "test": "node test/bundle.mjs && node --test test/engine.test.cjs test/tablerIcons.test.cjs",
     "doctor": "npx expo-doctor",
     "prebuild:android": "npx expo prebuild --platform android",
-    "build:apk": "cd android && gradlew.bat assembleRelease",
+    "setup:signing": "node scripts/setup-release-signing.cjs --apply",
+    "verify:signing": "node scripts/verify-keystore.cjs",
+    "build:apk": "node scripts/build-apk-arm64.cjs",
+    "build:apk:unsigned": "cd android && gradlew.bat assembleRelease",
     "build:apk:debug": "cd android && gradlew.bat assembleDebug"
   },
   "dependencies": {

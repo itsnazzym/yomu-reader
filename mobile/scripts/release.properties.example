@@ -1,0 +1,9 @@
+# Copier vers mobile/keys/release.properties (gitignored)
+# Utiliser les MÊMES valeurs que les secrets GitHub Actions :
+#   KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD
+#
+# Le fichier keys/release-key.keystore doit exister (même keystore que la CI).
+
+KEYSTORE_PASSWORD=remplacer_par_store_password
+KEY_ALIAS=remplacer_par_key_alias
+KEY_PASSWORD=remplacer_par_key_password
