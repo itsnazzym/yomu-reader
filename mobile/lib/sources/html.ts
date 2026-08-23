@@ -79,6 +79,31 @@ export function extractAttribute(tag: string, attr: string): string | null {
   return m ? decodeEntities(m[1]) : null;
 }
 
+/**
+ * Retire les opérateurs nHentai (`language:english`, `pages:>20`…) d'une
+ * requête avant de l'envoyer à une autre source.
+ */
+export function stripNhentaiOperators(query: string | undefined): string | undefined {
+  if (!query) return undefined;
+  const cleaned = query
+    .replace(
+      /\b(?:language|pages|uploaded|comments|favorites|category|order):(?:"[^"]+"|\S+)/gi,
+      " "
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned || undefined;
+}
+
+/** Enlève le suffixe srcset (` 2x`) et décode les entités d'une URL média. */
+export function sanitizeMediaUrl(raw: string): string {
+  if (!raw) return "";
+  return decodeEntities(raw)
+    .trim()
+    .replace(/\s+\d+x$/i, "")
+    .trim();
+}
+
 /** Nettoie une URL relative en absolue par rapport à la base d'une source. */
 export function absoluteUrl(base: string, url: string): string {
   if (!url) return url;

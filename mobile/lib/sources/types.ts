@@ -97,6 +97,6 @@ export interface SourceAdapter {
     cards: SourceGalleryCard[];
     hasMore: boolean;
   }>;
-  getGallery(nativeId: string): Promise<SourceGallery>;
+  getGallery(nativeId: string, knownTitle?: string): Promise<SourceGallery>;
   getRandomNativeId?(): Promise<string>;
 }

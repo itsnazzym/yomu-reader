@@ -84,6 +84,7 @@ export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
         params: {
           id: String(galleryId),
           ...(globalId ? { src: globalId.split(":")[0] } : {}),
+          ...(title ? { title: title.slice(0, 180) } : {}),
         },
       });
     }
@@ -329,11 +330,13 @@ const styles = StyleSheet.create({
     paddingVertical: 1.5,
     borderRadius: 4,
     borderWidth: 0.8,
-    maxWidth: 78,
+    maxWidth: "100%",
+    flexShrink: 0,
   },
   tagChipText: {
     fontSize: 9.5,
     fontWeight: "600",
+    flexShrink: 0,
   },
   extraTagChip: {
     paddingHorizontal: 4,

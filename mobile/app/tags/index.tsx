@@ -822,6 +822,7 @@ const styles = StyleSheet.create({
     borderLeftWidth: 1,
     justifyContent: "center",
     alignItems: "center",
+    flexShrink: 0,
   },
   collectionsContainer: {
     padding: 16,

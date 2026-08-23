@@ -63,6 +63,7 @@ import {
   setHomeSearchQuery,
 } from "@/lib/homeSearchStore";
 import { firstRouteParam } from "@/lib/searchQuery";
+import { stripNhentaiOperators } from "@/lib/sources/html";
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -264,7 +265,7 @@ export default function HomeScreen() {
           const altPromises = altSources.map(async (sid) => {
             try {
               const r = await getSource(sid).search({
-                query: effectiveQuery || undefined,
+                query: stripNhentaiOperators(effectiveQuery),
                 page: p,
                 sort: sort === "recent" ? "recent" : "popular",
               });
@@ -320,7 +321,10 @@ export default function HomeScreen() {
         } else {
           const adapter = getSource(activeSource);
           const res = await adapter.search({
-            query: effectiveQuery || undefined,
+            query:
+              activeSource === "nhentai"
+                ? effectiveQuery || undefined
+                : stripNhentaiOperators(effectiveQuery),
             page: p,
             sort: sort === "recent" ? "recent" : "popular",
           });
@@ -1140,6 +1144,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 10,
     paddingVertical: 4,
+    flexShrink: 0,
   },
   sourceChipDot: {
     width: 7,

@@ -13,7 +13,7 @@ type IconProps = Omit<FeatherProps, "name"> & {
 type IconComponent = React.ComponentType<IconProps>;
 
 function makeFeatherIcon(name: FeatherProps["name"]): IconComponent {
-  const Icon = React.forwardRef<any, IconProps>(
+  const Icon = React.forwardRef<React.ElementRef<typeof Feather>, IconProps>(
     ({ stroke: _stroke, strokeWidth: _strokeWidth, fill: _fill, ...props }, ref) => (
       <Feather ref={ref} name={name} {...props} />
     )
@@ -32,6 +32,7 @@ export const IconArrowLeft = makeFeatherIcon("arrow-left");
 export const IconArrowRight = makeFeatherIcon("arrow-right");
 export const IconArrowsShuffle = makeFeatherIcon("shuffle");
 export const IconBan = makeFeatherIcon("slash");
+export const IconBell = makeFeatherIcon("bell");
 export const IconBolt = makeFeatherIcon("zap");
 export const IconBook2 = makeFeatherIcon("book-open");
 export const IconBookmark = makeFeatherIcon("bookmark");
@@ -67,6 +68,7 @@ export const IconFeather = makeFeatherIcon("feather");
 export const IconFileText = makeFeatherIcon("file-text");
 export const IconFlame = makeFeatherIcon("zap");
 export const IconFolder = makeFeatherIcon("folder");
+export const IconFolderPlus = makeFeatherIcon("folder-plus");
 export const IconHeart = makeFeatherIcon("heart");
 export const IconHelpCircle = makeFeatherIcon("help-circle");
 export const IconInbox = makeFeatherIcon("inbox");

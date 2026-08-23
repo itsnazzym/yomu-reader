@@ -191,9 +191,9 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
                   </Text>
 
                   {item.isLocked ? (
-                    <IconLock size={14} color="#6b7280" strokeWidth={1.8} />
+                    <IconLock size={14} color="#6b7280" strokeWidth={1.8} style={{ flexShrink: 0 }} />
                   ) : item.hasArrow ? (
-                    <IconChevronRight size={16} color="#6b7280" strokeWidth={2} />
+                    <IconChevronRight size={16} color="#6b7280" strokeWidth={2} style={{ flexShrink: 0 }} />
                   ) : null}
                 </View>
               </TouchableOpacity>
@@ -369,9 +369,12 @@ const styles = StyleSheet.create({
   },
   menuIcon: {
     marginRight: 14,
+    flexShrink: 0,
   },
   menuText: {
     flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
     fontSize: 13.5,
   },
   luckySection: {

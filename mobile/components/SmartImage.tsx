@@ -41,6 +41,17 @@ export function resolveCdnHostAndPath(uri: string): { host: string; path: string
 /**
  * Résout l'URL optimisée Photon CDN pour un préchargement direct
  */
+function refererForImage(imageUri: string): string {
+  try {
+    const host = new URL(imageUri).hostname.toLowerCase();
+    if (host.includes("doujins.com")) return "https://doujins.com/";
+    if (host.includes("3hentai")) return "https://fr.3hentai.net/";
+  } catch {
+    // URL invalide : referer nHentai par défaut
+  }
+  return "https://nhentai.net/";
+}
+
 export function getSmartImageUri(uri: string): string {
   if (!uri) return "";
   const { host: targetHost, path: pathOnly } = resolveCdnHostAndPath(uri);
@@ -171,7 +182,7 @@ export function SmartImage({
           source={{
             uri: currentUri,
             headers: {
-              Referer: "https://nhentai.net/",
+              Referer: refererForImage(currentUri),
               "User-Agent":
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
             },
