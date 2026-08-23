@@ -1,10 +1,12 @@
 /**
  * Sonde live des sources : search -> getGallery -> HEAD sur la page 1.
  * Usage : node scripts/probe.mjs [query]
+ *         node scripts/probe.mjs --id doujins:80117   (résolution directe)
  */
 
 import { ThreeHentaiSource } from "../lib/sources/threehentai";
 import { DoujinsSource } from "../lib/sources/doujins";
+import { getSource } from "../lib/sources/registry";
 
 // Stub Platform pour l'exécution node (mockReactNative équivalent inline).
 (globalThis as any).Platform = { OS: "windows" };
@@ -45,7 +47,34 @@ async function probe(
   }
 }
 
+async function probeById(globalId: string): Promise<boolean> {
+  console.log(`\n=== Résolution directe ${globalId} ===`);
+  try {
+    const [source, nativeId] = globalId.split(":");
+    const src = getSource(source);
+    const gal = await src.getGallery(nativeId);
+    console.log(`titre: ${gal.title.slice(0, 60)}`);
+    console.log(`pages: ${gal.numPages}, urls: ${gal.pageUrls.length}, tags: ${gal.tags.length}`);
+    if (!gal.pageUrls[0]?.url) {
+      console.log("ECHEC: pas d'URL de page");
+      return false;
+    }
+    const r = await fetch(gal.pageUrls[0].url, { method: "HEAD" });
+    console.log(`HEAD page 1: ${r.status}`);
+    return r.ok && gal.numPages > 0;
+  } catch (e) {
+    console.log(`ERREUR: ${e instanceof Error ? e.message : e}`);
+    return false;
+  }
+}
+
 (async () => {
+  const idIdx = process.argv.indexOf("--id");
+  if (idIdx >= 0 && process.argv[idIdx + 1]) {
+    const ok = await probeById(process.argv[idIdx + 1]);
+    console.log(`\nRésultat: ${ok ? "OK" : "KO"}`);
+    process.exit(ok ? 0 : 1);
+  }
   const query = process.argv[2] || "nurse";
   const ok1 = await probe("3Hentai FR", new ThreeHentaiSource(), query);
   const ok2 = await probe("Doujins", new DoujinsSource(), process.argv[3] || query);

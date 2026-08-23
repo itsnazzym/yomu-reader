@@ -35,9 +35,13 @@ await build({
           { filter: /^@react-native-async-storage\/async-storage$/ },
           () => ({ path: path.join(here, "..", "test", "mockAsyncStorage.ts") })
         );
+        b.onResolve(
+          { filter: /^expo-secure-store$/ },
+          () => ({ path: path.join(here, "..", "test", "mockSecureStore.ts") })
+        );
       },
     },
   ],
 });
 
-execFileSync("node", [outfile], { stdio: "inherit" });
+execFileSync("node", [outfile, ...process.argv.slice(2)], { stdio: "inherit" });

@@ -29,6 +29,8 @@ import PagerView from "react-native-pager-view";
 import { useTheme } from "@/lib/ThemeContext";
 import { getGallery, resolvePageUrl } from "@/lib/api/nhentai";
 import { getSource } from "@/lib/sources/registry";
+import { sourceGalleryToGallery } from "@/lib/sources/galleryMapper";
+import type { SourceId } from "@/lib/sources/types";
 import { readLocalGallery } from "@/lib/localLibrary";
 import { Gallery } from "@/lib/api/types";
 import SmartImage, { preloadSmartImage } from "@/components/SmartImage";
@@ -119,33 +121,7 @@ export default function ReaderScreen() {
         if (src && src !== "nhentai") {
           const sg = await getSource(src).getGallery(id);
           if (!cancelled) {
-            setGallery({
-              id: Number(sg.nativeId) || 0,
-              media_id: sg.nativeId,
-              title: { english: sg.title, japanese: "", pretty: sg.title },
-              images: {
-                pages: sg.pageUrls.map((p) => ({
-                  t: "j" as const,
-                  w: p.width || 0,
-                  h: p.height || 0,
-                  url: p.url,
-                })),
-                cover: { t: "j", w: 0, h: 0, url: sg.coverUrl },
-                thumbnail: { t: "j", w: 0, h: 0, url: sg.coverUrl },
-              },
-              scanlator: src,
-              upload_date: sg.uploadDate || 0,
-              tags: sg.tags.map((t, i) => ({
-                id: i,
-                type: (t.type || "tag") as any,
-                name: t.name,
-                url: "",
-                count: 0,
-              })),
-              num_pages: sg.numPages,
-              num_favorites: 0,
-              globalId: sg.globalId,
-            });
+            setGallery(sourceGalleryToGallery(sg, src as SourceId));
           }
           return;
         }

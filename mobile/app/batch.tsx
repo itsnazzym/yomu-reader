@@ -43,9 +43,13 @@ import {
   pauseAllQueue,
   resumeAllQueue,
   requeueItem,
+  queueKeyOf,
   QueueItem,
 } from "@/lib/downloadQueueStore";
 import { searchGalleries, getGallery } from "@/lib/api/nhentai";
+import { getSource } from "@/lib/sources/registry";
+import { sourceGalleryToGallery } from "@/lib/sources/galleryMapper";
+import type { SourceId } from "@/lib/sources/types";
 import {
   resolveLocalByGalleryId,
   verifyLocalGallery,
@@ -185,7 +189,7 @@ export default function BatchScreen() {
         { text: "Annuler", style: "cancel" },
         {
           text: "Re-télécharger",
-          onPress: () => requeueItem(item.id),
+          onPress: () => requeueItem(queueKeyOf(item)),
         },
       ]
     );
@@ -233,33 +237,61 @@ export default function BatchScreen() {
     const raw = idsInput.trim();
     if (!raw) return;
 
-    const matches = raw.match(/\d{1,7}/g);
-    if (!matches || matches.length === 0) {
+    // IDs globaux multi-sources ("doujins:29183", "3hentai:719464"...) puis
+    // IDs numériques nus (nhentai par défaut, comportement historique).
+    const globalMatches = [...raw.matchAll(/\b(nhentai|3hentai|doujins):(\d{1,7})\b/gi)];
+    const bare = raw.replace(/\b(?:nhentai|3hentai|doujins):\d{1,7}\b/gi, "");
+    const bareMatches = bare.match(/\d{1,7}/g) || [];
+
+    if (globalMatches.length === 0 && bareMatches.length === 0) {
       if (Platform.OS === "android") ToastAndroid.show("Aucun code ID valide détecté", ToastAndroid.SHORT);
       return;
     }
 
-    const uniqueIds = Array.from(new Set(matches.map((m) => parseInt(m, 10))));
+    const entries: { id: number; src?: SourceId }[] = [
+      ...globalMatches.map((m) => ({
+        id: parseInt(m[2], 10),
+        src: m[1].toLowerCase() as SourceId,
+      })),
+      ...Array.from(new Set(bareMatches.map((m) => parseInt(m, 10)))).map((id) => ({ id })),
+    ];
+    // Dédup sur identité composite source:id.
+    const seenKeys = new Set<string>();
+    const uniqueEntries = entries.filter((e) => {
+      const key = `${e.src ?? "nhentai"}:${e.id}`;
+      if (seenKeys.has(key)) return false;
+      seenKeys.add(key);
+      return true;
+    });
+
     setIsFetchingBatch(true);
-    setFetchStatusText(`Récupération métadonnées (0/${uniqueIds.length})...`);
+    setFetchStatusText(`Récupération métadonnées (0/${uniqueEntries.length})...`);
 
-    const batchList: { id: number; title: string; cover?: string }[] = [];
+    const batchList: { id: number; title: string; cover?: string; src?: SourceId }[] = [];
 
-    for (let i = 0; i < uniqueIds.length; i++) {
-      const id = uniqueIds[i];
-      setFetchStatusText(`Récupération #${id} (${i + 1}/${uniqueIds.length})...`);
+    for (let i = 0; i < uniqueEntries.length; i++) {
+      const entry = uniqueEntries[i];
+      setFetchStatusText(`Récupération #${entry.id} (${i + 1}/${uniqueEntries.length})...`);
       try {
-        const g = await getGallery(id);
+        let g;
+        if (entry.src && entry.src !== "nhentai") {
+          const sg = await getSource(entry.src).getGallery(String(entry.id));
+          g = sourceGalleryToGallery(sg, entry.src);
+        } else {
+          g = await getGallery(entry.id);
+        }
         batchList.push({
           id: g.id,
           title: g.title?.pretty || g.title?.english || `Gallery #${g.id}`,
           cover: g.images?.cover?.url || "",
+          src: entry.src,
         });
       } catch {
         batchList.push({
-          id,
-          title: `nHentai #${id}`,
+          id: entry.id,
+          title: `${entry.src ? entry.src : "nHentai"} #${entry.id}`,
           cover: "",
+          src: entry.src,
         });
       }
     }
@@ -374,7 +406,7 @@ export default function BatchScreen() {
         <View style={styles.cardActions}>
           {isDownloading && (
             <Pressable
-              onPress={() => pauseQueueItem(item.id)}
+              onPress={() => pauseQueueItem(queueKeyOf(item))}
               style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.6 : 1 }]}
             >
               <IconPlayerPause size={18} color={colors.accent} strokeWidth={2} />
@@ -382,7 +414,7 @@ export default function BatchScreen() {
           )}
           {(isPaused || isError) && (
             <Pressable
-              onPress={() => resumeQueueItem(item.id)}
+              onPress={() => resumeQueueItem(queueKeyOf(item))}
               style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.6 : 1 }]}
             >
               <IconPlayerPlay size={18} color={colors.accent} strokeWidth={2} />
@@ -397,7 +429,7 @@ export default function BatchScreen() {
             </Pressable>
           )}
           <Pressable
-            onPress={() => removeQueueItem(item.id)}
+            onPress={() => removeQueueItem(queueKeyOf(item))}
             style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.6 : 1 }]}
           >
             <IconTrash size={16} color="#ff4757" strokeWidth={1.8} />
@@ -655,14 +687,15 @@ export default function BatchScreen() {
             ) : (
               <ScrollView style={styles.modalBody}>
                 <Text style={[styles.inputLabel, { color: colors.txt }]}>
-                  Coller des IDs (séparés par virgule, espace ou ligne)
+                  Coller des IDs (séparés par virgule, espace ou ligne). Préfixe
+                  source optionnel : doujins:29183, 3hentai:719464 — sinon nhentai.
                 </Text>
                 <TextInput
                   value={idsInput}
                   onChangeText={setIdsInput}
                   multiline
                   numberOfLines={4}
-                  placeholder="Ex: 177013, 385012, 411749"
+                  placeholder="Ex: 177013, doujins:80117, 3hentai:719464"
                   placeholderTextColor={colors.sub}
                   style={[
                     styles.textInput,

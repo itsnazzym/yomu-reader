@@ -1,23 +1,26 @@
 /**
- * Adaptateur doujins.com (scraping HTML, pas d'API publique).
+ * Adaptateur doujins.com (scraping HTML + listing JSON /folders).
  *
  * Structure cartographiée le 2026-08-23 :
- * - Listing  : /list?sort=newest (pagination par bouton "Load more" avec
- *              data-ts=<timestamp> → /list?sort=newest&ts=<ts>)
- * - Recherche: /list?search=<q>&sort=newest
- * - Carte    : <a href="/<series-slug>/<gallery-slug>-<id>" class="">
- *                <img src="https://static.doujins.com/f2-<hash>.jpg?st=..&e=..">
- *                <div class="title"><div class="text">Titre</div></div></a>
- * - Galerie  : /<series>/<slug>-<id> — toutes les pages sont dans la page,
- *              en data-src signées (?st=..&e=<expiry>) sur static.doujins.com
- *              (pattern n-<hash>.jpg). Les signatures EXPIRENT : toujours
- *              re-scraping avant lecture, jamais de cache long.
- * - Tags     : bloc "fa-tags" → <a href="/searches?tag_id=N">Nom</a>
- * - Artiste  : div.gallery-artist → <a href=/artists/slug>Nom</a>
+ * - Browse  : GET /folders?start=<unix>&end=<unix> → { premium: FolderItem[] }
+ *             (~1 mois, id + link + title + thumbnails signées + tags)
+ * - Recherche: /list?search=<q>&sort=newest — PAS de pagination côté site
+ *             (?page=2 renvoie les mêmes résultats), ~16-25 résultats max.
+ * - Carte    : <a href="/<series>/<slug>-<id>"><img src="…f2-…jpg?st=&e=">
+ * - Galerie  : /<series>/<slug>-<id>. Le serveur sert la galerie d'après le
+ *              SUFFIXE -<id>, quel que soit le slug : on résout donc tout par
+ *              l'URL directe /hentai-manga/x-<id> (pas besoin de listing).
+ * - Pages    : data-file signées si accessibles ; sinon aperçu n-<hash>.jpg.
  */
 
 import { Platform } from "react-native";
-import { extractMatches, stripTags, decodeEntities } from "./html";
+import {
+  extractMatches,
+  stripTags,
+  decodeEntities,
+  sanitizeMediaUrl,
+  stripNhentaiOperators,
+} from "./html";
 import {
   makeGlobalId,
   type SourceAdapter,
@@ -25,6 +28,7 @@ import {
   type SourceGalleryCard,
   type SourceMeta,
   type SourceSearchOptions,
+  type SourceTag,
 } from "./types";
 
 const BASE = "https://doujins.com";
@@ -35,7 +39,42 @@ const HEADERS: Record<string, string> = {
     Platform.OS === "android"
       ? "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
       : "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+  Referer: `${BASE}/`,
+  Accept: "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
 };
+
+interface FolderTag {
+  tag?: string;
+}
+
+interface FolderItem {
+  id: number;
+  name: string;
+  link?: string;
+  thumbnail?: string;
+  thumbnail2?: string;
+  objects_count?: number;
+  date?: string | number;
+  created_at?: string;
+  artistList?: string;
+  artists?: string[];
+  tags?: FolderTag[];
+  series?: string;
+  free?: number;
+  hidden?: number;
+  private?: number;
+}
+
+interface CachedGallery {
+  path: string;
+  title: string;
+  coverUrl: string;
+  numPages?: number;
+  tags: SourceTag[];
+  uploadDate?: number;
+}
+
+const galleryCache = new Map<string, CachedGallery>();
 
 async function fetchHtml(url: string): Promise<string> {
   const controller = new AbortController();
@@ -49,7 +88,6 @@ async function fetchHtml(url: string): Promise<string> {
   }
 }
 
-/** GET JSON (endpoint interne /folders). */
 async function fetchJson<T>(url: string): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -65,46 +103,126 @@ async function fetchJson<T>(url: string): Promise<T> {
   }
 }
 
-/** Item du endpoint /folders?start&end (listing mensuel JSON). */
-interface FolderItem {
-  id: number;
-  name: string;
-  link?: string;
-  thumbnail?: string;
-  thumbnail2?: string;
-  objects_count?: number;
-  date?: number;
-  artists?: string[];
-  free?: number;
-  hidden?: number;
-  private?: number;
+function remember(nativeId: string, entry: CachedGallery): void {
+  galleryCache.set(nativeId, entry);
 }
 
-/** Carte du listing : href relative (/series/slug-id), cover signée, titre. */
-const CARD_RE =
-  /<a href="(\/[a-z0-9-]+\/[a-z0-9-]+-(\d+))"[^>]*>\s*<img src="([^"]+)"[\s\S]*?<div class="text">([\s\S]*?)<\/div>/g;
-
-/** Extrait l'id natif depuis un chemin "/series/gallery-slug-12345". */
-function nativeIdFromPath(path: string): string | null {
-  const m = path.match(/-(\d+)$/);
-  return m ? m[1] : null;
+function folderDateMs(it: FolderItem): number | undefined {
+  if (typeof it.date === "number" && Number.isFinite(it.date)) {
+    return it.date > 1e12 ? it.date : it.date * 1000;
+  }
+  if (it.created_at) {
+    const parsed = Date.parse(it.created_at);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  if (typeof it.date === "string") {
+    const parsed = Date.parse(it.date);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
 }
 
-function parseCards(html: string): SourceGalleryCard[] {
+function folderTags(it: FolderItem): SourceTag[] {
+  const tags: SourceTag[] = [];
+  const seen = new Set<string>();
+  const push = (name: string, type: string): void => {
+    const clean = name.trim();
+    if (!clean) return;
+    const key = `${type}:${clean.toLowerCase()}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    tags.push({ name: clean, type });
+  };
+  if (it.artistList) {
+    for (const artist of it.artistList.split(",")) push(artist, "artist");
+  }
+  if (Array.isArray(it.artists)) {
+    for (const artist of it.artists) push(artist, "artist");
+  }
+  if (it.series) push(it.series, "parody");
+  if (Array.isArray(it.tags)) {
+    for (const tag of it.tags) {
+      if (tag?.tag) push(tag.tag, "tag");
+    }
+  }
+  return tags;
+}
+
+function folderCover(it: FolderItem): string {
+  return sanitizeMediaUrl(it.thumbnail2 || it.thumbnail || "");
+}
+
+function folderToCard(it: FolderItem): SourceGalleryCard | null {
+  if (!it.id || !it.link || it.hidden || it.private) return null;
+  const nativeId = String(it.id);
+  const title = decodeEntities(it.name || `Doujins #${nativeId}`);
+  const coverUrl = folderCover(it);
+  const tags = folderTags(it);
+  remember(nativeId, {
+    path: it.link.startsWith("/") ? it.link : `/${it.link}`,
+    title,
+    coverUrl,
+    numPages: it.objects_count || undefined,
+    tags,
+    uploadDate: folderDateMs(it),
+  });
+  return {
+    globalId: makeGlobalId("doujins", nativeId),
+    title,
+    coverUrl,
+    numPages: it.objects_count || undefined,
+    uploadDate: folderDateMs(it),
+    tags,
+  };
+}
+
+/** Parse les cartes HTML /list (href + img + titre, wrappers internes OK). */
+export function parseDoujinsListCards(html: string): SourceGalleryCard[] {
   const seen = new Set<string>();
   const cards: SourceGalleryCard[] = [];
-  for (const m of extractMatches(html, CARD_RE)) {
-    const nativeId = m[2];
-    if (!nativeId || seen.has(nativeId)) continue;
+  const hrefRe = /<a href="(\/[^"]+-(\d+))"[^>]*>/g;
+  let match: RegExpExecArray | null = hrefRe.exec(html);
+  while (match) {
+    const path = decodeEntities(match[1]);
+    const nativeId = match[2];
+    const start = match.index + match[0].length;
+    match = hrefRe.exec(html);
+    if (!nativeId || seen.has(nativeId) || !/-\d+$/.test(path)) continue;
     seen.add(nativeId);
+    const window = html.slice(start, start + 1800);
+    const imgM = window.match(/<img[^>]+src="([^"]+)"/i);
+    const titleM = window.match(/<div class="text">([\s\S]*?)<\/div>/);
+    const title = titleM
+      ? stripTags(titleM[1])
+      : `Doujins #${nativeId}`;
+    const coverUrl = imgM ? sanitizeMediaUrl(imgM[1]) : "";
+    remember(nativeId, { path, title, coverUrl, tags: [] });
     cards.push({
       globalId: makeGlobalId("doujins", nativeId),
-      title: decodeEntities(m[4]),
-      // Les covers de listing sont signées mais à longue durée ; on les garde telles quelles.
-      coverUrl: decodeEntities(m[3]),
+      title,
+      coverUrl,
     });
   }
   return cards;
+}
+
+function extractPageUrls(html: string): string[] {
+  const fromDataFile = extractMatches(
+    html,
+    /<img\s+class="doujin[^"]*"[\s\S]{0,400}?data-file="(https:\/\/static\.doujins\.com\/[^"]+)"/g
+  )
+    .map((m) => sanitizeMediaUrl(m[1]))
+    .filter((url) => url && !url.includes("/f2-") && !url.includes("/t-") && !url.includes("/t2-"));
+
+  if (fromDataFile.length > 0) return fromDataFile;
+
+  const previews = extractMatches(
+    html,
+    /https:\/\/static\.doujins\.com\/n-[^"\s]+/g
+  )
+    .map((m) => sanitizeMediaUrl(m[0]))
+    .filter((url, index, all) => url && all.indexOf(url) === index);
+  return previews;
 }
 
 export class DoujinsSource implements SourceAdapter {
@@ -121,89 +239,79 @@ export class DoujinsSource implements SourceAdapter {
     cards: SourceGalleryCard[];
     hasMore: boolean;
   }> {
-    // Recherche texte : listing HTML filtré par le serveur.
-    if (opts.query) {
-      const url = `${BASE}/list?search=${encodeURIComponent(opts.query)}&sort=newest`;
+    const query = stripNhentaiOperators(opts.query);
+    if (query) {
+      const url = `${BASE}/list?search=${encodeURIComponent(query)}&sort=newest`;
       const html = await fetchHtml(url);
-      return { cards: parseCards(html), hasMore: false };
+      return { cards: parseDoujinsListCards(html), hasMore: false };
     }
 
-    // Listing sans requête : endpoint JSON interne du site (celui que le
-    // bouton "Load more months" appelle). Une requête = un mois complet
-    // (~100-190 galeries) avec titre, slug, thumbnail et date propres.
     const now = new Date();
-    let back = Math.max(0, (opts.page || 1) - 1);
-    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - back, 1));
-    const startSec = Math.floor(d.getTime() / 1000);
-    const endSec = Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1) / 1000);
+    const back = Math.max(0, (opts.page || 1) - 1);
+    const month = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - back, 1));
+    const startSec = Math.floor(month.getTime() / 1000);
+    const endSec = Math.floor(
+      Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + 1, 1) / 1000
+    );
 
-    const j = await fetchJson<{ premium?: FolderItem[] }>(
+    const json = await fetchJson<{ premium?: FolderItem[] }>(
       `${BASE}/folders?start=${startSec}&end=${endSec}`
     );
-    const items = (j.premium || []).filter(
-      (x) => x.link && !x.hidden && !x.private && !x.free
-    );
-    const cards: SourceGalleryCard[] = items.map((it) => ({
-      globalId: makeGlobalId("doujins", String(it.id)),
-      nativeId: String(it.id),
-      title: decodeEntities(it.name || `Doujins #${it.id}`),
-      coverUrl: decodeEntities(it.thumbnail2 || it.thumbnail || ""),
-      uploadDate: it.date ? it.date * 1000 : undefined,
-      numPages: it.objects_count || undefined,
-      tags: (it.artists || []).map((a) => ({ name: a, type: "artist" })),
-    })) as unknown as SourceGalleryCard[];
-    return { cards, hasMore: true }; // mois précédents disponibles
+    const cards = (json.premium || [])
+      .map((item) => folderToCard(item))
+      .filter((card): card is SourceGalleryCard => card !== null);
+    return { cards, hasMore: true };
   }
 
   async getGallery(nativeId: string, knownTitle?: string): Promise<SourceGallery> {
-    // L'URL de galerie exige le slug complet /series/slug-<id>. Résolution :
-    // recherche par titre (rapide) puis fallback listings récents.
-    const html = await this.fetchGalleryHtml(nativeId, knownTitle);
+    const cached = galleryCache.get(nativeId);
 
-    const titleM =
+    let html = "";
+    try {
+      html = await this.fetchGalleryHtml(nativeId, cached?.path);
+    } catch {
+      html = "";
+    }
+
+    const pageUrls = html ? extractPageUrls(html) : [];
+    const titleFromHtml =
       html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/) ||
-      // Fallback : <title> "Série - Titre by Artiste"
       html.match(/<title>[^<]*?-\s*([^<]+?)\s+by\s+[^<]+<\/title>/) ||
       html.match(/<title>([^<]+)<\/title>/);
-    const title = titleM ? stripTags(titleM[1]) : `Doujins #${nativeId}`;
+    const title = cached?.title
+      || (titleFromHtml ? stripTags(titleFromHtml[1]) : "")
+      || `Doujins #${nativeId}`;
 
-    // Pages : le lecteur embarque TOUTES les pages dans le HTML initial en
-    // <img class="doujin" data-file="https://static.doujins.com/n-<hash>.jpg
-    // ?st=..&e=<expiry>"> (aucune pagination AJAX). Signatures EXPIRENT :
-    // toujours re-scraping avant lecture, jamais de cache long.
-    const pageUrlsRaw = extractMatches(
-      html,
-      /<img\s+class="doujin[^"]*"[\s\S]*?data-file="(https:\/\/static\.doujins\.com\/[^"]+)"/g
-    )
-      .map((m) => decodeEntities(m[1]))
-      .filter((u) => !u.includes("/f2-")); // f2-* = thumbnails de listing
-
-    if (pageUrlsRaw.length === 0) {
-      throw new Error(`Doujins: aucune page trouvée pour ${nativeId}`);
-    }
-
-    // Couverture : première image du lecteur (signée).
-    const coverUrl = pageUrlsRaw[0];
-
-    // Tags : bloc "fa-tags". Tolérant aux retours ligne CRLF du HTML réel :
-    // <li class="tag-area"><div><i class="fa fa-tags"></i> Tag</div><hr />
-    //   <a href="/searches?tag_id=N" ...>Nom</a> ... </li>
-    const tagsBlockM = html.match(
-      /fa-tags[\s\S]*?Tag<\/div>\s*<hr\s*\/?>\s*([\s\S]*?)<\/li>/
-    );
-    const tags: { name: string; type?: string }[] = [];
-    if (tagsBlockM) {
-      for (const t of extractMatches(tagsBlockM[1], /<a href="[^"]*"[^>]*>([^<]+)<\/a>/g)) {
-        const name = stripTags(t[1]);
-        if (name) tags.push({ name, type: "tag" });
+    const tags: SourceTag[] = cached?.tags ? [...cached.tags] : [];
+    if (html && tags.length === 0) {
+      const tagsBlockM = html.match(
+        /fa-tags[\s\S]*?Tag<\/div>\s*<hr\s*\/?>\s*([\s\S]*?)<\/li>/
+      );
+      if (tagsBlockM) {
+        for (const t of extractMatches(tagsBlockM[1], /<a href="[^"]*"[^>]*>([^<]+)<\/a>/g)) {
+          const name = stripTags(t[1]);
+          if (name) tags.push({ name, type: "tag" });
+        }
+      }
+      const artistBlock = html.match(/gallery-artist"\s*>([\s\S]*?)<\/div>/);
+      if (artistBlock) {
+        for (const a of extractMatches(artistBlock[1], /<a href=\/artists\/[^>]*>([^<]+)<\/a>/g)) {
+          tags.push({ name: stripTags(a[1]), type: "artist" });
+        }
       }
     }
-    // Artistes.
-    const artistBlock = html.match(/gallery-artist"\s*>([\s\S]*?)<\/div>/);
-    if (artistBlock) {
-      for (const a of extractMatches(artistBlock[1], /<a href=\/artists\/[^>]*>([^<]+)<\/a>/g)) {
-        tags.push({ name: stripTags(a[1]), type: "artist" });
-      }
+
+    const coverUrl =
+      pageUrls[0] ||
+      cached?.coverUrl ||
+      (html.match(/https:\/\/static\.doujins\.com\/f2?-[^"\s]+/)
+        ? sanitizeMediaUrl((html.match(/https:\/\/static\.doujins\.com\/f2?-[^"\s]+/) || [""])[0])
+        : "");
+
+    // Le site sert la home page (HTTP 200) pour les IDs inexistants : une
+    // galerie valide expose toujours au moins une image extractible.
+    if (!cached && pageUrls.length === 0) {
+      throw new Error(`Doujins: galerie ${nativeId} introuvable`);
     }
 
     return {
@@ -211,50 +319,39 @@ export class DoujinsSource implements SourceAdapter {
       nativeId,
       title,
       coverUrl,
-      numPages: pageUrlsRaw.length,
+      numPages: pageUrls.length || cached?.numPages || 0,
+      uploadDate: cached?.uploadDate,
       tags,
-      pageUrls: pageUrlsRaw.map((url) => ({ url })),
+      pageUrls: pageUrls.map((url) => ({ url })),
     };
   }
 
   /**
-   * Résout le HTML de la galerie depuis son id natif. Deux stratégies :
-   * 1. Recherche par titre si connu (résolution rapide, ~1 req) — les
-   *    favoris/historique stockent le titre.
-   * 2. Fallback : scan des listings récents.
+   * Récupère le HTML de la galerie. Le serveur sert la galerie d'après le
+   * suffixe -<id> de l'URL, quel que soit le slug : on tente le chemin exact
+   * en cache puis l'URL directe /hentai-manga/x-<id>. Plus de cascade
+   * recherche-titre / listings (limités au récent et coûteux en requêtes).
    */
-  private async fetchGalleryHtml(nativeId: string, title?: string): Promise<string> {
-    // 1. Résolution par titre via la recherche du site.
-    if (title && title.length > 3) {
+  private async fetchGalleryHtml(
+    nativeId: string,
+    knownPath?: string
+  ): Promise<string> {
+    const candidates: string[] = [];
+    if (knownPath) candidates.push(knownPath);
+    candidates.push(`/hentai-manga/x-${nativeId}`);
+    for (const path of candidates) {
       try {
-        const q = encodeURIComponent(title);
-        const html = await fetchHtml(`${BASE}/searches?q=${q}`);
-        const m = html.match(new RegExp(`href="(/[^"]*-${nativeId})"`));
-        if (m) return await fetchHtml(`${BASE}${decodeEntities(m[1])}`);
-      } catch {}
+        return await fetchHtml(`${BASE}${path}`);
+      } catch {
+        // candidat suivant
+      }
     }
-    // 2. Fallback : listings récents.
-    const candidates = [
-      `${BASE}/list?sort=newest`,
-      `${BASE}/list?sort=alphabetical`,
-    ];
-    for (const url of candidates) {
-      try {
-        const list = await fetchHtml(url);
-        const anchorM = list.match(new RegExp(`href="([^\"]*-${nativeId})"`));
-        if (anchorM) {
-          return await fetchHtml(`${BASE}${decodeEntities(anchorM[1])}`);
-        }
-      } catch {}
-    }
-    throw new Error(
-      `Doujins: galerie ${nativeId} introuvable (titre inconnu et absente des listings)`
-    );
+    throw new Error(`Doujins: chemin HTML introuvable pour ${nativeId}`);
   }
 
   async getRandomNativeId(): Promise<string> {
     const html = await fetchHtml(`${BASE}/list?sort=random`);
-    const cards = parseCards(html);
+    const cards = parseDoujinsListCards(html);
     if (cards.length === 0) throw new Error("Doujins random: liste vide");
     return splitNative(cards[Math.floor(Math.random() * cards.length)].globalId);
   }

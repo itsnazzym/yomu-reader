@@ -51,10 +51,15 @@ import { addFavorite, isFavorited, removeFavorite } from "@/lib/api/v2/galleries
 import { useHomeSearch } from "@/lib/homeSearchStore";
 import { queryContainsTerm } from "@/lib/searchQuery";
 import { getSource } from "@/lib/sources/registry";
+import { sourceGalleryToGallery } from "@/lib/sources/galleryMapper";
 import type { SourceId } from "@/lib/sources/types";
 
 export default function BookDetailScreen() {
-  const { id, src } = useLocalSearchParams<{ id: string; src?: string }>();
+  const { id, src, title: titleParam } = useLocalSearchParams<{
+    id: string;
+    src?: string;
+    title?: string;
+  }>();
   const sourceId = (src as SourceId) || "nhentai";
   const isNhentai = sourceId === "nhentai";
   const router = useRouter();
@@ -138,39 +143,12 @@ export default function BookDetailScreen() {
     } else {
       // Sources alternatives : adaptateur dédié, pas de commentaires ni
       // de suggestions (non supportés par ces sites).
+      const knownTitle = typeof titleParam === "string" ? titleParam : undefined;
       getSource(sourceId)
-        .getGallery(id)
+        .getGallery(id, knownTitle)
         .then((sg) => {
-          // Map vers Gallery pour réutiliser toute l'UI existante.
-          const mapped: Gallery = {
-            id: Number(sg.nativeId) || 0,
-            media_id: sg.nativeId,
-            title: { english: sg.title, japanese: "", pretty: sg.title },
-            images: {
-              pages: sg.pageUrls.map((p) => ({
-                t: "j" as const,
-                w: p.width || 0,
-                h: p.height || 0,
-                url: p.url,
-              })),
-              cover: { t: "j", w: 0, h: 0, url: sg.coverUrl },
-              thumbnail: { t: "j", w: 0, h: 0, url: sg.coverUrl },
-            },
-            scanlator: sourceId,
-            upload_date: sg.uploadDate || 0,
-            tags: sg.tags.map((t, i) => ({
-              id: i,
-              type: (t.type || "tag") as any,
-              name: t.name,
-              url: "",
-              count: 0,
-            })),
-            num_pages: sg.numPages,
-            num_favorites: 0,
-            globalId: sg.globalId,
-            origin: "local",
-          };
-          setGallery(mapped);
+          // Map vers Gallery (mapper partagé) pour réutiliser toute l'UI.
+          setGallery({ ...sourceGalleryToGallery(sg, sourceId), origin: "local" });
         })
         .catch((err) => {
           setError(err?.message || "Impossible de charger la galerie");
@@ -180,7 +158,7 @@ export default function BookDetailScreen() {
           setRelatedLoading(false);
         });
     }
-  }, [id, sourceId]);
+  }, [id, sourceId, titleParam]);
 
   const handleShare = async () => {
     if (!gallery) return;
@@ -199,6 +177,7 @@ export default function BookDetailScreen() {
         id: gallery.id,
         title: bookTitle,
         cover: gallery.images?.cover?.url,
+        src: sourceId !== "nhentai" ? sourceId : undefined,
       },
     ]);
     router.push("/batch");
@@ -911,6 +890,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     overflow: "hidden",
+    flexShrink: 0,
+    maxWidth: "100%",
   },
   tagChipMainPress: {
     flexDirection: "row",
@@ -918,6 +899,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 5,
     gap: 6,
+    flexShrink: 1,
+    minWidth: 0,
   },
   tagChipActionBtn: {
     paddingHorizontal: 6,
@@ -926,8 +909,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderLeftWidth: StyleSheet.hairlineWidth,
     borderLeftColor: "rgba(255,255,255,0.08)",
+    flexShrink: 0,
   },
-  tagChipText: { fontSize: 12, fontWeight: "600" },
+  tagChipText: { fontSize: 12, fontWeight: "600", flexShrink: 1 },
   tagChipCount: { fontSize: 10, fontWeight: "700" },
   commentsSection: {
     marginHorizontal: 16,

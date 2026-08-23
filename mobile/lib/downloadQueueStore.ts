@@ -2,6 +2,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system/legacy";
 import { getGallery, resolvePageUrl } from "./api/nhentai";
 import { Gallery } from "./api/types";
+import { getSource } from "./sources/registry";
+import { sourceGalleryToGallery } from "./sources/galleryMapper";
+import type { SourceId } from "./sources/types";
 import { ensureNoMediaFile, libraryRoot, makeLocalId, sanitizeTitle, writeLocalManifest } from "./localLibrary";
 import { decodeBase64Header, isCompleteDownload } from "./imageIntegrity";
 import { createInitOnce, createWriteQueue } from "./persistQueue";
@@ -30,6 +33,8 @@ export interface QueueItem {
   id: number;
   title: string;
   cover: string;
+  /** Source d'origine ; absent = nhentai. Résolution par l'adaptateur dédié. */
+  src?: SourceId;
   status: QueueItemStatus;
   progress: number;
   totalPages: number;
@@ -38,6 +43,15 @@ export interface QueueItem {
   /** Identifiant local (dossier NHAppAndroid/<localId>/), défini à la complétion. */
   localId?: string;
   addedAt: number;
+}
+
+/**
+ * Clé unique d'un item de file : le même ID numérique peut exister sur deux
+ * sources (nhentai #29183 vs doujins #29183), donc toute identité interne
+ * (dédup, workers, transferts en vol, reprise) passe par ce composite.
+ */
+export function queueKeyOf(item: Pick<QueueItem, "id" | "src">): string {
+  return `${item.src ?? "nhentai"}:${item.id}`;
 }
 
 export interface QueueState {
@@ -127,19 +141,21 @@ export function setMaxConcurrent(val: number) {
 let notificationAsked = false;
 
 export function enqueueGalleries(
-  galleries: { id: number; title: string; cover?: string }[]
+  galleries: { id: number; title: string; cover?: string; src?: SourceId }[]
 ) {
   if (!notificationAsked) {
     notificationAsked = true;
     void requestNotificationPermissions();
   }
-  const existingIds = new Set(state.items.map((i) => i.id));
+  const existingKeys = new Set(state.items.map(queueKeyOf));
   const newItems: QueueItem[] = [];
 
   for (const g of galleries) {
-    if (existingIds.has(g.id)) continue;
+    const key = queueKeyOf(g);
+    if (existingKeys.has(key)) continue;
     newItems.push({
       id: g.id,
+      src: g.src,
       title: g.title || `Gallery #${g.id}`,
       cover: g.cover || "",
       status: "queued",
@@ -148,7 +164,7 @@ export function enqueueGalleries(
       downloadedPages: 0,
       addedAt: Date.now(),
     });
-    existingIds.add(g.id);
+    existingKeys.add(key);
   }
 
   if (newItems.length > 0) {
@@ -159,17 +175,17 @@ export function enqueueGalleries(
   }
 }
 
-export function pauseQueueItem(id: number) {
+export function pauseQueueItem(key: string) {
   // Annule d'abord tout transfert en vol : le .part déjà écrit est conservé,
   // la reprise se fera par HTTP Range. Le worker verra `null` en retour de
   // downloadAsync et lèvera __PAUSED__ via la vérification de statut.
-  const inFlight = activeDownloads.get(id);
+  const inFlight = activeDownloads.get(key);
   if (inFlight) {
-    activeDownloads.delete(id);
+    activeDownloads.delete(key);
     void inFlight.cancelAsync().catch(() => {});
   }
   state.items = state.items.map((item) =>
-    item.id === id && (item.status === "queued" || item.status === "downloading")
+    queueKeyOf(item) === key && (item.status === "queued" || item.status === "downloading")
       ? { ...item, status: "paused" }
       : item
   );
@@ -177,9 +193,9 @@ export function pauseQueueItem(id: number) {
   notify();
 }
 
-export function resumeQueueItem(id: number) {
+export function resumeQueueItem(key: string) {
   state.items = state.items.map((item) =>
-    item.id === id && (item.status === "paused" || item.status === "error")
+    queueKeyOf(item) === key && (item.status === "paused" || item.status === "error")
       ? { ...item, status: "queued", errorMessage: undefined }
       : item
   );
@@ -188,15 +204,15 @@ export function resumeQueueItem(id: number) {
   processQueue();
 }
 
-export function removeQueueItem(id: number) {
+export function removeQueueItem(key: string) {
   // Si un transfert est en vol, l'annuler immédiatement (le .part sera
   // nettoyé par la boucle du worker via sa vérification de statut).
-  const inFlight = activeDownloads.get(id);
+  const inFlight = activeDownloads.get(key);
   if (inFlight) {
-    activeDownloads.delete(id);
+    activeDownloads.delete(key);
     void inFlight.cancelAsync().catch(() => {});
   }
-  state.items = state.items.filter((item) => item.id !== id);
+  state.items = state.items.filter((item) => queueKeyOf(item) !== key);
   persistQueue();
   notify();
 }
@@ -223,9 +239,9 @@ export function removeCompletedByLocalId(localId: string | string[]): void {
  * et sera re-dérivé par le worker (makeLocalId est déterministe). Les fichiers
  * encore présents sont sautés par le worker, donc seuls les manquants repartent.
  */
-export function requeueItem(id: number) {
+export function requeueItem(key: string) {
   state.items = state.items.map((item) =>
-    item.id === id && item.status === "completed"
+    queueKeyOf(item) === key && item.status === "completed"
       ? {
           ...item,
           status: "queued" as const,
@@ -250,10 +266,10 @@ export function clearCompletedQueue() {
 export function pauseAllQueue() {
   // Annule tous les transferts en vol (voir pauseQueueItem) avant de basculer
   // les statuts, sinon les workers en cours continueraient leur page.
-  const ids = [...activeDownloads.keys()];
-  for (const id of ids) {
-    const inFlight = activeDownloads.get(id);
-    activeDownloads.delete(id);
+  const keys = [...activeDownloads.keys()];
+  for (const key of keys) {
+    const inFlight = activeDownloads.get(key);
+    activeDownloads.delete(key);
     void inFlight?.cancelAsync().catch(() => {});
   }
   state.items = state.items.map((item) =>
@@ -284,8 +300,8 @@ export function reorderQueue(fromIndex: number, toIndex: number): void {
   notify();
 }
 
-export function moveQueueItem(id: number, direction: -1 | 1): void {
-  const index = state.items.findIndex((item) => item.id === id);
+export function moveQueueItem(key: string, direction: -1 | 1): void {
+  const index = state.items.findIndex((item) => queueKeyOf(item) === key);
   if (index < 0) return;
   reorderQueue(index, index + direction);
 }
@@ -301,14 +317,14 @@ export function resumeAllQueue() {
   processQueue();
 }
 
-const activeWorkers = new Set<number>();
+const activeWorkers = new Set<string>();
 /**
- * Pause immédiate : mappe galleryId -> DownloadResumable en vol. `cancelAsync`
- * résout la promesse avec `null` SANS supprimer le .part (confirmé côté natif :
- * `call.cancel()` → resolve(null)), donc le préfixe déjà écrit reste valable
- * pour une reprise HTTP Range au prochain passage du worker.
+ * Pause immédiate : mappe queueKey (composite source:id) -> DownloadResumable
+ * en vol. `cancelAsync` résout la promesse avec `null` SANS supprimer le .part
+ * (confirmé côté natif : `call.cancel()` → resolve(null)), donc le préfixe déjà
+ * écrit reste valable pour une reprise HTTP Range au prochain passage du worker.
  */
-const activeDownloads = new Map<number, FileSystem.DownloadResumable>();
+const activeDownloads = new Map<string, FileSystem.DownloadResumable>();
 
 /**
  * Les téléchargements s'exécutent au premier plan dans l'app. La reprise se fait
@@ -355,8 +371,18 @@ function detectPageExt(pageUrl: string, t?: string): string {
 }
 
 async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
+  // Identité composite de l'item dans la file (voir queueKeyOf).
+  const qKey = queueKeyOf(item);
   try {
-    const gallery: Gallery = await getGallery(item.id);
+    let gallery: Gallery;
+    if (item.src && item.src !== "nhentai") {
+      // Sources alternatives : résolution via l'adaptateur dédié (URLs de
+      // pages fraîchement capturées, signées côté doujins).
+      const sg = await getSource(item.src).getGallery(String(item.id));
+      gallery = sourceGalleryToGallery(sg, item.src);
+    } else {
+      gallery = await getGallery(item.id);
+    }
     const rawTitle = gallery.title.pretty || gallery.title.english;
     const localId = makeLocalId(gallery.id, rawTitle); // identité stable = dossier
     const baseDir = `${FileSystem.documentDirectory}NHAppAndroid/`;
@@ -372,14 +398,14 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
       throw new Error("La galerie ne contient aucune page téléchargeable.");
     }
 
-    updateItem(item.id, {
+    updateItem(qKey, {
       totalPages: total,
       cover: gallery.images?.cover?.url || item.cover,
       title: gallery.title.pretty || item.title,
     });
 
     for (let i = 0; i < total; i++) {
-      const cur = state.items.find((x) => x.id === item.id);
+      const cur = state.items.find((x) => queueKeyOf(x) === qKey);
       if (!cur || cur.status === "paused") {
         throw new Error("__PAUSED__");
       }
@@ -393,7 +419,7 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
       const ext = detectPageExt(pageUrl, p?.t);
       const fileUri = `${targetDir}Image${pageNum}.${ext}`;
       const partUri = `${fileUri}.part`;
-      const resumeKey = `@nh_dl_resume_${item.id}_${pageNum}`;
+      const resumeKey = `@nh_dl_resume_${qKey}_${pageNum}`;
 
       let fileInfo = await FileSystem.getInfoAsync(fileUri);
       if (fileInfo.exists) {
@@ -418,7 +444,12 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
           : 0;
 
         const baseHeaders: Record<string, string> = {
-          Referer: "https://nhentai.net/",
+          Referer:
+            item.src === "doujins"
+              ? "https://doujins.com/"
+              : item.src === "3hentai"
+                ? "https://3hentai.net/"
+                : "https://nhentai.net/",
           "User-Agent":
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
         };
@@ -434,13 +465,13 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
           void AsyncStorage.setItem(resumeKey, JSON.stringify(downloadRes.savable())).catch(
             () => {}
           );
-          activeDownloads.set(item.id, downloadRes);
+          activeDownloads.set(qKey, downloadRes);
           return downloadRes
             .downloadAsync()
             .finally(() => {
               void AsyncStorage.removeItem(resumeKey).catch(() => {});
-              if (activeDownloads.get(item.id) === downloadRes) {
-                activeDownloads.delete(item.id);
+              if (activeDownloads.get(qKey) === downloadRes) {
+                activeDownloads.delete(qKey);
               }
             });
         };
@@ -504,7 +535,7 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
         urlThumb: fileUri,
       };
 
-      updateItem(item.id, {
+      updateItem(qKey, {
         downloadedPages: i + 1,
         progress: (i + 1) / total,
       });
@@ -536,7 +567,7 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
       console.warn("[downloadQueue] manifest write failed:", err);
     }
 
-    updateItem(item.id, {
+    updateItem(qKey, {
       status: "completed",
       progress: 1,
       downloadedPages: total,
@@ -555,17 +586,17 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Échec du téléchargement";
     if (message === "__PAUSED__") {
-      updateItem(item.id, { status: "paused" });
+      updateItem(qKey, { status: "paused" });
     } else {
-      console.error(`[downloadQueue] Failed gallery ${item.id}:`, err);
-      updateItem(item.id, {
+      console.error(`[downloadQueue] Failed gallery ${qKey}:`, err);
+      updateItem(qKey, {
         status: "error",
         errorMessage: message,
       });
       void notifyDownloadFinished({ title: item.title, ok: false, errorMessage: message });
     }
   } finally {
-    activeWorkers.delete(item.id);
+    activeWorkers.delete(qKey);
     syncDownloadKeepAwake();
     persistQueue();
     notify();
@@ -573,8 +604,10 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
   }
 }
 
-function updateItem(id: number, patch: Partial<QueueItem>) {
-  state.items = state.items.map((it) => (it.id === id ? { ...it, ...patch } : it));
+function updateItem(key: string, patch: Partial<QueueItem>) {
+  state.items = state.items.map((it) =>
+    queueKeyOf(it) === key ? { ...it, ...patch } : it
+  );
   notify();
   // Progression de page -> rafraîchir la notif persistante (throttlé 1/s).
   if (
@@ -651,13 +684,14 @@ async function processQueueAsync(): Promise<void> {
 
   const slots = state.maxConcurrent - activeWorkers.size;
   const nextItems = state.items.filter(
-    (it) => it.status === "queued" && !activeWorkers.has(it.id)
+    (it) => it.status === "queued" && !activeWorkers.has(queueKeyOf(it))
   );
 
   for (let i = 0; i < Math.min(slots, nextItems.length); i++) {
     const item = nextItems[i];
-    activeWorkers.add(item.id);
-    updateItem(item.id, { status: "downloading" });
+    const qKey = queueKeyOf(item);
+    activeWorkers.add(qKey);
+    updateItem(qKey, { status: "downloading" });
     syncDownloadKeepAwake();
     void downloadSingleGalleryWorker(item);
   }
