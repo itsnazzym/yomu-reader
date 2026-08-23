@@ -21,3 +21,8 @@ screen_*.png
 test-bundle.js
 test/*.test.cjs
 
+# Production signing keystore (NEVER commit)
+keys/
+*.keystore
+*.jks
+

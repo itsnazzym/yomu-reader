@@ -1,10 +1,12 @@
 name: Build & Package Artifacts
 
 on:
+  push:
+    branches: [main, master]
   workflow_dispatch:
     inputs:
       version:
-        description: "Version du tag (ex: v1.0.0)"
+        description: "Version du tag (ex: v1.0.8). Vide = incrément automatique"
         required: false
         type: string
         default: ""
@@ -23,22 +25,90 @@ on:
         required: false
         type: boolean
         default: true
-  push:
-    tags:
-      - "v*"
 
 permissions:
   contents: write
+
+concurrency:
+  group: build-artifacts
+  cancel-in-progress: true
 
 env:
   GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4096m -Dorg.gradle.parallel=true -Dorg.gradle.caching=true"
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
+  # 0. Calcul de la prochaine version (tag + app + release)
+  # ─────────────────────────────────────────────────────────────────────────────
+  prepare-version:
+    name: 🏷️ Prepare next version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      tag: ${{ steps.bump.outputs.tag }}
+      version_code: ${{ steps.bump.outputs.version_code }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Compute next semver tag
+        id: bump
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+
+          normalize_version() {
+            local raw="$1"
+            raw="${raw#v}"
+            if [[ ! "$raw" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Version invalide (attendu x.y.z): $1" >&2
+              exit 1
+            fi
+            echo "$raw"
+          }
+
+          tag_exists() {
+            git rev-parse -q --verify "refs/tags/$1" >/dev/null 2>&1
+          }
+
+          if [ -n "${INPUT_VERSION}" ]; then
+            VERSION="$(normalize_version "${INPUT_VERSION}")"
+          else
+            LATEST="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1 || true)"
+            if [ -z "${LATEST}" ]; then
+              VERSION="1.0.1"
+            else
+              RAW="$(normalize_version "${LATEST}")"
+              IFS='.' read -r MAJOR MINOR PATCH <<< "${RAW}"
+              VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+            fi
+          fi
+
+          TAG="v${VERSION}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "${VERSION}"
+          while tag_exists "${TAG}"; do
+            PATCH=$((PATCH + 1))
+            VERSION="${MAJOR}.${MINOR}.${PATCH}"
+            TAG="v${VERSION}"
+          done
+
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
+          echo "version_code=${RUN_NUMBER}" >> "${GITHUB_OUTPUT}"
+          echo "Next release: ${TAG} (versionCode=${RUN_NUMBER})"
+
+  # ─────────────────────────────────────────────────────────────────────────────
   # 1. Android ARM64-v8a Release (Ultra Rapide & Recommandé pour tous téléphones)
   # ─────────────────────────────────────────────────────────────────────────────
   build-arm64-apk:
     name: 📱 Android ARM64-v8a Release
+    needs: prepare-version
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -60,24 +130,42 @@ jobs:
       - name: Setup Gradle Cache
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Setup Release Keystore
-        run: |
-          keytool -genkeypair -v -keystore release.keystore -alias yomureader -keyalg RSA -keysize 2048 -validity 10000 -storepass yomureader_release_key -keypass yomureader_release_key -dname "CN=Yomu Reader, OU=Mobile, O=nHentai Launcher, L=Paris, ST=IDF, C=FR"
-
-      - name: Bump android versionCode from run number
-        working-directory: mobile
-        run: |
-          node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('app.json','utf8'));j.expo.android.versionCode=parseInt(process.env.GITHUB_RUN_NUMBER,10);fs.writeFileSync('app.json',JSON.stringify(j,null,2)+'\n');console.log('versionCode='+j.expo.android.versionCode)"
+      - name: Apply release version
         env:
-          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+          APP_VERSION: ${{ needs.prepare-version.outputs.version }}
+          APP_VERSION_CODE: ${{ needs.prepare-version.outputs.version_code }}
+        run: node .github/scripts/apply-release-version.cjs
 
       - name: Install Dependencies & Prebuild
         working-directory: mobile
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           npm ci
           npx expo prebuild --platform android --no-install
 
+      - name: Restore production release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KEYSTORE_BASE64:-}" ]; then
+            echo "::error::Secret KEYSTORE_BASE64 is not set. Add it in repo Settings > Secrets > Actions." >&2
+            exit 1
+          fi
+          mkdir -p mobile/android/app
+          echo "${KEYSTORE_BASE64}" | base64 -d > mobile/android/app/release-key.keystore
+          echo "Keystore restored ($(wc -c < mobile/android/app/release-key.keystore) bytes)"
+
       - name: Build & Sign ARM64-v8a APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         working-directory: mobile/android
         run: |
           chmod +x gradlew
@@ -87,9 +175,6 @@ jobs:
           RAW_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
           TARGET_APK="../../output-arm64/YomuReader-arm64-v8a-release.apk"
           cp "$RAW_APK" "$TARGET_APK"
-          
-          BUILD_TOOLS_DIR=$(find $ANDROID_HOME/build-tools -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
-          "$BUILD_TOOLS_DIR/apksigner" sign --ks ../../release.keystore --ks-pass "pass:yomureader_release_key" --key-pass "pass:yomureader_release_key" --ks-key-alias "yomureader" --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true "$TARGET_APK"
 
       - name: Upload ARM64 APK
         uses: actions/upload-artifact@v4
@@ -103,6 +188,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   build-universal-apk:
     name: 📱 Android Universal Full Release
+    needs: prepare-version
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -124,24 +210,42 @@ jobs:
       - name: Setup Gradle Cache
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Setup Release Keystore
-        run: |
-          keytool -genkeypair -v -keystore release.keystore -alias yomureader -keyalg RSA -keysize 2048 -validity 10000 -storepass yomureader_release_key -keypass yomureader_release_key -dname "CN=Yomu Reader, OU=Mobile, O=nHentai Launcher, L=Paris, ST=IDF, C=FR"
-
-      - name: Bump android versionCode from run number
-        working-directory: mobile
-        run: |
-          node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('app.json','utf8'));j.expo.android.versionCode=parseInt(process.env.GITHUB_RUN_NUMBER,10);fs.writeFileSync('app.json',JSON.stringify(j,null,2)+'\n');console.log('versionCode='+j.expo.android.versionCode)"
+      - name: Apply release version
         env:
-          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+          APP_VERSION: ${{ needs.prepare-version.outputs.version }}
+          APP_VERSION_CODE: ${{ needs.prepare-version.outputs.version_code }}
+        run: node .github/scripts/apply-release-version.cjs
 
       - name: Install Dependencies & Prebuild
         working-directory: mobile
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           npm ci
           npx expo prebuild --platform android --no-install
 
+      - name: Restore production release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KEYSTORE_BASE64:-}" ]; then
+            echo "::error::Secret KEYSTORE_BASE64 is not set. Add it in repo Settings > Secrets > Actions." >&2
+            exit 1
+          fi
+          mkdir -p mobile/android/app
+          echo "${KEYSTORE_BASE64}" | base64 -d > mobile/android/app/release-key.keystore
+          echo "Keystore restored ($(wc -c < mobile/android/app/release-key.keystore) bytes)"
+
       - name: Build & Sign Universal APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         working-directory: mobile/android
         run: |
           chmod +x gradlew
@@ -151,9 +255,6 @@ jobs:
           RAW_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
           TARGET_APK="../../output-universal/YomuReader-universal-full-release.apk"
           cp "$RAW_APK" "$TARGET_APK"
-          
-          BUILD_TOOLS_DIR=$(find $ANDROID_HOME/build-tools -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
-          "$BUILD_TOOLS_DIR/apksigner" sign --ks ../../release.keystore --ks-pass "pass:yomureader_release_key" --key-pass "pass:yomureader_release_key" --ks-key-alias "yomureader" --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true "$TARGET_APK"
 
       - name: Upload Universal APK
         uses: actions/upload-artifact@v4
@@ -167,6 +268,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   build-debug-apk:
     name: 📱 Android Debug APK
+    needs: prepare-version
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -187,6 +289,12 @@ jobs:
 
       - name: Setup Gradle Cache
         uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply release version
+        env:
+          APP_VERSION: ${{ needs.prepare-version.outputs.version }}
+          APP_VERSION_CODE: ${{ needs.prepare-version.outputs.version_code }}
+        run: node .github/scripts/apply-release-version.cjs
 
       - name: Install Dependencies & Prebuild
         working-directory: mobile
@@ -216,6 +324,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   windows-portable:
     name: 💻 Windows .EXE Portable
+    needs: prepare-version
     runs-on: windows-latest
     steps:
       - name: Checkout repository
@@ -226,6 +335,12 @@ jobs:
         with:
           node-version: "22"
           cache: npm
+
+      - name: Apply release version
+        env:
+          APP_VERSION: ${{ needs.prepare-version.outputs.version }}
+          APP_VERSION_CODE: ${{ needs.prepare-version.outputs.version_code }}
+        run: node .github/scripts/apply-release-version.cjs
 
       - name: Install Desktop Dependencies
         run: npm ci
@@ -281,8 +396,8 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   publish-release:
     name: 🚀 Publish GitHub Release
-    needs: [build-arm64-apk, build-universal-apk, build-debug-apk, windows-portable, source-zip]
-    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.create_release == 'true'
+    needs: [prepare-version, build-arm64-apk, build-universal-apk, build-debug-apk, windows-portable, source-zip]
+    if: github.event_name == 'push' || github.event.inputs.create_release != 'false'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -296,31 +411,31 @@ jobs:
 
       - name: Generate Structured Release Notes & Checksums
         id: release_meta
+        env:
+          TAG_VER: ${{ needs.prepare-version.outputs.tag }}
+          INPUT_TITLE: ${{ github.event.inputs.release_title }}
+          INPUT_NOTES: ${{ github.event.inputs.release_notes }}
         run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            TAG_VER="${{ github.event.inputs.version }}"
-          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            TAG_VER="${GITHUB_REF#refs/tags/}"
-          else
-            PKG_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "1.0.0")
-            TAG_VER="v${PKG_VERSION}"
+          if [ -z "${TAG_VER}" ]; then
+            echo "Tag de release manquant" >&2
+            exit 1
           fi
-          echo "tag_name=$TAG_VER" >> $GITHUB_OUTPUT
+          echo "tag_name=${TAG_VER}" >> "${GITHUB_OUTPUT}"
 
-          if [ -n "${{ github.event.inputs.release_title }}" ]; then
-            TITLE="${{ github.event.inputs.release_title }}"
+          if [ -n "${INPUT_TITLE}" ]; then
+            TITLE="${INPUT_TITLE}"
           else
             TITLE="🌸 Release ${TAG_VER} — nHentai Launcher & Yomu Reader"
           fi
-          echo "title=$TITLE" >> $GITHUB_OUTPUT
+          echo "title=${TITLE}" >> "${GITHUB_OUTPUT}"
 
           cd release-assets
           sha256sum * > SHA256SUMS.txt
           cd ..
 
-          CUSTOM_NOTES="${{ github.event.inputs.release_notes }}"
+          CUSTOM_NOTES="${INPUT_NOTES}"
           if [ -z "$CUSTOM_NOTES" ]; then
-            CUSTOM_NOTES="Mise à jour officielle et optimisée pour l'application Mobile (Android) et Desktop (Windows)."
+            CUSTOM_NOTES="$(git log -1 --pretty=%s)"
           fi
 
           cat << 'EOF' > release_body.md
@@ -367,3 +482,5 @@ jobs:
           files: release-assets/*
           draft: false
           prerelease: false
+          make_latest: true
+          target_commitish: ${{ github.sha }}

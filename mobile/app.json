@@ -66,7 +66,8 @@
         }
       ],
       "./withAndroidDoh",
-      "./withNotifeeDataSync"
+      "./withNotifeeDataSync",
+      "./withAndroidReleaseKeystore"
     ],
     "experiments": {
       "typedRoutes": true
