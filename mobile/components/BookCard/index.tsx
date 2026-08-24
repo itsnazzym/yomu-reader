@@ -177,7 +177,7 @@ export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
           {/* Badge de source multi-sources (masqué pour nhentai, source par défaut) */}
           {sourceMeta && sourceMeta.id !== "nhentai" && (
             <View style={[styles.sourceBadge, { backgroundColor: sourceMeta.accentColor }]}>
-              <Text style={styles.sourceText} numberOfLines={1}>
+              <Text style={styles.sourceText} numberOfLines={1} ellipsizeMode="tail">
                 {sourceMeta.label}
               </Text>
             </View>
@@ -187,7 +187,7 @@ export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
 
       {/* Card Info Area (Matte Info Tab) */}
       <View style={[styles.info, { borderTopColor: colors.tagBg }]}>
-        <Text style={styles.title} numberOfLines={2}>
+        <Text style={styles.title} numberOfLines={2} ellipsizeMode="tail">
           {title}
         </Text>
 
@@ -301,7 +301,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   sourceBadge: {
-    maxWidth: 90,
+    maxWidth: 110,
     borderRadius: 4,
     paddingHorizontal: 5,
     paddingVertical: 1.5,
@@ -321,7 +321,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#f3f4f6",
     lineHeight: 15,
-    flexShrink: 0,
+    flexShrink: 1,
     paddingRight: 2,
     includeFontPadding: false,
   },
