@@ -1,6 +1,6 @@
 <div align="center">
 
-  <img src="public/app-icon.png" alt="Yomu Reader & nHentai Launcher Logo" width="110" height="110" style="border-radius: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); margin-bottom: 10px;" />
+  <img src="public/app-icon.png" alt="Yomu Reader" width="110" height="110" style="border-radius: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); margin-bottom: 10px;" />
 
   # 🌸 Yomu Reader
   ### Client Desktop & Application Mobile — une liseuse, une bibliothèque, deux appareils
@@ -324,5 +324,5 @@ npm run test:proxy
 ---
 
 <div align="center">
-  <sub>Fait avec passion pour la communauté. Sous licence MIT.</sub>
+  <sub>Dépôt : <a href="https://github.com/itsnazzym/yomu-reader">itsnazzym/yomu-reader</a> · v2.0.0 · Licence MIT</sub>
 </div>
