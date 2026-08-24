@@ -45,6 +45,13 @@ import { ReaderSettingsPanel } from "@/components/reader/ReaderSettingsPanel";
 import { lightTap } from "@/lib/haptics";
 import { useDrawer } from "@/lib/DrawerContext";
 import { buildReaderSpreads, pageToSpreadIndex, spreadToPage } from "@/lib/readerSpreads";
+import {
+  DwellRing,
+  isNearMounted,
+  PAGE_MOUNT_WINDOW,
+  resolvePreloadWindow,
+  type PreloadWindow,
+} from "@/lib/adaptivePreload";
 
 export function parseReaderInitialPage(value?: string): number {
   if (!value) return 0;
@@ -88,6 +95,14 @@ export default function ReaderScreen() {
   const flatListRef = useRef<FlatList>(null);
   const pagerRef = useRef<PagerView>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dwellRingRef = useRef(new DwellRing());
+  const lastPageAtRef = useRef<number>(Date.now());
+  const skipDwellRef = useRef(false);
+  const recordedOpenRef = useRef(false);
+  const [preloadWindow, setPreloadWindow] = useState<PreloadWindow>({ prev: 1, next: 2 });
+  const [mountedPagerIndex, setMountedPagerIndex] = useState(() =>
+    parseReaderInitialPage(initialPage)
+  );
 
   const isLandscape = width > height;
   const isDualPage = Boolean(
@@ -156,25 +171,111 @@ export default function ReaderScreen() {
   const pages = useMemo(() => gallery?.images?.pages ?? [], [gallery]);
   const totalPages = pages.length || gallery?.num_pages || 1;
 
+  const progressOpts = useMemo(() => {
+    const rawLocal = typeof localId === "string" && localId ? localId : local;
+    const source =
+      (typeof src === "string" && src) ||
+      (gallery?.scanlator && gallery.scanlator !== "nhentai" ? gallery.scanlator : undefined) ||
+      (rawLocal ? undefined : "nhentai");
+    return {
+      source: typeof source === "string" ? source : undefined,
+      localId: typeof rawLocal === "string" && rawLocal ? rawLocal : undefined,
+    };
+  }, [src, local, localId, gallery?.scanlator]);
+
   useEffect(() => {
     setCurrentPage((page) => Math.max(0, Math.min(page, totalPages - 1)));
   }, [totalPages]);
 
-  // Pre-load next 2 pages and previous page
+  // Historique à l'ouverture (pas seulement au flip).
   useEffect(() => {
-    if (pages.length === 0) return;
-    const nextIdx1 = currentPage + 1;
-    const nextIdx2 = currentPage + 2;
-    const prevIdx = currentPage - 1;
+    if (!gallery || recordedOpenRef.current) return;
+    recordedOpenRef.current = true;
+    void recordReadingProgress(
+      gallery,
+      currentPage,
+      totalPages,
+      progressOpts
+    );
+  }, [gallery, currentPage, totalPages, progressOpts]);
 
-    [nextIdx1, nextIdx2, prevIdx].forEach((idx) => {
-      if (idx >= 0 && idx < pages.length) {
-        const p = pages[idx];
-        const url = p?.url || resolvePageUrl(gallery?.media_id || "", idx, p);
-        if (url) preloadSmartImage(url);
+  useEffect(() => {
+    recordedOpenRef.current = false;
+    dwellRingRef.current.clear();
+    lastPageAtRef.current = Date.now();
+  }, [id, local, localId, src]);
+
+  const dualPageSpreads = useMemo(
+    () => (isDualPage ? buildReaderSpreads(pages, readingDirection) : []),
+    [pages, isDualPage, readingDirection]
+  );
+
+  // Resync index monté quand on bascule dual-page / galerie.
+  useEffect(() => {
+    setMountedPagerIndex(
+      isDualPage ? pageToSpreadIndex(dualPageSpreads, currentPage) : currentPage
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync on mode/id only
+  }, [isDualPage, id, local, localId, dualPageSpreads.length]);
+
+  // Fenêtre de préchargement (adaptative ou manuelle).
+  useEffect(() => {
+    setPreloadWindow(
+      resolvePreloadWindow({
+        adaptive: readerSettings.adaptivePreload,
+        medianDwellMs: dwellRingRef.current.median(),
+        manualPrev: readerSettings.preloadPrev,
+        manualNext: readerSettings.preloadNext,
+      })
+    );
+  }, [
+    currentPage,
+    readerSettings.adaptivePreload,
+    readerSettings.preloadPrev,
+    readerSettings.preloadNext,
+  ]);
+
+  // Préchargement couplé à la fenêtre (spread-aware en dual-page).
+  useEffect(() => {
+    if (pages.length === 0 || !gallery) return;
+
+    const indices = new Set<number>();
+    if (isDualPage && dualPageSpreads.length > 0) {
+      const spreadIdx = pageToSpreadIndex(dualPageSpreads, currentPage);
+      for (let d = -preloadWindow.prev; d <= preloadWindow.next; d += 1) {
+        const neighbor = dualPageSpreads[spreadIdx + d];
+        if (!neighbor) continue;
+        if (neighbor.left !== null) indices.add(neighbor.left);
+        if (neighbor.right !== null) indices.add(neighbor.right);
+      }
+    } else {
+      for (let d = -preloadWindow.prev; d <= preloadWindow.next; d += 1) {
+        if (d === 0) continue;
+        const idx = currentPage + d;
+        if (idx >= 0 && idx < pages.length) indices.add(idx);
+      }
+    }
+
+    indices.forEach((idx) => {
+      if (idx < 0 || idx >= pages.length) return;
+      const p = pages[idx];
+      const url = p?.url || resolvePageUrl(gallery.media_id || "", idx, p);
+      if (url) {
+        try {
+          preloadSmartImage(url);
+        } catch {
+          // Cap mémoire / échec prefetch : ignorer silencieusement.
+        }
       }
     });
-  }, [currentPage, pages, gallery?.media_id]);
+  }, [
+    currentPage,
+    pages,
+    gallery,
+    preloadWindow,
+    isDualPage,
+    dualPageSpreads,
+  ]);
 
   // System bar handling
   useEffect(() => {
@@ -198,6 +299,13 @@ export default function ReaderScreen() {
   const handlePageChange = useCallback(
     (nextPage: number, resetZoom = false) => {
       const clamped = Math.max(0, Math.min(nextPage, totalPages - 1));
+      const now = Date.now();
+      if (!skipDwellRef.current && clamped !== currentPage) {
+        dwellRingRef.current.push(now - lastPageAtRef.current);
+      }
+      skipDwellRef.current = false;
+      lastPageAtRef.current = now;
+
       setCurrentPage(clamped);
       if (resetZoom && readerSettings.resetZoomOnPageChange) {
         setIsZoomed(false);
@@ -205,19 +313,21 @@ export default function ReaderScreen() {
       }
 
       if (gallery) {
-        recordReadingProgress(gallery, clamped, totalPages);
+        void recordReadingProgress(gallery, clamped, totalPages, progressOpts);
       }
     },
-    [gallery, totalPages, readerSettings.resetZoomOnPageChange]
-  );
-
-  const dualPageSpreads = useMemo(
-    () => (isDualPage ? buildReaderSpreads(pages, readingDirection) : []),
-    [pages, isDualPage, readingDirection]
+    [
+      gallery,
+      totalPages,
+      readerSettings.resetZoomOnPageChange,
+      progressOpts,
+      currentPage,
+    ]
   );
 
   const jumpToPage = useCallback(
-    (index: number) => {
+    (index: number, opts?: { skipDwell?: boolean }) => {
+      if (opts?.skipDwell) skipDwellRef.current = true;
       const target = Math.max(0, Math.min(index, totalPages - 1));
       handlePageChange(target, true);
 
@@ -231,6 +341,7 @@ export default function ReaderScreen() {
         const pagerTarget = isDualPage
           ? pageToSpreadIndex(dualPageSpreads, target)
           : target;
+        setMountedPagerIndex(pagerTarget);
         pagerRef.current?.setPage(pagerTarget);
       }
     },
@@ -402,9 +513,12 @@ export default function ReaderScreen() {
             initialPage={pageToSpreadIndex(dualPageSpreads, currentPage)}
             layoutDirection={readingDirection}
             scrollEnabled={!isZoomed}
-            onPageSelected={(e) =>
-              handlePageChange(spreadToPage(dualPageSpreads, e.nativeEvent.position), true)
-            }
+            offscreenPageLimit={PAGE_MOUNT_WINDOW}
+            onPageSelected={(e) => {
+              const position = e.nativeEvent.position;
+              setMountedPagerIndex(position);
+              handlePageChange(spreadToPage(dualPageSpreads, position), true);
+            }}
           >
             {dualPageSpreads.map((spread, sIdx) => {
               const leftUrl =
@@ -419,35 +533,37 @@ export default function ReaderScreen() {
                   : null;
 
               return (
-                <View key={sIdx} style={styles.dualPageSpread}>
-                  <ZoomablePage
-                    pinchEnabled={readerSettings.pinchToZoom}
-                    doubleTapScale={readerSettings.doubleTapZoom}
-                    resetToken={`${id}-spread-${sIdx}-${zoomResetEpoch}`}
-                    onZoomChange={(scale) => setIsZoomed(scale > 1.02)}
-                    onSingleTap={(x) => handleReaderTap(x)}
-                  >
-                    <View style={styles.dualPageSpread}>
-                      <View style={styles.dualPageHalf}>
-                        {leftUrl ? (
-                          <SmartImage
-                            uri={leftUrl}
-                            style={{ width: width / 2, height }}
-                            contentFit="contain"
-                          />
-                        ) : null}
+                <View key={sIdx} style={styles.dualPageSpread} collapsable={false}>
+                  {isNearMounted(sIdx, mountedPagerIndex, PAGE_MOUNT_WINDOW) ? (
+                    <ZoomablePage
+                      pinchEnabled={readerSettings.pinchToZoom}
+                      doubleTapScale={readerSettings.doubleTapZoom}
+                      resetToken={`${id}-spread-${sIdx}-${zoomResetEpoch}`}
+                      onZoomChange={(scale) => setIsZoomed(scale > 1.02)}
+                      onSingleTap={(x) => handleReaderTap(x)}
+                    >
+                      <View style={styles.dualPageSpread}>
+                        <View style={styles.dualPageHalf}>
+                          {leftUrl ? (
+                            <SmartImage
+                              uri={leftUrl}
+                              style={{ width: width / 2, height }}
+                              contentFit="contain"
+                            />
+                          ) : null}
+                        </View>
+                        <View style={styles.dualPageHalf}>
+                          {rightUrl ? (
+                            <SmartImage
+                              uri={rightUrl}
+                              style={{ width: width / 2, height }}
+                              contentFit="contain"
+                            />
+                          ) : null}
+                        </View>
                       </View>
-                      <View style={styles.dualPageHalf}>
-                        {rightUrl ? (
-                          <SmartImage
-                            uri={rightUrl}
-                            style={{ width: width / 2, height }}
-                            contentFit="contain"
-                          />
-                        ) : null}
-                      </View>
-                    </View>
-                  </ZoomablePage>
+                    </ZoomablePage>
+                  ) : null}
                 </View>
               );
             })}
@@ -459,26 +575,33 @@ export default function ReaderScreen() {
             initialPage={currentPage}
             layoutDirection={readingDirection}
             scrollEnabled={!isZoomed}
-            onPageSelected={(e) => handlePageChange(e.nativeEvent.position, true)}
+            offscreenPageLimit={PAGE_MOUNT_WINDOW}
+            onPageSelected={(e) => {
+              const position = e.nativeEvent.position;
+              setMountedPagerIndex(position);
+              handlePageChange(position, true);
+            }}
           >
             {pages.map((p, idx) => {
               const imgUrl = p.url || resolvePageUrl(gallery.media_id, idx, p);
               return (
-                <View key={idx} style={styles.pagerPageWrap}>
-                  <ZoomablePage
-                    pinchEnabled={readerSettings.pinchToZoom}
-                    doubleTapScale={readerSettings.doubleTapZoom}
-                    resetToken={`${id}-page-${idx}-${zoomResetEpoch}`}
-                    onZoomChange={(scale) => setIsZoomed(scale > 1.02)}
-                    onSingleTap={(x) => handleReaderTap(x)}
-                  >
-                    <SmartImage
-                      uri={imgUrl}
-                      style={{ width, height }}
-                      contentFit={readerSettings.fitMode === "height" ? "cover" : "contain"}
-                      priority={idx === currentPage ? "high" : "normal"}
-                    />
-                  </ZoomablePage>
+                <View key={idx} style={styles.pagerPageWrap} collapsable={false}>
+                  {isNearMounted(idx, mountedPagerIndex, PAGE_MOUNT_WINDOW) ? (
+                    <ZoomablePage
+                      pinchEnabled={readerSettings.pinchToZoom}
+                      doubleTapScale={readerSettings.doubleTapZoom}
+                      resetToken={`${id}-page-${idx}-${zoomResetEpoch}`}
+                      onZoomChange={(scale) => setIsZoomed(scale > 1.02)}
+                      onSingleTap={(x) => handleReaderTap(x)}
+                    >
+                      <SmartImage
+                        uri={imgUrl}
+                        style={{ width, height }}
+                        contentFit={readerSettings.fitMode === "height" ? "cover" : "contain"}
+                        priority={idx === currentPage ? "high" : "normal"}
+                      />
+                    </ZoomablePage>
+                  ) : null}
                 </View>
               );
             })}
@@ -604,7 +727,7 @@ export default function ReaderScreen() {
           currentPage={currentPage}
           totalPages={totalPages}
           visible={controlsVisible}
-          onSelectPage={jumpToPage}
+          onSelectPage={(page) => jumpToPage(page, { skipDwell: true })}
         />
       )}
 
@@ -630,7 +753,7 @@ export default function ReaderScreen() {
               thumbColor={colors.accent}
               style={{ flex: 1, marginHorizontal: 8 }}
               onSlidingComplete={(val) => {
-                jumpToPage(val - 1);
+                jumpToPage(val - 1, { skipDwell: true });
               }}
             />
             <Text style={styles.sliderPageLabel}>{totalPages}</Text>

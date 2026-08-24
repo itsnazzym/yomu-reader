@@ -155,6 +155,48 @@ export function ReaderSettingsPanel({
             value={settings.showThumbRail}
             onValueChange={(value) => updateSettings({ showThumbRail: value })}
           />
+          <Toggle
+            title="Préchargement adaptatif"
+            subtitle="Ajuste la fenêtre selon votre rythme de lecture"
+            value={settings.adaptivePreload}
+            onValueChange={(value) => updateSettings({ adaptivePreload: value })}
+          />
+          {!settings.adaptivePreload ? (
+            <View style={styles.sliderBlock}>
+              <View style={styles.sliderHeader}>
+                <Text style={[styles.toggleTitle, { color: colors.txt }]}>
+                  Pages avant · {settings.preloadPrev}
+                </Text>
+              </View>
+              <SmoothSlider
+                min={1}
+                max={8}
+                step={1}
+                value={settings.preloadPrev}
+                onValueChange={(value) =>
+                  updateSettings({ preloadPrev: Math.round(value) })
+                }
+                activeColor={colors.accent}
+                thumbColor={colors.accent}
+              />
+              <View style={[styles.sliderHeader, { marginTop: 8 }]}>
+                <Text style={[styles.toggleTitle, { color: colors.txt }]}>
+                  Pages après · {settings.preloadNext}
+                </Text>
+              </View>
+              <SmoothSlider
+                min={1}
+                max={8}
+                step={1}
+                value={settings.preloadNext}
+                onValueChange={(value) =>
+                  updateSettings({ preloadNext: Math.round(value) })
+                }
+                activeColor={colors.accent}
+                thumbColor={colors.accent}
+              />
+            </View>
+          ) : null}
 
           <Text style={[styles.section, { color: colors.sub }]}>Zoom</Text>
           <Toggle

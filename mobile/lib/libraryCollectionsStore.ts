@@ -1,16 +1,33 @@
+/**
+ * Collections bibliothèque : étagères manuelles + smart (règles tags).
+ * Identité multi-sources via globalIds (migration depuis galleryIds number[]).
+ */
+
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useState } from "react";
+import type { Gallery } from "./api/types";
+import type { LocalLibraryEntry } from "./localLibrary";
 import { createInitOnce, createWriteQueue } from "./persistQueue";
+import { makeGlobalId } from "./sources/types";
+import type { TagCollectionItem } from "./tagCollectionsStore";
 
 export const LIBRARY_COLLECTIONS_STORAGE_KEY = "@nhentai_library_collections_v1";
+
+export interface SmartCollectionRule {
+  include: TagCollectionItem[];
+  exclude?: TagCollectionItem[];
+}
 
 export interface LibraryCollection {
   id: string;
   name: string;
   color: string;
   hidden: boolean;
-  galleryIds: number[];
+  /** Identifiants globaux multi-sources ("nhentai:123"). */
+  globalIds: string[];
   localIds: string[];
+  mode: "manual" | "smart";
+  rule?: SmartCollectionRule;
   createdAt: number;
   updatedAt: number;
 }
@@ -27,21 +44,64 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function parseTagItem(raw: unknown): TagCollectionItem | null {
+  if (!isRecord(raw) || typeof raw.name !== "string") return null;
+  return {
+    type: typeof raw.type === "string" ? raw.type : "tag",
+    name: raw.name,
+  };
+}
+
+function parseRule(raw: unknown): SmartCollectionRule | undefined {
+  if (!isRecord(raw) || !Array.isArray(raw.include)) return undefined;
+  const include = raw.include
+    .map(parseTagItem)
+    .filter((item): item is TagCollectionItem => item !== null);
+  if (include.length === 0) return undefined;
+  const exclude = Array.isArray(raw.exclude)
+    ? raw.exclude
+        .map(parseTagItem)
+        .filter((item): item is TagCollectionItem => item !== null)
+    : undefined;
+  return { include, exclude };
+}
+
+function migrateGlobalIds(raw: Record<string, unknown>): string[] {
+  const ids = new Set<string>();
+  if (Array.isArray(raw.globalIds)) {
+    for (const id of raw.globalIds) {
+      if (typeof id === "string" && id) ids.add(id);
+    }
+  }
+  // Migration v1 : galleryIds number[] → nhentai:<id>
+  if (Array.isArray(raw.galleryIds)) {
+    for (const id of raw.galleryIds) {
+      if (typeof id === "number" && Number.isFinite(id)) {
+        ids.add(makeGlobalId("nhentai", id));
+      } else if (typeof id === "string" && id) {
+        ids.add(id.includes(":") ? id : makeGlobalId("nhentai", id));
+      }
+    }
+  }
+  return [...ids];
+}
+
 function parseCollection(raw: unknown): LibraryCollection | null {
   if (!isRecord(raw) || typeof raw.id !== "string" || typeof raw.name !== "string") {
     return null;
   }
+  const mode = raw.mode === "smart" ? "smart" : "manual";
   return {
     id: raw.id,
     name: raw.name,
     color: typeof raw.color === "string" ? raw.color : "#60a5fa",
     hidden: raw.hidden === true,
-    galleryIds: Array.isArray(raw.galleryIds)
-      ? raw.galleryIds.filter((id): id is number => typeof id === "number" && Number.isFinite(id))
-      : [],
+    globalIds: migrateGlobalIds(raw),
     localIds: Array.isArray(raw.localIds)
       ? raw.localIds.filter((id): id is string => typeof id === "string")
       : [],
+    mode,
+    rule: mode === "smart" ? parseRule(raw.rule) : undefined,
     createdAt: Number(raw.createdAt) || Date.now(),
     updatedAt: Number(raw.updatedAt) || Date.now(),
   };
@@ -78,16 +138,24 @@ export function getLibraryCollectionsSnapshot(): LibraryCollection[] {
 
 export async function createLibraryCollection(
   name: string,
-  options?: { color?: string; hidden?: boolean }
+  options?: {
+    color?: string;
+    hidden?: boolean;
+    mode?: "manual" | "smart";
+    rule?: SmartCollectionRule;
+  }
 ): Promise<LibraryCollection> {
   await initLibraryCollections();
+  const mode = options?.mode === "smart" ? "smart" : "manual";
   const collection: LibraryCollection = {
     id: `libcol_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     name: name.trim() || "Sans titre",
     color: options?.color || "#60a5fa",
     hidden: options?.hidden === true,
-    galleryIds: [],
+    globalIds: [],
     localIds: [],
+    mode,
+    rule: mode === "smart" ? options?.rule : undefined,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
@@ -99,7 +167,9 @@ export async function createLibraryCollection(
 
 export async function updateLibraryCollection(
   id: string,
-  patch: Partial<Pick<LibraryCollection, "name" | "color" | "hidden">>
+  patch: Partial<
+    Pick<LibraryCollection, "name" | "color" | "hidden" | "mode" | "rule">
+  >
 ): Promise<void> {
   await initLibraryCollections();
   currentCollections = currentCollections.map((col) =>
@@ -118,30 +188,34 @@ export async function deleteLibraryCollection(id: string): Promise<void> {
 
 export function collectionContains(
   collection: LibraryCollection,
-  galleryId: number,
+  globalId: string,
   localId?: string
 ): boolean {
-  if (collection.galleryIds.includes(galleryId)) return true;
+  if (globalId && collection.globalIds.includes(globalId)) return true;
   if (localId && collection.localIds.includes(localId)) return true;
   return false;
 }
 
 export async function toggleLibraryCollectionMembership(
   collectionId: string,
-  galleryId: number,
+  globalId: string,
   localId?: string
 ): Promise<void> {
   await initLibraryCollections();
   currentCollections = currentCollections.map((col) => {
     if (col.id !== collectionId) return col;
-    const hasGallery = col.galleryIds.includes(galleryId);
+    if (col.mode === "smart") {
+      // Membership manuelle ignorée pour les smart (évaluation lazy).
+      return col;
+    }
+    const hasGallery = col.globalIds.includes(globalId);
     const hasLocal = localId ? col.localIds.includes(localId) : false;
     const nextHas = !(hasGallery || hasLocal);
     return {
       ...col,
-      galleryIds: nextHas
-        ? Array.from(new Set([...col.galleryIds, galleryId]))
-        : col.galleryIds.filter((id) => id !== galleryId),
+      globalIds: nextHas
+        ? Array.from(new Set([...col.globalIds, globalId]))
+        : col.globalIds.filter((id) => id !== globalId),
       localIds: localId
         ? nextHas
           ? Array.from(new Set([...col.localIds, localId]))
@@ -152,6 +226,64 @@ export async function toggleLibraryCollectionMembership(
   });
   notify();
   await persist();
+}
+
+function tagMatches(gallery: Gallery, item: TagCollectionItem): boolean {
+  const name = item.name.toLowerCase();
+  const type = item.type.toLowerCase();
+  return (gallery.tags || []).some(
+    (t) => t.type.toLowerCase() === type && t.name.toLowerCase() === name
+  );
+}
+
+export function galleryMatchesSmartRule(
+  gallery: Gallery,
+  rule: SmartCollectionRule
+): boolean {
+  if (!rule.include.length) return false;
+  const includeOk = rule.include.every((item) => tagMatches(gallery, item));
+  if (!includeOk) return false;
+  const excludes = rule.exclude || [];
+  if (excludes.some((item) => tagMatches(gallery, item))) return false;
+  return true;
+}
+
+function galleryGlobalId(gallery: Gallery, fallbackId?: number): string {
+  if (gallery.globalId) return gallery.globalId;
+  const scanlator = gallery.scanlator;
+  if (scanlator === "3hentai" || scanlator === "doujins" || scanlator === "hitomi") {
+    return makeGlobalId(scanlator, gallery.id);
+  }
+  return makeGlobalId("nhentai", fallbackId ?? gallery.id);
+}
+
+/**
+ * Évaluation lazy : favoris + bibliothèque locale (pas de crawl réseau).
+ */
+export function resolveCollectionMembers(
+  collection: LibraryCollection,
+  favorites: Gallery[],
+  localEntries: LocalLibraryEntry[]
+): string[] {
+  if (collection.mode !== "smart" || !collection.rule) {
+    return [...collection.globalIds];
+  }
+  const ids = new Set<string>();
+  try {
+    for (const g of favorites) {
+      if (galleryMatchesSmartRule(g, collection.rule)) {
+        ids.add(galleryGlobalId(g));
+      }
+    }
+    for (const entry of localEntries) {
+      if (galleryMatchesSmartRule(entry.gallery, collection.rule)) {
+        ids.add(galleryGlobalId(entry.gallery, entry.galleryId));
+      }
+    }
+  } catch (err) {
+    console.warn("[libraryCollections] smart eval failed:", err);
+  }
+  return [...ids];
 }
 
 export function useLibraryCollections(): {

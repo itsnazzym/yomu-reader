@@ -15,11 +15,18 @@ const gradlew =
     : path.join(androidRoot, "gradlew");
 
 function run(cmd, args, opts = {}) {
-  const res = spawnSync(cmd, args, {
-    stdio: "inherit",
-    shell: process.platform === "win32",
-    ...opts,
-  });
+  // Windows : .bat via cmd.exe, sans `shell: true` (évite DEP0190).
+  const res =
+    process.platform === "win32"
+      ? spawnSync("cmd.exe", ["/d", "/s", "/c", cmd, ...args], {
+          stdio: "inherit",
+          windowsHide: true,
+          ...opts,
+        })
+      : spawnSync(cmd, args, {
+          stdio: "inherit",
+          ...opts,
+        });
   if (res.status !== 0) {
     process.exit(res.status ?? 1);
   }

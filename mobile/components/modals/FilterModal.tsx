@@ -555,6 +555,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     color: "#f3f4f6",
+    flexShrink: 0,
+    paddingRight: 4,
+    includeFontPadding: false,
   },
   sortSection: {
     paddingTop: 4,
@@ -566,6 +569,8 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     paddingHorizontal: 14,
     paddingVertical: 6,
+    flexShrink: 0,
+    paddingRight: 4,
   },
   sortModeRow: {
     flexDirection: "row",
@@ -585,6 +590,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     color: "#d1d5db",
+    flexShrink: 0,
+    paddingRight: 3,
+    includeFontPadding: false,
   },
   periodRow: {
     flexDirection: "row",
@@ -604,6 +612,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     color: "#d1d5db",
+    flexShrink: 0,
+    paddingRight: 2,
+    includeFontPadding: false,
   },
   submenuHeader: {
     flexDirection: "row",

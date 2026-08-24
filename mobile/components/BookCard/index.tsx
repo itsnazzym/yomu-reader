@@ -163,10 +163,12 @@ export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
 
         {/* Bottom Technical Spec Bar */}
         <View style={styles.specBar}>
-          <View style={styles.specBadge}>
-            <IconBook2 size={10} color="#d1d5db" strokeWidth={1.8} style={{ marginRight: 3 }} />
-            <Text style={styles.specText}>{numPages}p</Text>
-          </View>
+          {numPages > 0 ? (
+            <View style={styles.specBadge}>
+              <IconBook2 size={10} color="#d1d5db" strokeWidth={1.8} style={{ marginRight: 3 }} />
+              <Text style={styles.specText}>{numPages}p</Text>
+            </View>
+          ) : null}
           {lang && (
             <View style={[styles.specBadge, styles.langBadge]}>
               <Text style={styles.langText}>{lang}</Text>
@@ -319,6 +321,9 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#f3f4f6",
     lineHeight: 15,
+    flexShrink: 0,
+    paddingRight: 2,
+    includeFontPadding: false,
   },
   tagsRow: {
     flexDirection: "row",
@@ -337,6 +342,7 @@ const styles = StyleSheet.create({
     fontSize: 9.5,
     fontWeight: "600",
     flexShrink: 0,
+    paddingRight: 2,
   },
   extraTagChip: {
     paddingHorizontal: 4,

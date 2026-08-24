@@ -16,6 +16,7 @@
 import { Platform } from "react-native";
 import {
   extractMatches,
+  extractAttribute,
   stripTags,
   decodeEntities,
   sanitizeMediaUrl,
@@ -32,6 +33,7 @@ import {
   type SourceTaxonomyItem,
 } from "./types";
 import { recordObservedTags } from "../sourceTaxonomyStore";
+import { probeAdapterHealth } from "./probeHealth";
 
 const BASE = "https://doujins.com";
 const TIMEOUT_MS = 12000;
@@ -205,13 +207,20 @@ export function parseDoujinsListCards(html: string): SourceGalleryCard[] {
     const start = match.index + match[0].length;
     match = hrefRe.exec(html);
     if (!nativeId || seen.has(nativeId) || !/-\d+$/.test(path)) continue;
+    // Taxonomie (/tags/, /artists/…) n'est pas une galerie.
+    if (/^\/(tags|artists|series|groups|characters)\//i.test(path)) continue;
     seen.add(nativeId);
     const window = html.slice(start, start + 1800);
     const imgM = window.match(/<img[^>]+src="([^"]+)"/i);
-    const titleM = window.match(/<div class="text">([\s\S]*?)<\/div>/);
-    const title = titleM
-      ? stripTags(titleM[1])
-      : `Doujins #${nativeId}`;
+    const textM = window.match(/<div class="text">([\s\S]*?)<\/div>/);
+    const titleBlockM = window.match(/<div class="title">([\s\S]*?)<\/div>/);
+    let title = textM ? stripTags(textM[1]) : "";
+    if (!title && titleBlockM) {
+      title = stripTags(titleBlockM[1]);
+    }
+    if (!title) {
+      title = humanizeDoujinsSlug(path, nativeId);
+    }
     const coverUrl = imgM ? sanitizeMediaUrl(imgM[1]) : "";
     remember(nativeId, { path, title, coverUrl, tags: [] });
     cards.push({
@@ -221,6 +230,18 @@ export function parseDoujinsListCards(html: string): SourceGalleryCard[] {
     });
   }
   return cards;
+}
+
+/** Titre lisible depuis le slug d'URL si le HTML n'en fournit pas. */
+function humanizeDoujinsSlug(path: string, nativeId: string): string {
+  const segment = path.split("/").pop() || "";
+  const withoutId = segment.replace(new RegExp(`-${nativeId}$`), "");
+  const humanized = withoutId
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!humanized) return `Doujins #${nativeId}`;
+  return humanized.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 /** Item de la page /tags : href="/tags/<Nom>-<tag_id>" (+ query ?x=N). */
@@ -242,7 +263,33 @@ export function parseDoujinsTagsPage(html: string): SourceTaxonomyItem[] {
   return out;
 }
 
-function extractPageUrls(html: string): string[] {  const fromDataFile = extractMatches(
+function extractPageUrls(html: string): string[] {
+  // Nouveau DOM : <img class="doujin" data-file="…" data-thumb2="…">.
+  // Sans abonnement, data-file est vide et data-link="/subscribe".
+  const fromDoujinImgs = extractMatches(
+    html,
+    /<img\b[^>]*class="[^"]*doujin[^"]*"[^>]*>/gi
+  )
+    .map((m) => {
+      const tag = m[0];
+      const dataFile = extractAttribute(tag, "data-file");
+      if (dataFile && dataFile.trim()) {
+        return sanitizeMediaUrl(dataFile);
+      }
+      const thumb2 = extractAttribute(tag, "data-thumb2");
+      const thumb = extractAttribute(tag, "data-thumb");
+      const raw = thumb2 || thumb || "";
+      if (!raw) return "";
+      // t- / t2- = miniatures ; f- = image pleine (même token + signature).
+      return sanitizeMediaUrl(raw.replace(/\/t2?-/, "/f-"));
+    })
+    .filter((url): url is string => Boolean(url));
+
+  if (fromDoujinImgs.length > 0) {
+    return [...new Set(fromDoujinImgs)];
+  }
+
+  const fromDataFile = extractMatches(
     html,
     /<img\s+class="doujin[^"]*"[\s\S]{0,400}?data-file="(https:\/\/static\.doujins\.com\/[^"]+)"/g
   )
@@ -260,6 +307,15 @@ function extractPageUrls(html: string): string[] {  const fromDataFile = extract
   return previews;
 }
 
+function isDoujinsPaywalled(html: string): boolean {
+  return (
+    /data-link\s*=\s*["']\/subscribe["']/i.test(html) ||
+    (/class="[^"]*doujin[^"]*"/i.test(html) &&
+      /data-file\s*=\s*["']\s*["']/i.test(html) &&
+      !/data-file\s*=\s*["']https?:\/\//i.test(html))
+  );
+}
+
 export class DoujinsSource implements SourceAdapter {
   meta: SourceMeta = {
     id: "doujins",
@@ -275,6 +331,21 @@ export class DoujinsSource implements SourceAdapter {
     hasMore: boolean;
   }> {
     const query = stripNhentaiOperators(opts.query);
+    const sort = (opts.sort || "recent").toLowerCase();
+    const wantPopular =
+      sort === "popular" ||
+      sort === "popular-today" ||
+      sort === "popular-week" ||
+      sort === "popular-month";
+
+    // Popularité : /list?sort=popular|views (pas de pagination fiable).
+    if (wantPopular && !query) {
+      const sortParam = sort === "popular-today" ? "views" : "popular";
+      const url = `${BASE}/list?sort=${sortParam}`;
+      const html = await fetchHtml(url);
+      return { cards: parseDoujinsListCards(html), hasMore: false };
+    }
+
     if (query) {
       const url = `${BASE}/list?search=${encodeURIComponent(query)}&sort=newest`;
       const html = await fetchHtml(url);
@@ -309,6 +380,22 @@ export class DoujinsSource implements SourceAdapter {
     }
 
     const pageUrls = html ? extractPageUrls(html) : [];
+    const paywalled = html ? isDoujinsPaywalled(html) : false;
+    const expectedPages = cached?.numPages || 0;
+
+    // Sans abonnement Doujins ne sert qu'un aperçu (1 vignette) alors que
+    // objects_count peut afficher 20–50+ pages sur la carte.
+    if (paywalled && expectedPages > pageUrls.length) {
+      throw new Error(
+        "Doujins: lecture réservée aux abonnés (aperçu uniquement). Ouvre le titre sur doujins.com ou choisis une autre source."
+      );
+    }
+    if (!paywalled && expectedPages > 3 && pageUrls.length <= 1) {
+      throw new Error(
+        `Doujins: seulement ${pageUrls.length} page(s) extraite(s) sur ${expectedPages} attendues. Réessaie ou change de source.`
+      );
+    }
+
     const titleFromHtml =
       html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/) ||
       html.match(/<title>[^<]*?-\s*([^<]+?)\s+by\s+[^<]+<\/title>/) ||
@@ -401,6 +488,10 @@ export class DoujinsSource implements SourceAdapter {
     const tags = parseDoujinsTagsPage(html);
     if (tags.length === 0) throw new Error("Doujins /tags: aucun tag parsé");
     return tags;
+  }
+
+  async healthCheck() {
+    return probeAdapterHealth(this);
   }
 }
 

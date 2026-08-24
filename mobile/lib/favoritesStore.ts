@@ -106,7 +106,7 @@ export function isFavorite(id: number | string | GlobalGalleryId): boolean {
 }
 
 export async function toggleFavorite(
-  gallery: Gallery & { sourceName?: "nhentai" | "3hentai" | "doujins" }
+  gallery: Gallery & { sourceName?: "nhentai" | "3hentai" | "doujins" | "hitomi" }
 ) {
   await initFavorites();
   const sourceName = gallery.sourceName || splitGlobalId(String(gallery.id)).source;

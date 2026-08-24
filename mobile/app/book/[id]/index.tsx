@@ -27,6 +27,7 @@ import {
   IconPlayerPlay,
   IconPlus,
   IconMinus,
+  IconFolderPlus,
 } from "@tabler/icons-react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -39,7 +40,7 @@ import SmartImage from "@/components/SmartImage";
 import { CardPressable } from "@/components/ui/CardPressable";
 import { IconBtn } from "@/components/ui/IconBtn";
 import { useFavorites } from "@/lib/favoritesStore";
-import { useHistory } from "@/lib/historyStore";
+import { useHistory, findHistoryEntry } from "@/lib/historyStore";
 import { useTagFavs } from "@/lib/tagFavoritesStore";
 import { enqueueGalleries } from "@/lib/downloadQueueStore";
 import { RelatedRow } from "@/components/RelatedRow";
@@ -53,12 +54,20 @@ import { queryContainsTerm } from "@/lib/searchQuery";
 import { getSource } from "@/lib/sources/registry";
 import { sourceGalleryToGallery } from "@/lib/sources/galleryMapper";
 import type { SourceId } from "@/lib/sources/types";
+import { makeGlobalId } from "@/lib/sources/types";
+import { CollectionPickerModal } from "@/components/modals/CollectionPickerModal";
+import {
+  findDuplicateGroups,
+  galleryToDuplicateCandidate,
+  otherSourcesInGroup,
+} from "@/lib/duplicateMatch";
 
 export default function BookDetailScreen() {
-  const { id, src, title: titleParam } = useLocalSearchParams<{
+  const { id, src, title: titleParam, localId: localIdParam } = useLocalSearchParams<{
     id: string;
     src?: string;
     title?: string;
+    localId?: string;
   }>();
   const sourceId = (src as SourceId) || "nhentai";
   const isNhentai = sourceId === "nhentai";
@@ -66,7 +75,7 @@ export default function BookDetailScreen() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const { colors } = useTheme();
-  const { isFavorite, toggleFavorite } = useFavorites();
+  const { isFavorite, toggleFavorite, favorites } = useFavorites();
   const { history } = useHistory();
   const { isFav: isTagFav, toggleFav: toggleTagFav } = useTagFavs();
   const { isLoggedIn } = useAccount();
@@ -89,6 +98,7 @@ export default function BookDetailScreen() {
   const [accountFav, setAccountFav] = useState(false);
   const [accountFavLoading, setAccountFavLoading] = useState(false);
   const [appendNotice, setAppendNotice] = useState<string | null>(null);
+  const [collectionOpen, setCollectionOpen] = useState(false);
 
   // Fermeture animée avant navigation (même pattern que le panneau des
   // recommandations) : fondu de l'écran, puis navigation au callback de fin.
@@ -328,6 +338,21 @@ export default function BookDetailScreen() {
 
   const thumbCols = 3;
   const thumbGap = 8;
+  const bookGlobalId =
+    gallery.globalId || makeGlobalId(sourceId, gallery.id || id || 0);
+  const duplicateSources = (() => {
+    try {
+      const candidates = [
+        galleryToDuplicateCandidate(gallery),
+        ...favorites.map(galleryToDuplicateCandidate),
+      ];
+      const groups = findDuplicateGroups(candidates);
+      return otherSourcesInGroup(bookGlobalId, groups);
+    } catch {
+      return [] as string[];
+    }
+  })();
+
   const thumbWidth = Math.floor((width - 32 - thumbGap * (thumbCols - 1)) / thumbCols);
 
   const mainTitle =
@@ -336,9 +361,16 @@ export default function BookDetailScreen() {
     gallery.title?.japanese ||
     (typeof gallery.title === "string" ? gallery.title : `Gallery #${gallery.id}`);
 
-  const historyEntry = history.find(
-    (entry) => Number(entry.gallery?.id) === Number(gallery.id)
-  );
+  const historyEntry =
+    findHistoryEntry({
+      id: gallery.id,
+      source: sourceId,
+      localId: typeof localIdParam === "string" && localIdParam ? localIdParam : undefined,
+    }) ||
+    // Fallback: ancienne entrée sans source (nhentai uniquement).
+    (sourceId === "nhentai"
+      ? history.find((entry) => Number(entry.gallery?.id) === Number(gallery.id) && !entry.source)
+      : undefined);
   const historyTotal =
     historyEntry?.totalPages ||
     gallery.num_pages ||
@@ -465,22 +497,63 @@ export default function BookDetailScreen() {
             style={[styles.primaryReadBtn, { backgroundColor: colors.accent }]}
           >
             <View style={styles.btnInner}>
-              <IconBook2 size={20} color="#fff" strokeWidth={1.8} />
-              <Text style={styles.primaryReadBtnText}>{readLabel}</Text>
+              <IconBook2 size={18} color="#fff" strokeWidth={1.8} style={{ flexShrink: 0 }} />
+              <Text
+                style={styles.primaryReadBtnText}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
+              >
+                {readLabel}
+              </Text>
             </View>
           </CardPressable>
 
-          <CardPressable
-            onPress={handleDownload}
-            radius={14}
-            style={[styles.secondaryBtn, { backgroundColor: colors.page, borderColor: colors.tagBg }]}
-          >
-            <View style={styles.btnInner}>
-              <IconDownload size={18} color={colors.accent} strokeWidth={2} />
-              <Text style={[styles.secondaryBtnText, { color: colors.txt }]}>Télécharger</Text>
-            </View>
-          </CardPressable>
+          <View style={styles.secondaryActionsRow}>
+            <CardPressable
+              onPress={handleDownload}
+              radius={14}
+              style={[styles.secondaryBtn, { backgroundColor: colors.page, borderColor: colors.tagBg }]}
+            >
+              <View style={styles.btnInner}>
+                <IconDownload size={16} color={colors.accent} strokeWidth={2} style={{ flexShrink: 0 }} />
+                <Text style={[styles.secondaryBtnText, { color: colors.txt }]} numberOfLines={1}>
+                  Télécharger
+                </Text>
+              </View>
+            </CardPressable>
+
+            <CardPressable
+              onPress={() => {
+                lightTap();
+                setCollectionOpen(true);
+              }}
+              radius={14}
+              style={[styles.secondaryBtn, { backgroundColor: colors.page, borderColor: colors.tagBg }]}
+              accessibilityLabel="Ajouter à une collection"
+            >
+              <View style={styles.btnInner}>
+                <IconFolderPlus size={16} color={colors.accent} strokeWidth={2} style={{ flexShrink: 0 }} />
+                <Text style={[styles.secondaryBtnText, { color: colors.txt }]} numberOfLines={1}>
+                  Collection
+                </Text>
+              </View>
+            </CardPressable>
+          </View>
         </View>
+
+        {duplicateSources.length > 0 ? (
+          <View
+            style={[
+              styles.dupeBadge,
+              { backgroundColor: colors.accent + "22", borderColor: colors.accent },
+            ]}
+          >
+            <Text style={[styles.dupeBadgeText, { color: colors.accent }]}>
+              Aussi sur {duplicateSources.join(", ")}
+            </Text>
+          </View>
+        ) : null}
 
         {/* Tag Categories */}
         <View style={[styles.tagsSection, { backgroundColor: colors.page, borderColor: colors.tagBg }]}>
@@ -521,9 +594,11 @@ export default function BookDetailScreen() {
                         <Text style={[styles.tagChipText, { color: colors.tagText }]}>
                           {t.name}
                         </Text>
-                        <Text style={[styles.tagChipCount, { color: colors.sub }]}>
-                          {t.count > 999 ? `${(t.count / 1000).toFixed(0)}k` : t.count}
-                        </Text>
+                        {typeof t.count === "number" && t.count > 0 ? (
+                          <Text style={[styles.tagChipCount, { color: colors.sub }]}>
+                            {t.count > 999 ? `${(t.count / 1000).toFixed(0)}k` : t.count}
+                          </Text>
+                        ) : null}
                       </TouchableOpacity>
 
                       {/* Bouton +/- pour ajouter/retirer de la recherche sans quitter la page */}
@@ -793,6 +868,13 @@ export default function BookDetailScreen() {
         }
       />
 
+      <CollectionPickerModal
+        visible={collectionOpen}
+        onClose={() => setCollectionOpen(false)}
+        globalId={bookGlobalId}
+        title={mainTitle}
+      />
+
       {/* Voile de fermeture : fondu de l'écran avant la navigation par tag */}
       <Animated.View
         pointerEvents="none"
@@ -847,7 +929,14 @@ const styles = StyleSheet.create({
   },
   coverImage: { width: "100%", height: "100%" },
   heroMeta: { flex: 1, justifyContent: "space-between" },
-  titlePretty: { fontSize: 15, fontWeight: "900", lineHeight: 20, color: "#f3f4f6" },
+  titlePretty: {
+    fontSize: 15,
+    fontWeight: "900",
+    lineHeight: 20,
+    color: "#f3f4f6",
+    flexShrink: 0,
+    paddingRight: 4,
+  },
   titleJap: { fontSize: 11, marginTop: 4, lineHeight: 15, color: "#9ca3af" },
   statsRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 10 },
   statChip: {
@@ -861,18 +950,69 @@ const styles = StyleSheet.create({
     backgroundColor: "#161622",
     gap: 4,
   },
-  statText: { fontSize: 11, fontWeight: "700" },
+  statText: {
+    fontSize: 11,
+    fontWeight: "700",
+    flexShrink: 0,
+    paddingRight: 2,
+    includeFontPadding: false,
+  },
   actionsContainer: {
-    flexDirection: "row",
     gap: 10,
     paddingHorizontal: 16,
     marginTop: 16,
   },
-  primaryReadBtn: { flex: 1, paddingVertical: 13, borderRadius: 12 },
-  secondaryBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, borderWidth: 1 },
-  btnInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
-  primaryReadBtnText: { color: "#fff", fontWeight: "800", fontSize: 13.5 },
-  secondaryBtnText: { fontWeight: "700", fontSize: 13.5 },
+  primaryReadBtn: {
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    minHeight: 48,
+    justifyContent: "center",
+  },
+  secondaryActionsRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  secondaryBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    minHeight: 46,
+    justifyContent: "center",
+  },
+  btnInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    flexShrink: 0,
+  },
+  primaryReadBtnText: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 14,
+    flexShrink: 0,
+    paddingRight: 6,
+    includeFontPadding: false,
+  },
+  secondaryBtnText: {
+    fontWeight: "700",
+    fontSize: 13,
+    flexShrink: 0,
+    paddingRight: 4,
+    includeFontPadding: false,
+  },
+  dupeBadge: {
+    marginHorizontal: 16,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  dupeBadgeText: { fontSize: 12, fontWeight: "700" },
   tagsSection: {
     marginHorizontal: 16,
     marginTop: 20,
@@ -880,16 +1020,28 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
   },
-  sectionTitle: { fontSize: 16, fontWeight: "800", marginBottom: 12 },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    marginBottom: 12,
+    flexShrink: 0,
+    paddingRight: 4,
+  },
   tagCategoryRow: { marginBottom: 12 },
-  tagCategoryName: { fontSize: 12, fontWeight: "700", marginBottom: 6 },
+  tagCategoryName: {
+    fontSize: 12,
+    fontWeight: "700",
+    marginBottom: 6,
+    flexShrink: 0,
+    paddingRight: 4,
+  },
   tagChipsWrap: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   tagChipContainer: {
     flexDirection: "row",
     alignItems: "center",
     borderRadius: 8,
     borderWidth: 1,
-    overflow: "hidden",
+    overflow: "visible",
     flexShrink: 0,
     maxWidth: "100%",
   },
@@ -899,8 +1051,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 5,
     gap: 6,
-    flexShrink: 1,
-    minWidth: 0,
+    flexShrink: 0,
   },
   tagChipActionBtn: {
     paddingHorizontal: 6,
@@ -911,8 +1062,20 @@ const styles = StyleSheet.create({
     borderLeftColor: "rgba(255,255,255,0.08)",
     flexShrink: 0,
   },
-  tagChipText: { fontSize: 12, fontWeight: "600", flexShrink: 1 },
-  tagChipCount: { fontSize: 10, fontWeight: "700" },
+  tagChipText: {
+    fontSize: 12,
+    fontWeight: "600",
+    flexShrink: 0,
+    paddingRight: 4,
+    includeFontPadding: false,
+  },
+  tagChipCount: {
+    fontSize: 11,
+    fontWeight: "700",
+    flexShrink: 0,
+    paddingRight: 2,
+    includeFontPadding: false,
+  },
   commentsSection: {
     marginHorizontal: 16,
     marginTop: 16,

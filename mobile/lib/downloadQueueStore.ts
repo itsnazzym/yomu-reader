@@ -449,7 +449,9 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
               ? "https://doujins.com/"
               : item.src === "3hentai"
                 ? "https://3hentai.net/"
-                : "https://nhentai.net/",
+                : item.src === "hitomi"
+                  ? "https://hitomi.la/"
+                  : "https://nhentai.net/",
           "User-Agent":
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
         };

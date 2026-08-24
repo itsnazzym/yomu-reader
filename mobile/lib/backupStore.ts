@@ -63,6 +63,8 @@ export interface BackupData {
   privacy?: Record<string, unknown>;
   libraryCollections?: Record<string, unknown>[];
   followsFeed?: Record<string, unknown>;
+  localAvatarBase64?: string;
+  localAvatarMime?: string;
 }
 
 const STORAGE_KEYS = {
@@ -180,6 +182,18 @@ function isValidBackupData(value: unknown): value is BackupData {
     return false;
   }
   if (value.followsFeed !== undefined && !isPlainObject(value.followsFeed)) return false;
+  if (
+    value.localAvatarBase64 !== undefined &&
+    typeof value.localAvatarBase64 !== "string"
+  ) {
+    return false;
+  }
+  if (
+    value.localAvatarMime !== undefined &&
+    typeof value.localAvatarMime !== "string"
+  ) {
+    return false;
+  }
   return true;
 }
 
@@ -210,6 +224,19 @@ export async function createBackupPayload(): Promise<BackupData> {
     AsyncStorage.getItem(STORAGE_KEYS.followsFeed),
   ]);
 
+  let localAvatarBase64: string | undefined;
+  let localAvatarMime: string | undefined;
+  try {
+    const { readLocalAvatarBase64 } = await import("./avatarPersist");
+    const avatar = await readLocalAvatarBase64();
+    if (avatar) {
+      localAvatarBase64 = avatar.base64;
+      localAvatarMime = avatar.mime;
+    }
+  } catch (err: unknown) {
+    console.warn("[backup] Failed to include local avatar:", err);
+  }
+
   return {
     version: CURRENT_BACKUP_VERSION,
     exportedAt: new Date().toISOString(),
@@ -224,6 +251,8 @@ export async function createBackupPayload(): Promise<BackupData> {
     privacy: parseJsonRecord(privacyRaw),
     libraryCollections: parseJsonRecordArray(collectionsRaw),
     followsFeed: parseJsonRecord(followsRaw),
+    localAvatarBase64,
+    localAvatarMime,
   };
 }
 
@@ -331,6 +360,19 @@ export async function restoreBackupFromJson(jsonString: string): Promise<{
     }
 
     await Promise.all(tasks);
+
+    if (typeof data.localAvatarBase64 === "string" && data.localAvatarBase64.trim() !== "") {
+      try {
+        const { writeLocalAvatarFromBase64 } = await import("./avatarPersist");
+        const { saveAccountSession } = await import("./accountStore");
+        const mime =
+          typeof data.localAvatarMime === "string" ? data.localAvatarMime : "image/png";
+        const uri = await writeLocalAvatarFromBase64(data.localAvatarBase64, mime);
+        await saveAccountSession({ localAvatarUri: uri });
+      } catch (err: unknown) {
+        console.warn("[backup] Failed to restore local avatar:", err);
+      }
+    }
 
     await Promise.all([
       initFavorites(true),

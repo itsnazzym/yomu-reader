@@ -32,7 +32,7 @@ export function sourceGalleryToGallery(
       type: (t.type || "tag") as TagType,
       name: t.name,
       url: "",
-      count: 0,
+      count: typeof t.count === "number" ? t.count : 0,
     })),
     num_pages: sg.numPages,
     num_favorites: 0,

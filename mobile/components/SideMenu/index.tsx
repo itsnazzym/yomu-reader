@@ -9,12 +9,12 @@ import {
   Linking,
 } from "react-native";
 import {
-  IconBook2,
   IconUser,
   IconDownload,
   IconBookmark,
   IconHeart,
   IconClock,
+  IconFolder,
   IconTag,
   IconSparkles,
   IconCloudDownload,
@@ -34,6 +34,7 @@ import { useTheme } from "@/lib/ThemeContext";
 import { getRandomGallery } from "@/lib/api/nhentai";
 import { SignInModal } from "@/components/modals/SignInModal";
 import { useAccount } from "@/lib/accountStore";
+import { displayAvatarUri } from "@/lib/avatarPersist";
 import { resolveAvatarUrl } from "@/app/profile";
 
 interface SideMenuProps {
@@ -47,6 +48,7 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
   const insets = useSafeAreaInsets();
   const { session, isLoggedIn } = useAccount();
   const [randomLoading, setRandomLoading] = useState(false);
+  const menuAvatarUri = displayAvatarUri(session);
   const [isSignInOpen, setIsSignInOpen] = useState(false);
 
   const menuItems = [
@@ -64,6 +66,7 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
       },
     },
     { label: "Téléchargements", icon: IconDownload, route: "/downloaded", hasArrow: true },
+    { label: "Étagères", icon: IconFolder, route: "/collections", hasArrow: true },
     { label: "Favoris locaux", icon: IconBookmark, route: "/favorites", hasArrow: true },
     {
       label: isLoggedIn ? `Favoris Cloud (${session.cloudFavoritesCount || 0})` : "Favoris Cloud",
@@ -132,11 +135,15 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
               { backgroundColor: colors.page, borderColor: colors.tagBg, borderWidth: 1 },
             ]}
           >
-            <IconBook2 size={20} color={colors.accent} strokeWidth={1.8} />
+            <Image
+              source={require("../../assets/images/icon.jpg")}
+              style={{ width: 20, height: 20, borderRadius: 5 }}
+              contentFit="cover"
+            />
           </View>
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <Text style={styles.brandTitle}>nHentai</Text>
+              <Text style={styles.brandTitle}>Yomu</Text>
               <View style={styles.networkDiodeWrap}>
                 <View style={styles.networkDiode} />
                 <Text style={styles.networkDiodeText}>Photon</Text>
@@ -263,9 +270,11 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
         >
           <View style={styles.signInContent}>
             {isLoggedIn ? (
-              session.profile?.avatar_url ? (
+              menuAvatarUri ? (
                 <Image
-                  source={{ uri: resolveAvatarUrl(session.profile.avatar_url, session.username) }}
+                  source={{
+                    uri: resolveAvatarUrl(menuAvatarUri, session.username),
+                  }}
                   style={{ width: 22, height: 22, borderRadius: 11 }}
                   contentFit="cover"
                 />
@@ -373,9 +382,9 @@ const styles = StyleSheet.create({
   },
   menuText: {
     flex: 1,
-    flexShrink: 1,
-    minWidth: 0,
+    flexShrink: 0,
     fontSize: 13.5,
+    paddingRight: 4,
   },
   luckySection: {
     marginTop: 14,
@@ -397,6 +406,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "900",
     letterSpacing: 0.8,
+    flexShrink: 0,
+    paddingRight: 4,
+    includeFontPadding: false,
   },
   sparkleFloral: {
     color: "#1c191a",

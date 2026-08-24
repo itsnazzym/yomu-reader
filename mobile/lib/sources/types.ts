@@ -7,7 +7,7 @@
  * des ids natifs nus.
  */
 
-export type SourceId = "nhentai" | "3hentai" | "doujins";
+export type SourceId = "nhentai" | "3hentai" | "doujins" | "hitomi";
 
 /** Identifiant global unique d'une galerie, toutes sources confondues. */
 export type GlobalGalleryId = string;
@@ -30,7 +30,7 @@ export function splitGlobalId(id: GlobalGalleryId): {
   }
   const source = id.slice(0, idx);
   // Un préfixe inconnu retombe sur nhentai plutôt que de crasher l'app.
-  if (!["nhentai", "3hentai", "doujins"].includes(source)) {
+  if (!["nhentai", "3hentai", "doujins", "hitomi"].includes(source)) {
     return { source: "nhentai", nativeId: id };
   }
   return { source: source as SourceId, nativeId: id.slice(idx + 1) };
@@ -52,12 +52,16 @@ export interface SourceSearchOptions {
   page?: number;
   /** Sémantique par source ; défaut "recent". */
   sort?: string;
+  /** Filtre langue séparé de la requête ("english" | "japanese" | "all" | slug). */
+  language?: string;
 }
 
 export interface SourceTag {
   name: string;
   /** Type libre selon la source ("artist", "tag", "language"...). */
   type?: string;
+  /** Compteur optionnel (souvent absent hors nHentai). */
+  count?: number;
 }
 
 /** Carte légère pour les listings. */
@@ -105,6 +109,11 @@ export interface SourceAdapter {
    * alors sur la DB statique nhentai.
    */
   getTags?(): Promise<SourceTaxonomyItem[]>;
+  /**
+   * Ping léger (search → getGallery → HEAD). Absent = sonde générique
+   * via probeAdapterHealth.
+   */
+  healthCheck?(): Promise<{ ok: boolean; latencyMs: number; error?: string }>;
 }
 
 /** Entrée de la liste de tags native d'une source. */

@@ -28,6 +28,15 @@ export interface HistoryEntry {
   lastPage: number;
   totalPages: number;
   readAt: number;
+  /** Source plateforme (nhentai | 3hentai | doujins | …) pour la reprise. */
+  source?: string;
+  /** Dossier local NHAppAndroid/<localId>/ si lecture offline. */
+  localId?: string;
+}
+
+export interface RecordProgressOptions {
+  source?: string;
+  localId?: string;
 }
 
 let historyList: HistoryEntry[] = [];
@@ -147,7 +156,26 @@ function normalizeEntry(raw: unknown): HistoryEntry | null {
     lastPage: Math.max(0, Number(raw.lastPage) || 0),
     totalPages: Math.max(1, Number(raw.totalPages) || 1),
     readAt: Number(raw.readAt) || Date.now(),
+    source: typeof raw.source === "string" && raw.source ? raw.source : undefined,
+    localId: typeof raw.localId === "string" && raw.localId ? raw.localId : undefined,
   };
+}
+
+function entryMatches(
+  entry: HistoryEntry,
+  targetId: number,
+  opts?: RecordProgressOptions
+): boolean {
+  if (opts?.localId) {
+    return entry.localId === opts.localId;
+  }
+  if (opts?.source) {
+    return (
+      Number(entry.gallery?.id) === targetId &&
+      (entry.source === opts.source || (!entry.source && opts.source === "nhentai"))
+    );
+  }
+  return Number(entry.gallery?.id) === targetId && !entry.localId;
 }
 
 function persistHistory(): Promise<void> {
@@ -223,40 +251,70 @@ export function getHistory(): HistoryEntry[] {
 export async function recordReadingProgress(
   gallery: Gallery | HistoryGallery,
   page: number,
-  totalPages?: number
+  totalPages?: number,
+  opts?: RecordProgressOptions
 ): Promise<void> {
   if (isIncognito()) return;
   await initHistory();
   const preview = toHistoryGallery(gallery);
   const targetId = Number(preview.id);
-  if (!Number.isFinite(targetId)) return;
+  if (!Number.isFinite(targetId) && !opts?.localId) return;
 
   const lastPage = Math.max(0, page);
-  const nextTotal =
-    totalPages || preview.num_pages || 1;
-  const existingIndex = historyList.findIndex(
-    (entry) => Number(entry.gallery?.id) === targetId
+  const nextTotal = totalPages || preview.num_pages || 1;
+  const source =
+    opts?.source ||
+    (typeof preview.scanlator === "string" && preview.scanlator ? preview.scanlator : undefined);
+  const localId = opts?.localId;
+  const matchOpts: RecordProgressOptions = { source, localId };
+
+  const existingIndex = historyList.findIndex((entry) =>
+    entryMatches(entry, targetId, matchOpts)
   );
   const isNew = existingIndex < 0;
+  const existing = existingIndex >= 0 ? historyList[existingIndex] : undefined;
 
   if (
     existingIndex === 0 &&
-    historyList[0].lastPage === lastPage &&
-    historyList[0].totalPages === nextTotal
+    existing &&
+    existing.lastPage === lastPage &&
+    existing.totalPages === nextTotal &&
+    existing.source === source &&
+    existing.localId === localId
   ) {
     return;
   }
 
-  const remaining = historyList.filter((entry) => Number(entry.gallery?.id) !== targetId);
+  const remaining = historyList.filter(
+    (entry) => !entryMatches(entry, targetId, matchOpts)
+  );
   const entry: HistoryEntry = {
     gallery: preview,
     lastPage,
     totalPages: nextTotal,
     readAt: Date.now(),
+    source,
+    localId,
   };
   historyList = [entry, ...remaining].slice(0, 200);
   schedulePersist();
   scheduleNotify(isNew);
+}
+
+/** Retrouve une entrée par localId ou (source + id). */
+export function findHistoryEntry(opts: {
+  id?: number | string;
+  source?: string;
+  localId?: string;
+}): HistoryEntry | undefined {
+  if (opts.localId) {
+    return historyList.find((entry) => entry.localId === opts.localId);
+  }
+  const targetId = Number(opts.id);
+  if (!Number.isFinite(targetId)) return undefined;
+  return historyList.find((entry) =>
+    entryMatches(entry, targetId, { source: opts.source })
+  );
 }
 
 export async function clearHistory(): Promise<void> {

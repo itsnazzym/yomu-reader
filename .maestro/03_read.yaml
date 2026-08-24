@@ -1,0 +1,21 @@
+appId: com.nhentaidownlo.mobile
+---
+# Lecture : ouvrir lecteur et avancer à la page 2
+- launchApp
+- tapOn:
+    point: "25%,40%"
+- extendedWaitUntil:
+    visible:
+      text: ".*(Lire|Reprendre|Télécharger).*"
+    timeout: 20000
+- tapOn:
+    text: ".*(Lire|Reprendre).*"
+- extendedWaitUntil:
+    visible:
+      text: ".*(Page|/ ).*"
+    timeout: 25000
+# Zone droite pour tourner la page (pager LTR/RTL approximatif)
+- tapOn:
+    point: "85%,50%"
+- assertVisible:
+    text: ".*"

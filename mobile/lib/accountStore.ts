@@ -23,6 +23,7 @@ import {
 } from "./api/v2/config";
 import type { PowProgress } from "./api/v2/config";
 import { syncOnlineFavoritesFullOnLaunch } from "./onlineFavoritesStartupSync";
+import { persistLocalAvatar } from "./avatarPersist";
 
 const ACCOUNT_KEY = "@nhentai_account_session_v1";
 
@@ -53,6 +54,8 @@ export interface AccountSession {
   cloudFavoritesCount?: number;
   profile?: UserProfile;
   comments?: UserComment[];
+  /** Sandbox file:// avatar; never overwritten by getMe(). */
+  localAvatarUri?: string;
 }
 
 let sessionState: AccountSession = {
@@ -86,6 +89,10 @@ function sanitizeAccountMetadata(value: unknown): AccountSession {
         ? (raw.profile as UserProfile)
         : undefined,
     comments: Array.isArray(raw.comments) ? (raw.comments as UserComment[]) : undefined,
+    localAvatarUri:
+      typeof raw.localAvatarUri === "string" && raw.localAvatarUri.trim() !== ""
+        ? raw.localAvatarUri
+        : undefined,
   };
 }
 
@@ -183,8 +190,12 @@ export async function logoutAccount() {
   try {
     await v2Logout();
   } catch {}
-  sessionState = { isLoggedIn: false };
-  await writes.enqueue(() => AsyncStorage.removeItem(ACCOUNT_KEY));
+  const keptLocalAvatar = sessionState.localAvatarUri;
+  sessionState = {
+    isLoggedIn: false,
+    localAvatarUri: keptLocalAvatar,
+  };
+  await writes.enqueue(() => AsyncStorage.setItem(ACCOUNT_KEY, JSON.stringify(sessionState)));
   notify();
 }
 
@@ -339,28 +350,60 @@ export async function updateUserAvatar(
   avatarUrl: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const updatedProfile: UserProfile = {
+    const trimmed = (avatarUrl || "").trim();
+    const baseProfile: UserProfile = {
       ...(sessionState.profile || { username: sessionState.username || "User" }),
-      avatar_url: avatarUrl,
     };
 
-    await saveAccountSession({
-      profile: updatedProfile,
-    });
-
-    // Try to sync with remote server if it is an HTTP URL
-    if (sessionState.isLoggedIn && /^https?:\/\//i.test(avatarUrl)) {
-      try {
-        await getAuthStorageReady();
-        if (await hasSession()) {
-          await updateProfile({ avatar_url: avatarUrl }).catch(() => {});
-        }
-      } catch {}
+    if (!trimmed) {
+      await saveAccountSession({
+        localAvatarUri: undefined,
+        profile: {
+          ...baseProfile,
+          avatar_url: undefined,
+        },
+      });
+      return { success: true };
     }
 
-    return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err?.message || "Erreur de mise à jour de l'avatar." };
+    if (/^(file|content):/i.test(trimmed)) {
+      const sandboxUri = await persistLocalAvatar(trimmed);
+      await saveAccountSession({
+        localAvatarUri: sandboxUri,
+        profile: baseProfile,
+      });
+      return { success: true };
+    }
+
+    if (/^https?:\/\//i.test(trimmed)) {
+      const updatedProfile: UserProfile = {
+        ...baseProfile,
+        avatar_url: trimmed,
+      };
+      await saveAccountSession({
+        localAvatarUri: undefined,
+        profile: updatedProfile,
+      });
+
+      if (sessionState.isLoggedIn) {
+        try {
+          await getAuthStorageReady();
+          if (await hasSession()) {
+            await updateProfile({ avatar_url: trimmed }).catch(() => {});
+          }
+        } catch {
+          // Local preset still applies even if remote sync fails.
+        }
+      }
+
+      return { success: true };
+    }
+
+    return { success: false, error: "URI d'avatar non prise en charge." };
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error ? err.message : "Erreur de mise à jour de l'avatar.";
+    return { success: false, error: message };
   }
 }
 

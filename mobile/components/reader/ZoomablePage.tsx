@@ -6,8 +6,11 @@ import Animated, {
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
+  withSpring,
   withTiming,
 } from "react-native-reanimated";
+
+const SNAP_SPRING = { damping: 22, stiffness: 220, mass: 0.7 } as const;
 
 export interface ZoomablePageProps {
   children: React.ReactNode;
@@ -92,6 +95,17 @@ export function ZoomablePage({
     translateY.value = clamp(translateY.value, -extraY, extraY);
   };
 
+  /** Spring snap vers les bords après pan/pinch (clamp animé). */
+  const springSnapToEdges = (): void => {
+    "worklet";
+    const extraX = Math.max(0, (boxW.value * (scale.value - 1)) / 2);
+    const extraY = Math.max(0, (boxH.value * (scale.value - 1)) / 2);
+    const targetX = clamp(translateX.value, -extraX, extraX);
+    const targetY = clamp(translateY.value, -extraY, extraY);
+    translateX.value = withSpring(targetX, SNAP_SPRING);
+    translateY.value = withSpring(targetY, SNAP_SPRING);
+  };
+
   const pinch = Gesture.Pinch()
     .enabled(enabled && pinchEnabled)
     .onBegin(() => {
@@ -109,13 +123,13 @@ export function ZoomablePage({
     })
     .onEnd(() => {
       if (scale.value <= 1.02) {
-        scale.value = withTiming(1, { duration: 140 });
-        translateX.value = withTiming(0, { duration: 140 });
-        translateY.value = withTiming(0, { duration: 140 });
+        scale.value = withSpring(1, SNAP_SPRING);
+        translateX.value = withSpring(0, SNAP_SPRING);
+        translateY.value = withSpring(0, SNAP_SPRING);
         runOnJS(notifyZoom)(1);
         return;
       }
-      clampTranslation();
+      springSnapToEdges();
       runOnJS(notifyZoom)(scale.value);
     });
 
@@ -141,9 +155,11 @@ export function ZoomablePage({
     })
     .onEnd(() => {
       if (scale.value <= 1.02) {
-        translateX.value = withTiming(0, { duration: 120 });
-        translateY.value = withTiming(0, { duration: 120 });
+        translateX.value = withSpring(0, SNAP_SPRING);
+        translateY.value = withSpring(0, SNAP_SPRING);
+        return;
       }
+      springSnapToEdges();
     });
 
   const doubleTap = Gesture.Tap()

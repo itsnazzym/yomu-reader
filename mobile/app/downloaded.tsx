@@ -10,7 +10,7 @@ import {
   BackHandler,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
-import { IconCheck, IconTrash, IconX } from "@tabler/icons-react-native";
+import { IconCheck, IconTrash, IconX, IconFolderPlus } from "@tabler/icons-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useTheme } from "@/lib/ThemeContext";
@@ -23,8 +23,11 @@ import {
   formatLibrarySize,
 } from "@/lib/localLibrary";
 import { removeCompletedByLocalId } from "@/lib/downloadQueueStore";
+import { findHistoryEntry, getHistory, initHistory } from "@/lib/historyStore";
 import { AnimatedEmptyState } from "@/components/ui/AnimatedEmptyState";
 import { mediumImpact } from "@/lib/haptics";
+import { CollectionPickerModal } from "@/components/modals/CollectionPickerModal";
+import { makeGlobalId } from "@/lib/sources/types";
 
 const SELECTION_BAR_H = 52;
 
@@ -63,6 +66,7 @@ export default function DownloadedScreen() {
   const [loading, setLoading] = useState(true);
   const [selecting, setSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [collectionTarget, setCollectionTarget] = useState<LocalLibraryEntry | null>(null);
   const deletingRef = useRef(false);
 
   const numColumns = width >= 600 ? 3 : 2;
@@ -118,9 +122,18 @@ export default function DownloadedScreen() {
 
   const openLocalReader = useCallback(
     (localId: string) => {
-      router.push({
-        pathname: "/read",
-        params: { localId },
+      void initHistory().then(() => {
+        const hist =
+          findHistoryEntry({ localId }) ||
+          getHistory().find((entry) => entry.localId === localId);
+        const params: Record<string, string> = { localId };
+        if (hist && hist.lastPage > 0) {
+          params.initialPage = String(hist.lastPage);
+        }
+        router.push({
+          pathname: "/read",
+          params,
+        });
       });
     },
     [router]
@@ -248,14 +261,25 @@ export default function DownloadedScreen() {
           ) : null}
         </TouchableOpacity>
         {!selecting ? (
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => confirmDeleteOne(item)}
-            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-            style={styles.trashBtn}
-          >
-            <IconTrash size={15} color="#ff4757" strokeWidth={2} />
-          </TouchableOpacity>
+          <View style={styles.cardActions}>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => setCollectionTarget(item)}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              style={styles.folderBtn}
+              accessibilityLabel="Ajouter à une collection"
+            >
+              <IconFolderPlus size={15} color={colors.accent} strokeWidth={2} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => confirmDeleteOne(item)}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              style={styles.trashBtn}
+            >
+              <IconTrash size={15} color="#ff4757" strokeWidth={2} />
+            </TouchableOpacity>
+          </View>
         ) : null}
       </View>
     );
@@ -357,6 +381,19 @@ export default function DownloadedScreen() {
           </TouchableOpacity>
         </View>
       ) : null}
+
+      <CollectionPickerModal
+        visible={collectionTarget !== null}
+        onClose={() => setCollectionTarget(null)}
+        globalId={
+          collectionTarget
+            ? collectionTarget.gallery.globalId ||
+              makeGlobalId("nhentai", collectionTarget.galleryId)
+            : "nhentai:0"
+        }
+        localId={collectionTarget?.localId}
+        title={collectionTarget?.title}
+      />
     </View>
   );
 }
@@ -386,17 +423,27 @@ const styles = StyleSheet.create({
   centerContainer: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32 },
   loadingText: { marginTop: 14, fontSize: 13.5, fontWeight: "600" },
   trashBtn: {
-    position: "absolute",
-    right: 6,
-    bottom: 18,
     width: 32,
     height: 32,
     borderRadius: 16,
     backgroundColor: "rgba(9, 9, 14, 0.88)",
-    borderWidth: 0.8,
-    borderColor: "rgba(255, 255, 255, 0.12)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  folderBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(9, 9, 14, 0.88)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardActions: {
+    position: "absolute",
+    right: 6,
+    bottom: 18,
+    flexDirection: "row",
+    gap: 6,
     zIndex: 2,
   },
   selectOverlay: {

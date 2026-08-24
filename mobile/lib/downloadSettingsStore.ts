@@ -58,6 +58,7 @@ export const initDownloadSettings = createInitOnce(loadDownloadSettings);
 
 export async function updateDownloadSettings(patch: Partial<DownloadSettings>): Promise<void> {
   await initDownloadSettings();
+  const previousSafUri = currentSettings.safDirectoryUri;
   currentSettings = { ...currentSettings, ...patch };
   notify();
   const serialized = JSON.stringify(currentSettings);
@@ -67,6 +68,29 @@ export async function updateDownloadSettings(patch: Partial<DownloadSettings>): 
       await AsyncStorage.setItem(FOLDER_PROMPTED_KEY, "true");
     }
   });
+
+  const nextSafUri = currentSettings.safDirectoryUri;
+  if (
+    nextSafUri &&
+    nextSafUri !== previousSafUri &&
+    (patch.safDirectoryUri !== undefined || patch.mode === "saf")
+  ) {
+    void restoreAvatarAfterSafPick(nextSafUri);
+  }
+}
+
+async function restoreAvatarAfterSafPick(treeUri: string): Promise<void> {
+  try {
+    const { restoreLocalAvatarFromSaf } = await import("./avatarPersist");
+    const { getAccountSession, saveAccountSession } = await import("./accountStore");
+    const restored = await restoreLocalAvatarFromSaf(treeUri);
+    if (!restored) return;
+    const session = getAccountSession();
+    if (session.localAvatarUri === restored) return;
+    await saveAccountSession({ localAvatarUri: restored });
+  } catch (err: unknown) {
+    console.warn("[downloadSettings] avatar restore after SAF pick failed:", err);
+  }
 }
 
 export function getDownloadSettings(): DownloadSettings {

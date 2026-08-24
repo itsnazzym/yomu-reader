@@ -29,6 +29,7 @@ import {
   type SourceSearchOptions,
   type SourceTaxonomyItem,
 } from "./types";
+import { probeAdapterHealth } from "./probeHealth";
 
 const BASE = "https://fr.3hentai.net";
 const TIMEOUT_MS = 12000;
@@ -73,16 +74,56 @@ const TAG_BLOCK_RE =
 const TAXONOMY_ITEM_RE =
   /<span class="filter-elem">\s*<a class="name" href="https?:\/\/(?:fr\.)?3hentai\.net\/tags\/([a-z0-9-]+)"[^>]*data-qty="(\d+)"[^>]*>([\s\S]*?)<\/a>\s*<\/span>/g;
 
-const TAG_LINK_RE =
-  /<a class="name" href="[^"]*(?:\/tags|\/series|\/artists|\/characters|\/groups|\/language|\/category)?[^"]*"[^>]*>\s*([\s\S]*?)\s*<\/a>/g;
+const TAG_LINK_RE = /<a class="name"([^>]*)>([\s\S]*?)<\/a>/g;
 
 function parseCards(html: string): SourceGalleryCard[] {
   return extractMatches(html, CARD_RE).map((m) => ({
     globalId: makeGlobalId("3hentai", m[1]),
-    nativeId: m[1],
     title: decodeEntities(m[3]),
     coverUrl: m[2],
-  })) as unknown as SourceGalleryCard[];
+  }));
+}
+
+/** Compteur de pages depuis la page galerie (« 212 pages » ou liens /d/id/n). */
+async function fetchNumPagesQuick(nativeId: string): Promise<number> {
+  try {
+    const html = await fetchHtml(`${BASE}/d/${nativeId}`);
+    const labeled = html.match(/>(\d+)\s*pages?</i);
+    if (labeled?.[1]) {
+      const n = parseInt(labeled[1], 10);
+      if (n > 0) return n;
+    }
+    const pageLinks = extractMatches(
+      html,
+      /href="https?:\/\/(?:fr\.)?3hentai\.net\/d\/\d+\/(\d+)"[^>]*rel="nofollow"/g
+    );
+    return pageLinks.reduce((max, p) => Math.max(max, parseInt(p[1], 10) || 0), 0);
+  } catch {
+    return 0;
+  }
+}
+
+/** Enrichit les cartes listing (sans numPages dans le HTML) en parallèle bornée. */
+async function enrichCardPageCounts(
+  cards: SourceGalleryCard[]
+): Promise<SourceGalleryCard[]> {
+  const CONCURRENCY = 8;
+  const out = cards.map((c) => ({ ...c }));
+  for (let i = 0; i < out.length; i += CONCURRENCY) {
+    const slice = out.slice(i, i + CONCURRENCY);
+    const pages = await Promise.all(
+      slice.map(async (card) => {
+        const nativeId = card.globalId.split(":")[1] || "";
+        if (!nativeId) return 0;
+        return fetchNumPagesQuick(nativeId);
+      })
+    );
+    for (let j = 0; j < slice.length; j++) {
+      const n = pages[j];
+      if (n > 0) out[i + j].numPages = n;
+    }
+  }
+  return out;
 }
 
 /** Section FR du label ("Tags :", "Artistes :"...) -> type normalisé. */
@@ -98,15 +139,23 @@ function sectionToType(label: string): string {
   return "tag";
 }
 
-function parseTags(galleryHtml: string): { name: string; type?: string }[] {
-  const out: { name: string; type?: string }[] = [];
+function parseTags(
+  galleryHtml: string
+): { name: string; type?: string; count?: number }[] {
+  const out: { name: string; type?: string; count?: number }[] = [];
   for (const block of extractMatches(galleryHtml, TAG_BLOCK_RE)) {
     const type = sectionToType(stripTags(block[1]));
     for (const tagMatch of extractMatches(block[2], TAG_LINK_RE)) {
-      const name = decodeEntities(tagMatch[1]);
-      if (name && !out.some((t) => t.name === name)) {
-        out.push({ name, type });
-      }
+      const attrs = tagMatch[1] || "";
+      const name = decodeEntities(tagMatch[2] || "").trim();
+      if (!name || out.some((t) => t.name === name)) continue;
+      const qtyM = attrs.match(/data-qty="(\d+)"/);
+      const count = qtyM ? parseInt(qtyM[1], 10) : NaN;
+      out.push({
+        name,
+        type,
+        count: Number.isFinite(count) && count > 0 ? count : undefined,
+      });
     }
   }
   return out;
@@ -138,17 +187,36 @@ export class ThreeHentaiSource implements SourceAdapter {
     hasMore: boolean;
   }> {
     const page = opts.page || 1;
+    const sort = (opts.sort || "recent").toLowerCase();
+    const isPopular =
+      sort === "popular" ||
+      sort === "popular-today" ||
+      sort === "popular-week" ||
+      sort === "popular-month";
+
     let url: string;
     if (opts.query) {
       url = `${BASE}/search?q=${encodeURIComponent(opts.query)}`;
-      // La recherche pagine via ?page=N (visible sur les listings).
+      if (isPopular) url += `&sort=popular`;
       url += `&page=${page}`;
+    } else if (isPopular) {
+      // Listing FR populaire (observé 200 sur ?sort=popular).
+      url = `${BASE}/language/french?sort=popular`;
+      if (page > 1) url += `&page=${page}`;
     } else {
       url = `${BASE}/language/french`;
       if (page > 1) url += `/${page}`;
     }
     const html = await fetchHtml(url);
-    const cards = parseCards(html);
+    const rawCards = parseCards(html);
+    // Les cartes listing n'ont pas le nb de pages : enrichissement parallèle
+    // borné (évite d'afficher 0p ; abandonne si trop lent).
+    const cards = await Promise.race([
+      enrichCardPageCounts(rawCards),
+      new Promise<SourceGalleryCard[]>((resolve) =>
+        setTimeout(() => resolve(rawCards), 4500)
+      ),
+    ]);
     return { cards, hasMore: cards.length >= 20 };
   }
 
@@ -264,5 +332,9 @@ export class ThreeHentaiSource implements SourceAdapter {
       }
     }
     return results;
+  }
+
+  async healthCheck() {
+    return probeAdapterHealth(this);
   }
 }

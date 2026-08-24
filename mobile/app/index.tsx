@@ -12,6 +12,7 @@ import {
   Easing,
   Modal,
   Pressable,
+  Alert,
 } from "react-native";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import {
@@ -49,6 +50,12 @@ import { useHistory } from "@/lib/historyStore";
 import SmartImage from "@/components/SmartImage";
 import { addToSearchHistory } from "@/lib/recommendationEngine";
 import {
+  checkAllSourcesHealth,
+  consumeFallbackToast,
+  pickFallbackSource,
+  useSourceHealth,
+} from "@/lib/sourceHealthStore";
+import {
   searchTaxonomy,
   formatTagQuery,
   TaxonomyItem,
@@ -64,6 +71,7 @@ import {
 } from "@/lib/homeSearchStore";
 import { firstRouteParam } from "@/lib/searchQuery";
 import { translateQueryForSource } from "@/lib/sources/html";
+import { catalogColumnCount } from "@/lib/catalogGrid";
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -191,6 +199,33 @@ export default function HomeScreen() {
   // Multi-sources : "all" = fusion nhentai + 3hentai + doujins.
   const [activeSource, setActiveSource] = useState<SourceId | "all">("all");
   const sourceMetas = React.useMemo(() => listSources(), []);
+  const sourceHealth = useSourceHealth();
+
+  // Health-check au démarrage + fallback si source active down.
+  useEffect(() => {
+    let cancelled = false;
+    void checkAllSourcesHealth().then(() => {
+      if (cancelled) return;
+      setActiveSource((prev) => {
+        const fallback = pickFallbackSource(prev);
+        if (!fallback || fallback === prev) return prev;
+        if (consumeFallbackToast()) {
+          const label =
+            fallback === "all"
+              ? "toutes les sources"
+              : sourceMetas.find((m) => m.id === fallback)?.label ?? fallback;
+          Alert.alert(
+            "Source indisponible",
+            `Basculement automatique vers ${label}.`
+          );
+        }
+        return fallback;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [sourceMetas]);
 
   const { settings: readerSettings } = useReaderSettings();
 
@@ -204,9 +239,15 @@ export default function HomeScreen() {
     ? readerSettings.catalogColumnsPhoneLandscape
     : readerSettings.catalogColumnsPhonePortrait;
 
-  const numColumns = Math.max(1, configuredColumns || (width >= 600 ? 3 : 2));
   const cardGap = 10;
   const horizontalPadding = 12;
+  const numColumns = catalogColumnCount({
+    width,
+    configuredColumns: Math.max(1, configuredColumns || (width >= 600 ? 3 : 2)),
+    minCardWidth: readerSettings.catalogMinCardWidth ?? 130,
+    gap: cardGap,
+    horizontalPadding,
+  });
   const cardWidth = Math.floor(
     (width - horizontalPadding * 2 - cardGap * (numColumns - 1)) / numColumns
   );
@@ -254,12 +295,18 @@ export default function HomeScreen() {
       }).start(() => spinAnim.setValue(0));
 
       try {
+        // Langue séparée pour les sources alt (sinon Hitomi/Doujins cherchent "english").
+        const userQuery = q.trim();
+        const language =
+          opts.language && opts.language !== "all" ? opts.language : undefined;
+
         let queryParts: string[] = [];
-        if (q.trim()) {
-          queryParts.push(q.trim());
+        if (userQuery) {
+          queryParts.push(userQuery);
         }
-        if (opts.language && opts.language !== "all" && !q.toLowerCase().includes("language:")) {
-          queryParts.push(`language:${opts.language}`);
+        // nHentai garde language: dans la chaîne de requête.
+        if (language && !userQuery.toLowerCase().includes("language:")) {
+          queryParts.push(`language:${language}`);
         }
         if (opts.pageRange && opts.pageRange !== "all") {
           queryParts.push(opts.pageRange);
@@ -269,6 +316,7 @@ export default function HomeScreen() {
         }
 
         const effectiveQuery = queryParts.join(" ");
+        const altQuery = translateQueryForSource(userQuery) || undefined;
         const sort: "recent" | "popular" | "popular-today" | "popular-week" =
           opts.sort === "popular" ||
           opts.sort === "popular-today" ||
@@ -286,9 +334,10 @@ export default function HomeScreen() {
           const altPromises = altSources.map(async (sid) => {
             try {
               const r = await getSource(sid).search({
-                query: translateQueryForSource(effectiveQuery),
+                query: altQuery,
                 page: p,
-                sort: sort === "recent" ? "recent" : "popular",
+                sort,
+                language,
               });
               // Map les cartes sources vers un pseudo-Gallery pour l'affichage.
               return r.cards.map((c) => ({
@@ -345,9 +394,10 @@ export default function HomeScreen() {
             query:
               activeSource === "nhentai"
                 ? effectiveQuery || undefined
-                : translateQueryForSource(effectiveQuery),
+                : altQuery,
             page: p,
-            sort: sort === "recent" ? "recent" : "popular",
+            sort,
+            language: activeSource === "nhentai" ? undefined : language,
           });
           if (requestId !== latestRequestRef.current) return;
           const mapped: Gallery[] = res.cards.map((c) => ({
@@ -521,12 +571,18 @@ export default function HomeScreen() {
 
   const handleResumeRead = () => {
     if (!resumeEntry) return;
+    const params: Record<string, string> = {
+      id: String(resumeEntry.gallery.id),
+      initialPage: String(resumeEntry.lastPage),
+    };
+    if (resumeEntry.localId) {
+      params.localId = resumeEntry.localId;
+    } else if (resumeEntry.source && resumeEntry.source !== "nhentai") {
+      params.src = resumeEntry.source;
+    }
     router.push({
       pathname: "/read",
-      params: {
-        id: String(resumeEntry.gallery.id),
-        initialPage: String(resumeEntry.lastPage),
-      },
+      params,
     });
   };
 
@@ -669,6 +725,16 @@ export default function HomeScreen() {
         ).map(([sid, label]) => {
           const isActive = activeSource === sid;
           const meta = sid === "all" ? undefined : sourceMetas.find((m2) => m2.id === sid);
+          const health =
+            sid === "all" ? undefined : sourceHealth[sid as SourceId]?.status;
+          const healthColor =
+            health === "ok"
+              ? "#2ecc71"
+              : health === "down"
+                ? "#ff4757"
+                : health === "checking"
+                  ? "#f1c40f"
+                  : colors.sub;
           return (
             <TouchableOpacity
               key={sid}
@@ -686,13 +752,15 @@ export default function HomeScreen() {
                 },
               ]}
               accessibilityRole="button"
-              accessibilityLabel={`Filtrer sur la source ${label}`}
+              accessibilityLabel={`Filtrer sur la source ${label}${
+                health === "down" ? " (indisponible)" : health === "ok" ? " (OK)" : ""
+              }`}
             >
               {meta && (
                 <View
                   style={[
                     styles.sourceChipDot,
-                    { backgroundColor: meta.accentColor },
+                    { backgroundColor: healthColor || meta.accentColor },
                   ]}
                 />
               )}
@@ -1279,6 +1347,9 @@ const styles = StyleSheet.create({
   sourceChipText: {
     fontSize: 12,
     fontWeight: "700",
+    flexShrink: 0,
+    paddingRight: 3,
+    includeFontPadding: false,
   },
   feedLoadingBanner: {
     marginHorizontal: 16,
@@ -1635,6 +1706,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     color: "#d1d5db",
+    flexShrink: 0,
+    paddingRight: 4,
+    includeFontPadding: false,
   },
   quickChipTextActive: {
     color: "#ffffff",

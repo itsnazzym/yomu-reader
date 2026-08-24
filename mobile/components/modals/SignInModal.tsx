@@ -745,6 +745,7 @@ const styles = StyleSheet.create({
   tabBtn: {
     flex: 1,
     paddingVertical: 8,
+    paddingHorizontal: 6,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 9,
@@ -755,6 +756,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#9ca3af",
     fontWeight: "600",
+    flexShrink: 0,
+    paddingRight: 4,
   },
   inputGroup: {
     gap: 5,
@@ -854,6 +857,9 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 15,
     fontWeight: "800",
+    flexShrink: 0,
+    paddingRight: 4,
+    includeFontPadding: false,
   },
   officialFootnote: {
     fontSize: 11,
@@ -909,6 +915,9 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 13,
     fontWeight: "700",
+    flexShrink: 0,
+    paddingRight: 4,
+    includeFontPadding: false,
   },
   logoutBtn: {
     height: 40,

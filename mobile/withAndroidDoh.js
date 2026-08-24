@@ -95,6 +95,9 @@ function withAndroidDoh(config) {
     setGradleProperty(modConfig.modResults, "reactNativeArchitectures", "arm64-v8a");
     setGradleProperty(modConfig.modResults, "org.gradle.parallel", "true");
     setGradleProperty(modConfig.modResults, "org.gradle.caching", "true");
+    setGradleProperty(modConfig.modResults, "org.gradle.daemon", "true");
+    setGradleProperty(modConfig.modResults, "org.gradle.configureondemand", "true");
+    setGradleProperty(modConfig.modResults, "kotlin.incremental", "true");
     setGradleProperty(
       modConfig.modResults,
       "org.gradle.jvmargs",
@@ -132,6 +135,13 @@ function withAndroidDoh(config) {
   });
 
   return withMainApplication(config, (modConfig) => {
+    if (!modConfig.modResults.contents.includes("@file:Suppress(\"DEPRECATION\")")) {
+      modConfig.modResults.contents = modConfig.modResults.contents.replace(
+        "package com.nhentaidownlo.mobile\n",
+        "package com.nhentaidownlo.mobile\n\n@file:Suppress(\"DEPRECATION\")\n"
+      );
+    }
+
     if (modConfig.modResults.contents.includes("DohFallbackDns")) {
       return modConfig;
     }
@@ -164,4 +174,4 @@ function withAndroidDoh(config) {
   });
 }
 
-module.exports = createRunOncePlugin(withAndroidDoh, "with-android-doh", "1.0.0");
+module.exports = createRunOncePlugin(withAndroidDoh, "with-android-doh", "1.0.1");

@@ -34,6 +34,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { useTheme } from "@/lib/ThemeContext";
 import { useAccount, UserComment } from "@/lib/accountStore";
+import { displayAvatarUri } from "@/lib/avatarPersist";
 import { useFavorites } from "@/lib/favoritesStore";
 import { CardPressable } from "@/components/ui/CardPressable";
 import { IconBtn } from "@/components/ui/IconBtn";
@@ -210,7 +211,7 @@ export default function ProfileScreen() {
       if (res.success) {
         Alert.alert("Avatar mis à jour ✧✦", "Votre photo de profil a été recadrée et mise à jour avec succès.");
         setIsAvatarOptionsOpen(false);
-        await loadData();
+        setAvatarCandidateIndex(0);
       } else {
         Alert.alert("Échec", res.error || "Impossible de mettre à jour l'avatar.");
       }
@@ -279,13 +280,19 @@ export default function ProfileScreen() {
   const recentFavorites = favorites.slice(0, 15);
   const username = profile?.username || session.username || "Membre nHentai";
   const email = profile?.email || "Non renseigné / Privé";
-  const avatarCandidates = resolveAvatarCandidates(profile?.avatar_url, username);
+  const avatarSource = displayAvatarUri(session) || profile?.avatar_url;
+  const avatarCandidates = resolveAvatarCandidates(avatarSource, username);
   const displayAvatarUrl = avatarCandidates[avatarCandidateIndex];
+  const isLocalAvatarUri =
+    Boolean(displayAvatarUrl) &&
+    (displayAvatarUrl.startsWith("file:") ||
+      displayAvatarUrl.startsWith("content:") ||
+      displayAvatarUrl.startsWith("data:"));
   const userComments: UserComment[] = comments || [];
 
   useEffect(() => {
     setAvatarCandidateIndex(0);
-  }, [profile?.avatar_url, username]);
+  }, [profile?.avatar_url, session.localAvatarUri, username]);
 
   return (
     <View
@@ -358,9 +365,14 @@ export default function ProfileScreen() {
                     source={{ uri: displayAvatarUrl }}
                     style={styles.avatarImg}
                     contentFit="cover"
-                    cachePolicy="memory-disk"
-                    transition={150}
-                    onError={() => setAvatarCandidateIndex((index) => index + 1)}
+                    {...(isLocalAvatarUri
+                      ? {}
+                      : {
+                          cachePolicy: "memory-disk" as const,
+                          transition: 150,
+                          onError: () =>
+                            setAvatarCandidateIndex((index) => index + 1),
+                        })}
                   />
                 ) : (
                   <View style={styles.avatarFallback}>
@@ -732,7 +744,7 @@ export default function ProfileScreen() {
             </View>
 
             {/* Reset to Default */}
-            {profile?.avatar_url && (
+            {(profile?.avatar_url || session.localAvatarUri) && (
               <Pressable
                 onPress={handleResetAvatar}
                 style={[styles.resetAvatarBtn, { borderColor: "#2d2d40" }]}
@@ -1124,6 +1136,9 @@ const styles = StyleSheet.create({
   actionBtnText: {
     fontSize: 13,
     fontWeight: "700",
+    flexShrink: 0,
+    paddingRight: 4,
+    includeFontPadding: false,
   },
   modalBackdrop: {
     flex: 1,

@@ -14,6 +14,7 @@ import {
   type SourceMeta,
   type SourceSearchOptions,
 } from "./types";
+import { probeAdapterHealth } from "./probeHealth";
 
 function toCard(g: Gallery): SourceGalleryCard {
   return {
@@ -76,5 +77,9 @@ export class NhentaiSource implements SourceAdapter {
       name: t.name,
       count: t.count,
     }));
+  }
+
+  async healthCheck() {
+    return probeAdapterHealth(this);
   }
 }

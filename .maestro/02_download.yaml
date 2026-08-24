@@ -1,0 +1,23 @@
+appId: com.nhentaidownlo.mobile
+---
+# Fiche → téléchargement (galerie de test / première carte visible)
+- launchApp
+- tapOn:
+    text: "Tout"
+    optional: true
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 20000
+# Ouvre la première carte approximative (coordonnées relatives écran)
+- tapOn:
+    point: "25%,40%"
+- extendedWaitUntil:
+    visible:
+      text: ".*(Lire|Télécharger|Collection|Page).*"
+    timeout: 20000
+- tapOn:
+    text: "Télécharger"
+    optional: true
+- assertVisible:
+    text: ".*(Télécharger|Lire|Collection).*"

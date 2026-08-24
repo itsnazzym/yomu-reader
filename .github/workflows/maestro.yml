@@ -1,0 +1,55 @@
+name: Maestro E2E (optional)
+
+on:
+  workflow_dispatch:
+  # Ne pas bloquer le build APK signé — job manuel uniquement au démarrage.
+
+jobs:
+  maestro:
+    name: Maestro Android emulator
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install mobile deps
+        working-directory: mobile
+        run: npm ci
+
+      - name: Install Maestro
+        run: |
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run Maestro (debug APK if present)
+        working-directory: mobile
+        continue-on-error: true
+        run: |
+          if [ ! -f android/app/build/outputs/apk/debug/app-debug.apk ]; then
+            echo "No debug APK in workspace — skipping Maestro run."
+            echo "Build a local debug APK then re-run this workflow with an artifact upload step."
+            exit 0
+          fi
+          maestro test ../.maestro/ --format junit --output maestro-report.xml
+
+      - name: Upload Maestro report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maestro-report
+          path: mobile/maestro-report.xml
+          if-no-files-found: ignore

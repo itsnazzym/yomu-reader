@@ -29,6 +29,12 @@ export interface ReaderSettings {
   doubleTapZoom: number;
   resetZoomOnPageChange: boolean;
   autoHideControls: boolean;
+  /** Préchargement basé sur le dwell time (sinon override manuel). */
+  adaptivePreload: boolean;
+  /** Fenêtre prev manuelle (1–8) si adaptivePreload = false. */
+  preloadPrev: number;
+  /** Fenêtre next manuelle (1–8) si adaptivePreload = false. */
+  preloadNext: number;
 }
 
 const defaultSettings: ReaderSettings = {
@@ -54,6 +60,9 @@ const defaultSettings: ReaderSettings = {
   doubleTapZoom: 1.8,
   resetZoomOnPageChange: true,
   autoHideControls: true,
+  adaptivePreload: true,
+  preloadPrev: 1,
+  preloadNext: 2,
 };
 
 let currentSettings: ReaderSettings = { ...defaultSettings };

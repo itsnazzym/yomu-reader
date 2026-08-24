@@ -59,3 +59,114 @@ export async function requestDownloadDirectory(): Promise<string | null> {
     return null;
   }
 }
+
+function findSafEntryByFileName(entries: string[], fileName: string): string | undefined {
+  const lower = fileName.toLowerCase();
+  return entries.find((entry) => {
+    const decoded = (() => {
+      try {
+        return decodeURIComponent(entry);
+      } catch {
+        return entry;
+      }
+    })();
+    const leaf = decoded.split("/").pop() || decoded;
+    return (
+      leaf.toLowerCase() === lower ||
+      decoded.toLowerCase().endsWith(`/${lower}`) ||
+      decoded.toLowerCase().includes(lower)
+    );
+  });
+}
+
+/**
+ * Write a local file into a SAF directory tree (replacing an existing same-name file when possible).
+ */
+export async function writeFileToSafTree(
+  treeUri: string,
+  fileName: string,
+  fromUri: string
+): Promise<void> {
+  if (!treeUri || !fileName || !fromUri) {
+    throw new Error("Paramètres SAF incomplets.");
+  }
+
+  const saf = FileSystem.StorageAccessFramework;
+
+  try {
+    const names = await saf.readDirectoryAsync(treeUri);
+    const existing = findSafEntryByFileName(names, fileName);
+    if (existing) {
+      await FileSystem.deleteAsync(existing, { idempotent: true }).catch(() => undefined);
+    }
+  } catch {
+    // Listing/deleting is best-effort; create may still succeed.
+  }
+
+  const payload = await FileSystem.readAsStringAsync(fromUri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+
+  const writePayload = async (destUri: string): Promise<void> => {
+    await FileSystem.writeAsStringAsync(destUri, payload, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+  };
+
+  try {
+    const destUri = await saf.createFileAsync(treeUri, fileName, mimeForName(fileName));
+    await writePayload(destUri);
+  } catch (firstError: unknown) {
+    try {
+      const names = await saf.readDirectoryAsync(treeUri);
+      const existing = findSafEntryByFileName(names, fileName);
+      if (existing) {
+        await FileSystem.deleteAsync(existing, { idempotent: true }).catch(() => undefined);
+      }
+      const destUri = await saf.createFileAsync(treeUri, fileName, mimeForName(fileName));
+      await writePayload(destUri);
+    } catch {
+      const message =
+        firstError instanceof Error ? firstError.message : "Écriture SAF impossible.";
+      throw new Error(message);
+    }
+  }
+}
+
+/**
+ * Copy a named file from a SAF tree into a sandbox file:// destination.
+ * Returns true when the file was found and written.
+ */
+export async function copySafFileToSandbox(
+  treeUri: string,
+  fileName: string,
+  destUri: string
+): Promise<boolean> {
+  if (!treeUri || !fileName || !destUri) return false;
+
+  try {
+    const names = await FileSystem.StorageAccessFramework.readDirectoryAsync(treeUri);
+    const match = findSafEntryByFileName(names, fileName);
+    if (!match) return false;
+
+    const payload = await FileSystem.readAsStringAsync(match, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+
+    const parentSlash = destUri.lastIndexOf("/");
+    if (parentSlash > 0) {
+      const parentDir = destUri.slice(0, parentSlash + 1);
+      const parentInfo = await FileSystem.getInfoAsync(parentDir);
+      if (!parentInfo.exists) {
+        await FileSystem.makeDirectoryAsync(parentDir, { intermediates: true });
+      }
+    }
+
+    await FileSystem.writeAsStringAsync(destUri, payload, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}

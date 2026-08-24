@@ -12,6 +12,7 @@ import {
 import { parseDoujinsListCards, parseDoujinsTagsPage } from "../lib/sources/doujins";
 import { parseThreeHentaiTagsPage } from "../lib/sources/threehentai";
 import { dedupeTags } from "../lib/sources/tagUtils";
+import { parseNozomiIds, thumbUrl } from "../lib/sources/hitomi";
 
 test("extractLinks: trouve les galeries d'un listing 3hentai", () => {
   const html = `<div class="doujin-col"><div class="doujin ">
@@ -82,6 +83,20 @@ test("parseDoujinsListCards: href + img wrappés + titre encodé", () => {
   assert.equal(cards[1].title, "Tall Aunty");
 });
 
+test("parseDoujinsListCards: ignore /tags/ /artists/ /series/ hrefs", () => {
+  const html = `
+    <a href="/tags/Hashtag-32842"><div class="text">Hashtag</div></a>
+    <a href="/original-doujins-series/ero-doll-41192">
+      <img src="https://static.doujins.com/f2-x.jpg"/>
+      <div class="title"><div class="text">Natsumi&#039;s Sex Partner</div></div>
+    </a>
+  `;
+  const cards = parseDoujinsListCards(html);
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].globalId, "doujins:41192");
+  assert.equal(cards[0].title, "Natsumi's Sex Partner");
+});
+
 test("translateQueryForSource: conserve les valeurs des opérateurs nhentai", () => {
   assert.equal(translateQueryForSource('tag:"vanilla"'), "vanilla");
   assert.equal(translateQueryForSource('tag:"rough translation" language:french'), "rough translation french");
@@ -143,4 +158,21 @@ test("parseThreeHentaiTagsPage: nom + compteur data-qty depuis /tags?letter=", (
   assert.deepEqual(tags[0], { name: "abortion (female)", count: 24 });
   assert.deepEqual(tags[1], { name: "absorption (female)", count: 413 });
   assert.deepEqual(tags[2], { name: "afro (male)", count: 7 });
+});
+
+test("parseNozomiIds: lit les IDs uint32 big-endian Hitomi", () => {
+  // 0x003f354d = 4142413, 0x003f34f4 = 4142324
+  const bytes = new Uint8Array([0x00, 0x3f, 0x35, 0x4d, 0x00, 0x3f, 0x34, 0xf4]);
+  assert.deepEqual(parseNozomiIds(bytes.buffer), ["4142413", "4142324"]);
+});
+
+test("thumbUrl: chemin webpsmalltn atn|btn (common.js tn)", () => {
+  const table = { zeroSet: new Set<number>(), b: "1787551201/", fetchedAt: 0 };
+  const hash =
+    "aab8cbaf2625515d3c0a390f20f8e925386286214f6a4449f76ae37dc33adfeb";
+  const url = thumbUrl(table, hash, "webpsmalltn");
+  assert.match(
+    url,
+    /^https:\/\/[ab]tn\.gold-usergeneratedcontent\.net\/webpsmalltn\/b\/fe\/[0-9a-f]{64}\.webp$/
+  );
 });

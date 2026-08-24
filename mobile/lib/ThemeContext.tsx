@@ -8,6 +8,7 @@ import React, {
   useState,
 } from "react";
 import { getBaseHue, hsbToHex, setBaseHue } from "@/constants/Colors";
+import { useReaderSettings } from "@/lib/readerSettingsStore";
 
 const STORAGE_KEY = "themeHue";
 
@@ -46,6 +47,7 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   const [hue, _setHue] = useState(getBaseHue());
+  const { settings } = useReaderSettings();
 
   useEffect(() => {
     const load = () =>
@@ -71,9 +73,10 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     () => {
       const themedHex = (saturation: number, brightness: number) =>
         hsbToHex({ hue, saturation, brightness });
+      const oled = settings.oledMode;
       return {
-        bg: themedHex(6, 36),
-        page: themedHex(6, 28),
+        bg: oled ? "#000000" : themedHex(6, 36),
+        page: oled ? "#000000" : themedHex(6, 28),
         shadow: "#000",
         accent: themedHex(78, 210),
         txt: themedHex(6, 235),
@@ -87,16 +90,16 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
         incTxt: themedHex(20, 225),
         excBg: themedHex(0, 42),
         excTxt: themedHex(0, 210),
-        searchBg: themedHex(6, 34),
+        searchBg: oled ? "#000000" : themedHex(6, 34),
         searchTxt: themedHex(6, 235),
-        menuBg: themedHex(6, 32),
+        menuBg: oled ? "#000000" : themedHex(6, 32),
         menuTxt: themedHex(6, 235),
         related: themedHex(6, 28),
         surfaceElevated: themedHex(6, 34),
         iconOnSurface: themedHex(8, 210),
       };
     },
-    [hue]
+    [hue, settings.oledMode]
   );
 
   return (

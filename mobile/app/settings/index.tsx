@@ -9,6 +9,7 @@ import {
   Switch,
   Alert,
   ActivityIndicator,
+  type LayoutChangeEvent,
 } from "react-native";
 import {
   IconArrowLeft,
@@ -39,6 +40,7 @@ import {
   IconLock,
 } from "@tabler/icons-react-native";
 import * as Clipboard from "expo-clipboard";
+import Constants from "expo-constants";
 import { Image } from "expo-image";
 import { exportBackupToFile, restoreBackupFromFile, restoreBackupFromJson } from "@/lib/backupStore";
 import { usePrivacy } from "@/lib/privacyStore";
@@ -67,9 +69,16 @@ import { useDownloadSettings } from "@/lib/downloadSettingsStore";
 import { requestDownloadDirectory } from "@/lib/safCopy";
 import { getCacheSize, clearAppCache, formatBytes } from "@/lib/cacheManager";
 import { clearHistory } from "@/lib/historyStore";
+import { checkForOtaUpdate, useOtaSettings } from "@/lib/otaUpdates";
+import {
+  isGlitchTipActive,
+  sendGlitchTipTestEvent,
+} from "@/lib/glitchTip";
 import { SignInModal } from "@/components/modals/SignInModal";
 import SmartImage from "@/components/SmartImage";
 import { resolveAvatarUrl } from "@/app/profile";
+import { displayAvatarUri } from "@/lib/avatarPersist";
+import { catalogColumnCount } from "@/lib/catalogGrid";
 
 const PREVIEW_SAMPLE_MANGA = [
   {
@@ -78,7 +87,7 @@ const PREVIEW_SAMPLE_MANGA = [
     pages: "28 p.",
     lang: "FR",
     tag: "doujinshi",
-    cover: "https://i0.wp.com/t.nhentai.net/galleries/988732/thumb.jpg",
+    cover: "https://t.nhentai.net/galleries/988732/thumb.jpg",
   },
   {
     id: 2,
@@ -86,7 +95,7 @@ const PREVIEW_SAMPLE_MANGA = [
     pages: "65 p.",
     lang: "EN",
     tag: "original",
-    cover: "https://i0.wp.com/t.nhentai.net/galleries/1008632/thumb.jpg",
+    cover: "https://t.nhentai.net/galleries/1008632/thumb.jpg",
   },
   {
     id: 3,
@@ -94,7 +103,7 @@ const PREVIEW_SAMPLE_MANGA = [
     pages: "84 p.",
     lang: "JP",
     tag: "manga",
-    cover: "https://i0.wp.com/t.nhentai.net/galleries/1109832/thumb.jpg",
+    cover: "https://t.nhentai.net/galleries/1109832/thumb.jpg",
   },
   {
     id: 4,
@@ -102,7 +111,7 @@ const PREVIEW_SAMPLE_MANGA = [
     pages: "42 p.",
     lang: "FR",
     tag: "doujinshi",
-    cover: "https://i0.wp.com/t.nhentai.net/galleries/1204562/thumb.jpg",
+    cover: "https://t.nhentai.net/galleries/988732/thumb.jpg",
   },
   {
     id: 5,
@@ -110,7 +119,7 @@ const PREVIEW_SAMPLE_MANGA = [
     pages: "36 p.",
     lang: "EN",
     tag: "cosplay",
-    cover: "https://i0.wp.com/t.nhentai.net/galleries/1304562/thumb.jpg",
+    cover: "https://t.nhentai.net/galleries/1008632/thumb.jpg",
   },
   {
     id: 6,
@@ -118,7 +127,7 @@ const PREVIEW_SAMPLE_MANGA = [
     pages: "50 p.",
     lang: "JP",
     tag: "sole female",
-    cover: "https://i0.wp.com/t.nhentai.net/galleries/1404562/thumb.jpg",
+    cover: "https://t.nhentai.net/galleries/1109832/thumb.jpg",
   },
 ];
 
@@ -167,6 +176,7 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
 
   const { session, isLoggedIn, syncFavorites } = useAccount();
+  const accountAvatarUri = displayAvatarUri(session);
   const { settings: readerSettings, updateSettings: updateReaderSettings } = useReaderSettings();
   const { reset: resetOnboarding } = useOnboarding();
 
@@ -193,12 +203,17 @@ export default function SettingsScreen() {
     setPin: setAppLockPin,
   } = useAppLock();
   const preventCapture = usePreventScreenCapture();
+  const { enabled: otaEnabled, setEnabled: setOtaEnabled } = useOtaSettings();
   const [pinModalOpen, setPinModalOpen] = useState(false);
   const [newTagInput, setNewTagInput] = useState("");
 
   // Interface & Grid preview states
   const [previewDevice, setPreviewDevice] = useState<"phone-p" | "phone-l" | "tab-p" | "tab-l">("phone-p");
   const [showGridCustomizer, setShowGridCustomizer] = useState(true);
+  const [previewWidth, setPreviewWidth] = useState(0);
+  const [draftColumns, setDraftColumns] = useState(2);
+  const [draftMinWidth, setDraftMinWidth] = useState(130);
+  const [showTechPath, setShowTechPath] = useState(false);
 
   const columns = (() => {
     switch (previewDevice) {
@@ -234,6 +249,29 @@ export default function SettingsScreen() {
 
   const minCardWidth = readerSettings.catalogMinCardWidth ?? 130;
   const setMinCardWidth = (val: number) => updateReaderSettings({ catalogMinCardWidth: val });
+
+  useEffect(() => {
+    setDraftColumns(columns);
+  }, [columns, previewDevice]);
+
+  useEffect(() => {
+    setDraftMinWidth(minCardWidth);
+  }, [minCardWidth]);
+
+  const previewCols = catalogColumnCount({
+    width: Math.max(previewWidth, 1),
+    configuredColumns: draftColumns,
+    minCardWidth: draftMinWidth,
+    gap: 6,
+    horizontalPadding: 0,
+  });
+  const previewCardWidth =
+    previewWidth > 0
+      ? (previewWidth - 6 * (previewCols - 1)) / previewCols
+      : undefined;
+
+  const appName = Constants.expoConfig?.name ?? "Yomu Reader";
+  const appVersion = Constants.expoConfig?.version ?? "1.1.0";
 
   const infiniteScroll = readerSettings.infiniteScroll ?? true;
   const setInfiniteScroll = (val: boolean) => updateReaderSettings({ infiniteScroll: val });
@@ -357,9 +395,11 @@ export default function SettingsScreen() {
             >
               <View style={styles.accountHeroRow}>
                 <View style={[styles.avatarBox, { backgroundColor: colors.accent, overflow: "hidden" }]}>
-                  {session.profile?.avatar_url ? (
+                  {accountAvatarUri ? (
                     <Image
-                      source={{ uri: resolveAvatarUrl(session.profile.avatar_url, session.username) }}
+                      source={{
+                        uri: resolveAvatarUrl(accountAvatarUri, session.username),
+                      }}
                       style={styles.avatarImg}
                       contentFit="cover"
                     />
@@ -546,15 +586,17 @@ export default function SettingsScreen() {
                   showsHorizontalScrollIndicator={false}
                   style={styles.deviceTabs}
                 >
-                  {[
-                    { key: "phone-p", label: "Téléphone (portrait)" },
-                    { key: "phone-l", label: "Téléphone (paysage)" },
-                    { key: "tab-p", label: "Tablette (portrait)" },
-                    { key: "tab-l", label: "Tablette (paysage)" },
-                  ].map((d) => (
+                  {(
+                    [
+                      { key: "phone-p" as const, label: "Téléphone (portrait)" },
+                      { key: "phone-l" as const, label: "Téléphone (paysage)" },
+                      { key: "tab-p" as const, label: "Tablette (portrait)" },
+                      { key: "tab-l" as const, label: "Tablette (paysage)" },
+                    ]
+                  ).map((d) => (
                     <Pressable
                       key={d.key}
-                      onPress={() => setPreviewDevice(d.key as any)}
+                      onPress={() => setPreviewDevice(d.key)}
                       style={[
                         styles.deviceTab,
                         previewDevice === d.key && {
@@ -583,21 +625,31 @@ export default function SettingsScreen() {
                     </Text>
                     <View style={[styles.previewBadgePill, { backgroundColor: colors.accent + "20" }]}>
                       <Text style={[styles.previewHeaderBadge, { color: colors.accent }]}>
-                        {columns} colonne{columns > 1 ? "s" : ""}
+                        {previewCols} colonne{previewCols > 1 ? "s" : ""}
                       </Text>
                     </View>
                   </View>
 
-                  <View style={styles.previewGrid}>
-                    {PREVIEW_SAMPLE_MANGA.slice(0, Math.min(6, Math.max(columns * 2, 3))).map((item) => {
-                      const itemWidthPercent = `${Math.floor(100 / columns) - (columns > 1 ? 2 : 0)}%`;
+                  <View
+                    style={styles.previewGrid}
+                    onLayout={(e: LayoutChangeEvent) => {
+                      const next = e.nativeEvent.layout.width;
+                      if (next > 0 && Math.abs(next - previewWidth) > 0.5) {
+                        setPreviewWidth(next);
+                      }
+                    }}
+                  >
+                    {PREVIEW_SAMPLE_MANGA.slice(
+                      0,
+                      Math.min(6, Math.max(previewCols * 2, 3))
+                    ).map((item) => {
                       return (
                         <View
                           key={item.id}
                           style={[
                             styles.previewCard,
                             {
-                              width: itemWidthPercent as any,
+                              width: previewCardWidth,
                               backgroundColor: "#161622",
                               borderColor: "#252538",
                             },
@@ -647,7 +699,7 @@ export default function SettingsScreen() {
                   <Text style={styles.sliderLabel}>Nombre de colonnes</Text>
                   <View style={[styles.sliderValBadge, { backgroundColor: colors.accent + "20" }]}>
                     <Text style={[styles.sliderValText, { color: colors.accent }]}>
-                      {columns} {columns === 1 ? "colonne" : "colonnes"}
+                      {draftColumns} {draftColumns === 1 ? "colonne" : "colonnes"}
                     </Text>
                   </View>
                 </View>
@@ -655,8 +707,9 @@ export default function SettingsScreen() {
                   min={1}
                   max={previewDevice.startsWith("tab") ? 8 : 5}
                   step={1}
-                  value={columns}
-                  onValueChange={(val) => setColumns(Math.round(val))}
+                  value={draftColumns}
+                  onValueChange={(val) => setDraftColumns(Math.round(val))}
+                  onSlidingComplete={(val) => setColumns(Math.round(val))}
                   activeColor={colors.accent}
                   thumbColor={colors.accent}
                 />
@@ -666,7 +719,7 @@ export default function SettingsScreen() {
                   <Text style={styles.sliderLabel}>Largeur minimale des cartes</Text>
                   <View style={[styles.sliderValBadge, { backgroundColor: colors.accent + "20" }]}>
                     <Text style={[styles.sliderValText, { color: colors.accent }]}>
-                      {minCardWidth}px
+                      {draftMinWidth}px
                     </Text>
                   </View>
                 </View>
@@ -674,8 +727,9 @@ export default function SettingsScreen() {
                   min={80}
                   max={240}
                   step={5}
-                  value={minCardWidth}
-                  onValueChange={(val) => setMinCardWidth(Math.round(val))}
+                  value={draftMinWidth}
+                  onValueChange={(val) => setDraftMinWidth(Math.round(val))}
+                  onSlidingComplete={(val) => setMinCardWidth(Math.round(val))}
                   activeColor={colors.accent}
                   thumbColor={colors.accent}
                 />
@@ -706,7 +760,11 @@ export default function SettingsScreen() {
                 return (
                   <Pressable
                     key={m.key}
-                    onPress={() => updateReaderSettings({ defaultMode: m.key as any })}
+                    onPress={() =>
+                      updateReaderSettings({
+                        defaultMode: m.key as "webtoon" | "pager",
+                      })
+                    }
                     style={[
                       styles.segmentedBtn,
                       active && { backgroundColor: colors.accent, borderColor: colors.accent },
@@ -742,7 +800,11 @@ export default function SettingsScreen() {
                 return (
                   <Pressable
                     key={d.key}
-                    onPress={() => updateReaderSettings({ defaultDirection: d.key as any })}
+                    onPress={() =>
+                      updateReaderSettings({
+                        defaultDirection: d.key as "rtl" | "ltr",
+                      })
+                    }
                     style={[
                       styles.segmentedBtn,
                       active && { backgroundColor: colors.accent, borderColor: colors.accent },
@@ -899,12 +961,24 @@ export default function SettingsScreen() {
               <Text style={styles.rowToggleTitle}>Dossier de téléchargement</Text>
               <Text style={styles.rowToggleSub}>
                 {folderLabel}
-                {"\n"}
-                Lecture hors-ligne : {sandboxPath || "NHAppAndroid (stockage app)"}
                 {downloadSettings.mode === "saf"
                   ? "\nUne copie est aussi envoyée vers le dossier choisi."
                   : "\nAucun dossier public n'est requis : l'app écrit dans son stockage privé."}
               </Text>
+              <Pressable
+                onPress={() => setShowTechPath((prev) => !prev)}
+                accessibilityRole="button"
+                accessibilityLabel="Afficher le chemin technique"
+              >
+                <Text style={[styles.rowToggleSub, { color: colors.accent, fontWeight: "700" }]}>
+                  {showTechPath ? "Masquer le chemin technique" : "Chemin technique"}
+                </Text>
+              </Pressable>
+              {showTechPath ? (
+                <Text style={styles.rowToggleSub} selectable>
+                  {sandboxPath || "NHAppAndroid (stockage app)"}
+                </Text>
+              ) : null}
               <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
                 <CardPressable
                   radius={10}
@@ -981,6 +1055,51 @@ export default function SettingsScreen() {
                 <Text style={styles.clearCacheText}>Vider le cache</Text>
               </Pressable>
             </View>
+
+            <View style={styles.divider} />
+
+            <CardPressable
+              radius={10}
+              onPress={() => router.push("/settings/storage" as never)}
+              style={styles.linkRow}
+            >
+              <IconDatabase size={16} color={colors.accent} strokeWidth={2} />
+              <Text style={styles.linkRowText}>Tableau de bord stockage</Text>
+              <IconChevronRight size={16} color="#6b7280" strokeWidth={2} />
+            </CardPressable>
+
+            <View style={styles.divider} />
+
+            <View style={styles.rowToggle}>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={styles.rowToggleTitle}>Mises à jour OTA</Text>
+                <Text style={styles.rowToggleSub}>
+                  Autorise la vérification et le téléchargement des mises à jour JS à distance.
+                </Text>
+              </View>
+              <Switch
+                value={otaEnabled}
+                onValueChange={(v) => {
+                  void setOtaEnabled(v);
+                }}
+                trackColor={{ false: "#3f3f46", true: colors.accent }}
+                thumbColor="#f4f4f5"
+              />
+            </View>
+
+            <View style={styles.divider} />
+
+            <CardPressable
+              radius={10}
+              onPress={() => {
+                void checkForOtaUpdate();
+              }}
+              style={[styles.linkRow, !otaEnabled && { opacity: 0.45 }]}
+            >
+              <IconCloudDownload size={16} color={colors.accent} strokeWidth={2} />
+              <Text style={styles.linkRowText}>Rechercher une mise à jour</Text>
+              <IconChevronRight size={16} color="#6b7280" strokeWidth={2} />
+            </CardPressable>
 
             <View style={styles.divider} />
 
@@ -1092,9 +1211,38 @@ export default function SettingsScreen() {
               <Switch
                 value={appLockBiometric}
                 onValueChange={(val) => {
-                  void setAppLockBiometric(val);
+                  void (async () => {
+                    try {
+                      if (val) {
+                        if (!appLockEnabled) {
+                          setPinModalOpen(true);
+                          return;
+                        }
+                        const LocalAuth = await import("expo-local-authentication");
+                        const ok =
+                          (await LocalAuth.hasHardwareAsync()) &&
+                          (await LocalAuth.isEnrolledAsync());
+                        if (!ok) {
+                          Alert.alert(
+                            "Empreinte / Face ID",
+                            "Aucun capteur inscrit. Utilise un APK / dev client, pas Expo Go."
+                          );
+                          return;
+                        }
+                        await setAppLockBiometric(true);
+                        return;
+                      }
+                      await setAppLockBiometric(false);
+                    } catch (error) {
+                      Alert.alert(
+                        "Empreinte / Face ID",
+                        error instanceof Error
+                          ? error.message
+                          : "Impossible de modifier la biométrie."
+                      );
+                    }
+                  })();
                 }}
-                disabled={!appLockEnabled}
                 trackColor={{ false: "#28283a", true: colors.accent }}
                 thumbColor="#fff"
               />
@@ -1320,6 +1468,30 @@ export default function SettingsScreen() {
 
             <View style={styles.divider} />
 
+            <CardPressable
+              radius={10}
+              onPress={() => {
+                const result = sendGlitchTipTestEvent();
+                if (result.ok) {
+                  Alert.alert(
+                    "Test GlitchTip envoyé",
+                    "Ouvre Problèmes sur app.glitchtip.com (projet NHapp). L’événement « Test GlitchTip error! » doit apparaître sous 1–2 min."
+                  );
+                  return;
+                }
+                Alert.alert("GlitchTip inactif", result.reason ?? "DSN manquant.");
+              }}
+              style={styles.linkRow}
+              accessibilityRole="button"
+              accessibilityLabel="Envoyer un événement de test à GlitchTip"
+            >
+              <IconWorld size={16} color={isGlitchTipActive() ? "#52c41a" : "#f59e0b"} strokeWidth={2} />
+              <Text style={styles.linkRowText}>Tester GlitchTip</Text>
+              <IconChevronRight size={16} color="#6b7280" strokeWidth={2} />
+            </CardPressable>
+
+            <View style={styles.divider} />
+
             {/* Replay Onboarding */}
             <CardPressable
               radius={10}
@@ -1338,8 +1510,10 @@ export default function SettingsScreen() {
 
             {/* About */}
             <View style={styles.aboutRow}>
-              <Text style={styles.aboutTitle}>nHentai Launcher (Unofficial)</Text>
-              <Text style={styles.aboutVersion}>Version 1.0.0 · Moteur Natif v2</Text>
+              <Text style={styles.aboutTitle}>{appName}</Text>
+              <Text style={styles.aboutVersion}>
+                Version {appVersion} · Moteur Natif v2
+              </Text>
             </View>
           </View>
         </View>
@@ -1455,6 +1629,8 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
     fontWeight: "700",
     color: "#f3f4f6",
+    flexShrink: 0,
+    paddingRight: 4,
   },
   rowToggleSub: {
     fontSize: 11,
@@ -1534,6 +1710,9 @@ const styles = StyleSheet.create({
   quickActionText: {
     fontSize: 11.5,
     fontWeight: "600",
+    flexShrink: 0,
+    paddingRight: 4,
+    includeFontPadding: false,
   },
   loginPromptCard: {
     backgroundColor: "#161622",
@@ -1600,6 +1779,7 @@ const styles = StyleSheet.create({
   },
   deviceTabs: {
     marginTop: 4,
+    flexGrow: 0,
   },
   deviceTab: {
     paddingHorizontal: 10,
@@ -1614,6 +1794,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#9ca3af",
     fontWeight: "600",
+    paddingRight: 3,
   },
   previewContainer: {
     backgroundColor: "#101018",
@@ -1664,8 +1845,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#0d0d14",
   },
   previewCover: {
-    width: "100%",
-    height: "100%",
+    ...StyleSheet.absoluteFillObject,
     borderRadius: 6,
   },
   previewLangBadge: {
@@ -1696,6 +1876,9 @@ const styles = StyleSheet.create({
     color: "#93c5fd",
     fontWeight: "600",
     flex: 1,
+    flexShrink: 0,
+    paddingRight: 3,
+    includeFontPadding: false,
   },
   previewMetaPages: {
     fontSize: 8,
@@ -1752,6 +1935,7 @@ const styles = StyleSheet.create({
     color: "#9ca3af",
     fontWeight: "600",
     textAlign: "center",
+    paddingRight: 3,
   },
   linkRow: {
     flexDirection: "row",
@@ -1764,6 +1948,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#f3f4f6",
     fontWeight: "600",
+    flexShrink: 0,
+    paddingRight: 4,
   },
   cacheRow: {
     flexDirection: "row",

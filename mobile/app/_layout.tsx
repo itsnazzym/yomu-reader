@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 import { AppState, StyleSheet, Text, View, type AppStateStatus } from "react-native";
-import { ErrorBoundaryProps, Stack } from "expo-router";
+import { ErrorBoundaryProps, Stack, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
@@ -9,6 +9,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Drawer } from "react-native-drawer-layout";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { enableScreens } from "react-native-screens";
+import * as Linking from "expo-linking";
 import { ThemeProvider, useTheme } from "@/lib/ThemeContext";
 import { DrawerProvider, useDrawer } from "@/lib/DrawerContext";
 import { SideMenu } from "@/components/SideMenu";
@@ -19,9 +20,13 @@ import { maybeRunAutobackup } from "@/lib/backupStore";
 import { refreshFollowsFeed } from "@/lib/followsFeedStore";
 import { AppLockGate } from "@/components/AppLockGate";
 import { usePrivacyGuard } from "@/lib/privacyCaptureStore";
+import { parseGalleryDeepLink } from "@/lib/deepLinks";
+import { initGlitchTip } from "@/lib/glitchTip";
+import { maybeAutoCheckOtaUpdate } from "@/lib/otaUpdates";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 enableScreens(true);
+initGlitchTip();
 
 const ERROR_FALLBACK_COLORS = {
   bg: "#121218",
@@ -48,15 +53,18 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
 function AppShell() {
   const { colors } = useTheme();
   const { isOpen, openDrawer, closeDrawer, swipeEnabled } = useDrawer();
+  const router = useRouter();
   // FLAG_SECURE : bloque captures d'écran + vignette multitâche (défaut ON).
   usePrivacyGuard();
 
   useEffect(() => {
     void maybeRunAutobackup();
     void refreshFollowsFeed(false);
+    void maybeAutoCheckOtaUpdate();
     const onAppState = (next: AppStateStatus): void => {
       if (next === "active") {
         void refreshFollowsFeed(false);
+        void maybeAutoCheckOtaUpdate();
       }
     };
     const sub = AppState.addEventListener("change", onAppState);
@@ -64,6 +72,37 @@ function AppShell() {
       sub.remove();
     };
   }, []);
+
+  // Deep links : yomureader://gallery/<id> → fiche livre (pas /read direct).
+  useEffect(() => {
+    const navigateFromUrl = (url: string | null): void => {
+      if (!url) return;
+      try {
+        const target = parseGalleryDeepLink(url);
+        if (!target?.id) return;
+        router.push({
+          pathname: "/book/[id]",
+          params: {
+            id: target.id,
+            ...(target.src ? { src: target.src } : {}),
+          },
+        });
+      } catch (err) {
+        console.warn("[deepLink] navigation failed:", err);
+      }
+    };
+
+    void Linking.getInitialURL()
+      .then((url) => navigateFromUrl(url))
+      .catch(() => {});
+
+    const sub = Linking.addEventListener("url", ({ url }) => {
+      navigateFromUrl(url);
+    });
+    return () => {
+      sub.remove();
+    };
+  }, [router]);
 
   return (
     <TexturedBackground backgroundColor={colors.bg}>
@@ -92,6 +131,8 @@ function AppShell() {
             <Stack.Screen name="index" />
             <Stack.Screen name="favorites" />
             <Stack.Screen name="downloaded" />
+            <Stack.Screen name="collections/index" />
+            <Stack.Screen name="collections/[id]" />
             <Stack.Screen name="history" />
             <Stack.Screen name="updates" />
             <Stack.Screen name="batch" />
@@ -99,6 +140,7 @@ function AppShell() {
             <Stack.Screen name="profile" />
             <Stack.Screen name="tags/index" />
             <Stack.Screen name="settings/index" />
+            <Stack.Screen name="settings/storage" />
             <Stack.Screen name="api-keys/index" />
             <Stack.Screen name="book/[id]/index" />
             <Stack.Screen name="book/[id]/comments" />

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import { StyleSheet, View, Animated, ActivityIndicator, StyleProp, Pressable } from "react-native";
+import { StyleSheet, View, Animated, ActivityIndicator, StyleProp, Pressable, ViewStyle } from "react-native";
 import { Image, ImageProps, ImageStyle } from "expo-image";
 import { IconReload } from "@tabler/icons-react-native";
 import { useTheme } from "@/lib/ThemeContext";
@@ -46,6 +46,12 @@ function refererForImage(imageUri: string): string {
     const host = new URL(imageUri).hostname.toLowerCase();
     if (host.includes("doujins.com")) return "https://doujins.com/";
     if (host.includes("3hentai")) return "https://fr.3hentai.net/";
+    if (
+      host.includes("hitomi.la") ||
+      host.includes("gold-usergeneratedcontent.net")
+    ) {
+      return "https://hitomi.la/";
+    }
   } catch {
     // URL invalide : referer nHentai par défaut
   }
@@ -84,16 +90,31 @@ export function SmartImage({
 }: SmartImageProps) {
   const { colors } = useTheme();
   const [retryIndex, setRetryIndex] = useState(0);
+  const [softAttempt, setSoftAttempt] = useState(0);
   const [loading, setLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const softAttemptRef = useRef(0);
+  const softTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const shimmerAnim = useRef(new Animated.Value(0.3)).current;
 
   useEffect(() => {
+    softAttemptRef.current = 0;
+    if (softTimerRef.current) {
+      clearTimeout(softTimerRef.current);
+      softTimerRef.current = null;
+    }
     setRetryIndex(0);
+    setSoftAttempt(0);
     setLoading(true);
     setHasError(false);
   }, [uri]);
+
+  useEffect(() => {
+    return () => {
+      if (softTimerRef.current) clearTimeout(softTimerRef.current);
+    };
+  }, []);
 
   // Build high-speed, unblocked CDN candidates
   const candidateUrls = useMemo(() => {
@@ -144,25 +165,52 @@ export function SmartImage({
     };
   }, [loading, hasError, shimmerAnim]);
 
-  const currentUri = candidateUrls[retryIndex] || uri;
+  const baseUri = candidateUrls[retryIndex] || uri;
+  // Soft-retry Hitomi/CDN flaky : bust cache pour forcer un nouveau fetch.
+  const currentUri =
+    baseUri && softAttempt > 0
+      ? `${baseUri}${baseUri.includes("?") ? "&" : "?"}_yr=${softAttempt}`
+      : baseUri;
   const effectiveRecyclingKey = recyclingKey || uri;
+  const MAX_SOFT_RETRIES = 5;
 
   const handleError = useCallback(() => {
     if (retryIndex < candidateUrls.length - 1) {
       setRetryIndex((prev) => prev + 1);
-    } else {
-      setLoading(false);
-      setHasError(true);
+      return;
     }
+    // CDN flaky (Hitomi, etc.) : une seule URL candidate → retry auto avec backoff
+    // avant d'afficher le bouton reload manuel.
+    if (softAttemptRef.current < MAX_SOFT_RETRIES) {
+      softAttemptRef.current += 1;
+      const delayMs = 450 * softAttemptRef.current;
+      if (softTimerRef.current) clearTimeout(softTimerRef.current);
+      softTimerRef.current = setTimeout(() => {
+        setRetryIndex(0);
+        setSoftAttempt(softAttemptRef.current);
+        setLoading(true);
+        setHasError(false);
+      }, delayMs);
+      return;
+    }
+    setLoading(false);
+    setHasError(true);
   }, [retryIndex, candidateUrls.length]);
 
   const handleLoad = useCallback(() => {
+    softAttemptRef.current = 0;
     setLoading(false);
     setHasError(false);
   }, []);
 
   const handleManualRetry = useCallback(() => {
+    softAttemptRef.current = 0;
+    if (softTimerRef.current) {
+      clearTimeout(softTimerRef.current);
+      softTimerRef.current = null;
+    }
     setRetryIndex(0);
+    setSoftAttempt(0);
     setLoading(true);
     setHasError(false);
   }, []);
@@ -173,12 +221,13 @@ export function SmartImage({
         styles.container,
         { backgroundColor: "#0d0d14" },
         aspectRatio ? { aspectRatio } : null,
-        style as any,
+        style as StyleProp<ViewStyle>,
       ]}
     >
       {currentUri && !hasError ? (
         <Image
-          recyclingKey={effectiveRecyclingKey}
+          key={`${effectiveRecyclingKey}_${softAttempt}_${retryIndex}`}
+          recyclingKey={`${effectiveRecyclingKey}_${softAttempt}`}
           source={{
             uri: currentUri,
             headers: {

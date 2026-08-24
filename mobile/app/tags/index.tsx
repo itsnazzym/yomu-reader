@@ -571,7 +571,7 @@ export default function TagsScreen() {
         <View style={[styles.taxBanner, { backgroundColor: "#ff475722" }]}>
           <View style={styles.taxBannerRow}>
             <IconX size={14} color="#ff4757" strokeWidth={2.5} />
-            <Text style={[styles.taxBannerText, { color: "#ff4757", flexShrink: 1 }]} numberOfLines={2}>
+            <Text style={[styles.taxBannerText, { color: "#ff4757" }]} numberOfLines={2}>
               Impossible de charger les tags — {taxError}
             </Text>
             <Pressable onPress={() => setTaxRetry((r) => r + 1)} hitSlop={6}>
@@ -937,6 +937,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     flexShrink: 0,
+    paddingRight: 4,
+    includeFontPadding: false,
   },
   taxTrack: {
     height: 4,
@@ -1078,6 +1080,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     color: "#f3f4f6",
+    flexShrink: 0,
+    paddingRight: 4,
+    includeFontPadding: false,
   },
   tagSubMeta: {
     fontSize: 10.5,

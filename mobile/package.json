@@ -1,7 +1,7 @@
 {
   "name": "nhentaidownlo-mobile",
   "main": "expo-router/entry",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
@@ -22,6 +22,7 @@
     "@notifee/react-native": "^9.1.8",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/netinfo": "11.4.1",
+    "@sentry/react-native": "~7.2.0",
     "@shopify/flash-list": "2.0.2",
     "@tabler/icons-react-native": "^3.46.0",
     "date-fns": "^4.1.0",
@@ -49,6 +50,7 @@
     "expo-splash-screen": "~31.0.13",
     "expo-sqlite": "~16.0.10",
     "expo-status-bar": "~3.0.9",
+    "expo-updates": "~29.0.20",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
@@ -76,7 +78,10 @@
     "fsevents": false,
     "unrs-resolver": true,
     "expo-sqlite": true,
-    "expo-local-authentication": true
+    "expo-local-authentication": true,
+    "@sentry/react-native": true,
+    "@sentry/cli": true,
+    "expo-updates": true
   },
   "private": true
 }

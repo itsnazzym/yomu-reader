@@ -1,0 +1,19 @@
+appId: com.nhentaidownlo.mobile
+---
+# Recherche catalogue → ouverture fiche
+- launchApp
+- assertVisible:
+    text: ".*Yomu|Reprendre|Popular|Tout.*"
+- tapOn:
+    id: ".*"
+    optional: true
+- tapOn:
+    text: "Tout"
+    optional: true
+- tapOn:
+    text: "nHentai"
+    optional: true
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 15000

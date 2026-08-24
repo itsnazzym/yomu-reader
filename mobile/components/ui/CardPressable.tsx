@@ -4,6 +4,8 @@ import {
   StyleProp,
   ViewStyle,
   Animated,
+  type GestureResponderEvent,
+  type TouchableOpacityProps,
 } from "react-native";
 import { useReduceMotion } from "@/lib/reduceMotion";
 
@@ -13,7 +15,8 @@ import { useReduceMotion } from "@/lib/reduceMotion";
  */
 export const CHIP_PRESSED_SCALE = 0.93;
 
-export interface CardPressableProps {
+export interface CardPressableProps
+  extends Omit<TouchableOpacityProps, "style" | "children" | "onPress"> {
   children?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   radius?: number;
@@ -21,9 +24,8 @@ export interface CardPressableProps {
   /** "card" (défaut) : échelle douce ; "chip" : échelle 0.93 (puce/tag). */
   variant?: "card" | "chip";
   pressedScale?: number;
-  onPress?: (e?: any) => void;
+  onPress?: (e?: GestureResponderEvent) => void;
   disabled?: boolean;
-  [key: string]: any;
 }
 
 export function CardPressable({
@@ -70,17 +72,16 @@ export function CardPressable({
       onPress={onPress}
       onPressIn={onPressIn}
       onPressOut={onPressOut}
-      style={{ opacity: disabled ? 0.5 : 1 }}
+      style={[{ opacity: disabled ? 0.5 : 1 }, style]}
       {...rest}
     >
       <Animated.View
-        style={[
-          {
-            borderRadius: radius,
-            transform: [{ scale }],
-          },
-          style,
-        ]}
+        style={{
+          borderRadius: radius,
+          transform: [{ scale }],
+          alignSelf: "stretch",
+          width: "100%",
+        }}
       >
         {children}
       </Animated.View>
