@@ -501,8 +501,7 @@ export default function BookDetailScreen() {
               <Text
                 style={styles.primaryReadBtnText}
                 numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.8}
+                ellipsizeMode="tail"
               >
                 {readLabel}
               </Text>
@@ -517,7 +516,11 @@ export default function BookDetailScreen() {
             >
               <View style={styles.btnInner}>
                 <IconDownload size={16} color={colors.accent} strokeWidth={2} style={{ flexShrink: 0 }} />
-                <Text style={[styles.secondaryBtnText, { color: colors.txt }]} numberOfLines={1}>
+                <Text
+                  style={[styles.secondaryBtnText, { color: colors.txt }]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
                   Télécharger
                 </Text>
               </View>
@@ -534,7 +537,11 @@ export default function BookDetailScreen() {
             >
               <View style={styles.btnInner}>
                 <IconFolderPlus size={16} color={colors.accent} strokeWidth={2} style={{ flexShrink: 0 }} />
-                <Text style={[styles.secondaryBtnText, { color: colors.txt }]} numberOfLines={1}>
+                <Text
+                  style={[styles.secondaryBtnText, { color: colors.txt }]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
                   Collection
                 </Text>
               </View>
@@ -980,6 +987,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     minHeight: 46,
+    minWidth: 100,
     justifyContent: "center",
   },
   btnInner: {
@@ -987,22 +995,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    flexShrink: 0,
+    flexShrink: 1,
+    minWidth: 0,
   },
   primaryReadBtnText: {
     color: "#fff",
     fontWeight: "800",
     fontSize: 14,
-    flexShrink: 0,
-    paddingRight: 6,
-    includeFontPadding: false,
+    flexShrink: 1,
   },
   secondaryBtnText: {
     fontWeight: "700",
     fontSize: 13,
-    flexShrink: 0,
-    paddingRight: 4,
-    includeFontPadding: false,
+    flexShrink: 1,
   },
   dupeBadge: {
     marginHorizontal: 16,
