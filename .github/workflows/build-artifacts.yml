@@ -132,8 +132,26 @@ jobs:
           APP_VERSION_CODE: ${{ needs.prepare-version.outputs.version_code }}
         run: node .github/scripts/apply-release-version.cjs
 
+      - name: Restore production release keystore for prebuild
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KEYSTORE_BASE64:-}" ]; then
+            echo "::error::Secret KEYSTORE_BASE64 is not set. Add it in repo Settings > Secrets > Actions." >&2
+            exit 1
+          fi
+          mkdir -p mobile/keys mobile/android/app
+          echo "${KEYSTORE_BASE64}" | base64 -d > mobile/keys/release-key.keystore
+          cp mobile/keys/release-key.keystore mobile/android/app/release-key.keystore
+          echo "Keystore ready for expo prebuild ($(wc -c < mobile/keys/release-key.keystore) bytes)"
+
       - name: Install dependencies & prebuild Android once
         working-directory: mobile
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           npm ci
           npx expo prebuild --platform android --no-install
@@ -208,6 +226,9 @@ jobs:
           RAW_APK=$(find mobile/android/app/build/outputs/apk/release -name "*.apk" | head -n 1)
           cp "$RAW_APK" output-arm64/YomuReader-arm64-v8a-release.apk
 
+      - name: Verify release APK is not debug-signed
+        run: bash .github/scripts/verify-apk-release-signing.sh output-arm64/YomuReader-arm64-v8a-release.apk
+
       - name: Upload ARM64 APK
         uses: actions/upload-artifact@v4
         with:
@@ -277,6 +298,9 @@ jobs:
           mkdir -p output-universal
           RAW_APK=$(find mobile/android/app/build/outputs/apk/release -name "*.apk" | head -n 1)
           cp "$RAW_APK" output-universal/YomuReader-universal-full-release.apk
+
+      - name: Verify release APK is not debug-signed
+        run: bash .github/scripts/verify-apk-release-signing.sh output-universal/YomuReader-universal-full-release.apk
 
       - name: Upload Universal APK
         uses: actions/upload-artifact@v4
