@@ -69,7 +69,7 @@ const TYPE_CONFIGS: Record<
   downloads: {
     icon: IconCloudDownload,
     kanji: "庫",
-    defaultTitle: "Bibliothèque Hors-Ligne Vide",
+    defaultTitle: "Aucun téléchargement",
     defaultDesc: "Téléchargez des tomes entiers pour les dévorer partout sans connexion.",
     sealColor: "#34c759",
   },
