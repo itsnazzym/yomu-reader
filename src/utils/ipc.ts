@@ -49,6 +49,18 @@ export function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
+/**
+ * V2 shipping path is Electron (+ local Photon proxy). Tauri remains in the
+ * tree for experiments only — set window.__YOMU_ENABLE_TAURI__ = true to opt in.
+ */
+export function isTauriEnabled(): boolean {
+  if (!isTauri()) return false;
+  return (
+    typeof window !== "undefined" &&
+    (window as Window & { __YOMU_ENABLE_TAURI__?: boolean }).__YOMU_ENABLE_TAURI__ === true
+  );
+}
+
 export async function searchGalleries(
   query: string,
   sort: string,
@@ -59,7 +71,7 @@ export async function searchGalleries(
   if (isElectron() && window.electronAPI) {
     return await window.electronAPI.searchGalleries({ query, sort, page, cookies, apiKey });
   }
-  if (isTauri()) {
+  if (isTauriEnabled()) {
     const { invoke } = await import("@tauri-apps/api/core");
     return await invoke<SearchResponse>("search_galleries", {
       query,
@@ -96,7 +108,7 @@ export async function getGallery(id: number, cookies?: string, apiKey?: string):
   let gallery: Gallery | null = null;
   if (isElectron() && window.electronAPI) {
     gallery = await window.electronAPI.getGallery({ id, cookies, apiKey });
-  } else if (isTauri()) {
+  } else if (isTauriEnabled()) {
     const { invoke } = await import("@tauri-apps/api/core");
     gallery = await invoke<Gallery>("get_gallery", { id, cookies: cookies || null });
   } else {
@@ -150,7 +162,7 @@ export async function getDefaultSettings(): Promise<AppSettings> {
   if (isElectron() && window.electronAPI) {
     return await window.electronAPI.getDefaultSettings();
   }
-  if (isTauri()) {
+  if (isTauriEnabled()) {
     const { invoke } = await import("@tauri-apps/api/core");
     return await invoke<AppSettings>("get_default_settings");
   }
@@ -178,7 +190,7 @@ export async function formatFilenamePreview(
   if (isElectron() && window.electronAPI) {
     return await window.electronAPI.formatFilenamePreview({ pattern, gallery });
   }
-  if (isTauri()) {
+  if (isTauriEnabled()) {
     const { invoke } = await import("@tauri-apps/api/core");
     return await invoke<string>("format_filename_preview", { pattern, gallery });
   }
@@ -210,7 +222,7 @@ export async function startDownload(
       apiKey,
     });
   }
-  if (isTauri()) {
+  if (isTauriEnabled()) {
     const { invoke } = await import("@tauri-apps/api/core");
     return await invoke<string>("start_download", {
       gallery,
@@ -228,7 +240,7 @@ export async function cancelDownload(galleryId: number): Promise<void> {
     await window.electronAPI.cancelDownload({ galleryId });
     return;
   }
-  if (isTauri()) {
+  if (isTauriEnabled()) {
     const { invoke } = await import("@tauri-apps/api/core");
     await invoke("cancel_download", { galleryId });
   }
@@ -239,7 +251,7 @@ export async function openFolder(path: string): Promise<void> {
     await window.electronAPI.openFolder({ targetPath: path });
     return;
   }
-  if (isTauri()) {
+  if (isTauriEnabled()) {
     const { invoke } = await import("@tauri-apps/api/core");
     await invoke("open_folder", { path });
   }
@@ -272,7 +284,7 @@ export async function openAuthWindow(): Promise<void> {
     await window.electronAPI.openAuthWindow();
     return;
   }
-  if (isTauri()) {
+  if (isTauriEnabled()) {
     const { invoke } = await import("@tauri-apps/api/core");
     await invoke("open_auth_window");
     return;
@@ -286,7 +298,7 @@ export function onDownloadProgress(
   if (isElectron() && window.electronAPI) {
     return window.electronAPI.onDownloadProgress(callback);
   }
-  if (isTauri()) {
+  if (isTauriEnabled()) {
     let unlisten: (() => void) | null = null;
     import("@tauri-apps/api/event").then(({ listen }) => {
       listen<DownloadProgressPayload>("download-progress", (event) => {

@@ -7,6 +7,8 @@ import { FastScrollRail } from "./FastScrollRail";
 import { SmartImage } from "../common/SmartImage";
 import { QuickShareModal } from "../common/QuickShareModal";
 import { canPairPages } from "../../utils/readerSpreads";
+import { galleryGlobalId } from "../../utils/globalId";
+import { READER_SETTINGS_KEY } from "../../stores/backupStore";
 
 interface ReaderModalProps {
   gallery: Gallery | null;
@@ -17,6 +19,34 @@ interface ReaderModalProps {
 type ReadingMode = "manga-rtl" | "manga-ltr" | "webtoon";
 type ZoomMode = "fit-width" | "fit-height" | "original";
 type PreloadOption = 1 | 2 | 3 | 4 | 5 | "all";
+
+interface PersistedReaderSettings {
+  readingMode?: ReadingMode;
+  zoomMode?: ZoomMode;
+  preloadCount?: PreloadOption;
+  doublePage?: boolean;
+  brightness?: number;
+  webtoonGap?: number;
+}
+
+function loadReaderSettings(): PersistedReaderSettings {
+  try {
+    const raw = localStorage.getItem(READER_SETTINGS_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as PersistedReaderSettings;
+  } catch {
+    return {};
+  }
+}
+
+function saveReaderSettings(partial: PersistedReaderSettings): void {
+  try {
+    const next = { ...loadReaderSettings(), ...partial };
+    localStorage.setItem(READER_SETTINGS_KEY, JSON.stringify(next));
+  } catch {
+    /* ignore */
+  }
+}
 
 // High-Performance Image Component with RAM Cache and Multi-Format Auto-Fallback
 const ReaderImage: React.FC<{
@@ -68,13 +98,18 @@ const ReaderModalContent: React.FC<ReaderModalProps & { gallery: Gallery }> = ({
   }, [gallery]);
 
   const [currentPage, setCurrentPage] = useState(initialPage);
-  const [readingMode, setReadingMode] = useState<ReadingMode>("manga-rtl");
-  const [zoomMode, setZoomMode] = useState<ZoomMode>("fit-height");
-  const [preloadCount, setPreloadCount] = useState<PreloadOption>(3);
+  const persisted = React.useMemo(() => loadReaderSettings(), []);
+  const [readingMode, setReadingMode] = useState<ReadingMode>(
+    persisted.readingMode || "manga-rtl"
+  );
+  const [zoomMode, setZoomMode] = useState<ZoomMode>(persisted.zoomMode || "fit-height");
+  const [preloadCount, setPreloadCount] = useState<PreloadOption>(
+    persisted.preloadCount ?? 3
+  );
   const [preloadStatus, setPreloadStatus] = useState<"idle" | "loading" | "ready">("idle");
-  const [brightness, setBrightness] = useState<number>(100);
-  const [webtoonGap, setWebtoonGap] = useState<number>(8);
-  const [doublePage, setDoublePage] = useState<boolean>(false);
+  const [brightness, setBrightness] = useState<number>(persisted.brightness ?? 100);
+  const [webtoonGap, setWebtoonGap] = useState<number>(persisted.webtoonGap ?? 8);
+  const [doublePage, setDoublePage] = useState<boolean>(persisted.doublePage ?? false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isShareOpen, setIsShareOpen] = useState(false);
 
@@ -93,11 +128,11 @@ const ReaderModalContent: React.FC<ReaderModalProps & { gallery: Gallery }> = ({
     setCurrentPage(initialPage);
   }, [initialPage]);
 
-  // Save reading progress to History
+  // Save reading progress to History (GlobalGalleryId)
   useEffect(() => {
     if (currentGallery && totalPages > 0) {
       useHistoryStore.getState().saveProgress({
-        id: currentGallery.id,
+        id: galleryGlobalId(currentGallery),
         mediaId: currentGallery.media_id,
         title: getGalleryDisplayTitle(currentGallery),
         coverUrl: getCoverUrl(currentGallery),
@@ -106,6 +141,28 @@ const ReaderModalContent: React.FC<ReaderModalProps & { gallery: Gallery }> = ({
       });
     }
   }, [currentPage, currentGallery, totalPages]);
+
+  // Prefer immersive fullscreen when the reader opens (best-effort; may be blocked).
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || document.fullscreenElement) return;
+    const t = window.setTimeout(() => {
+      el.requestFullscreen?.().then(() => setIsFullscreen(true)).catch(() => {});
+    }, 80);
+    return () => window.clearTimeout(t);
+  }, [currentGallery.id]);
+
+  // Persist reader preferences (shared via BackupData.readerSettings)
+  useEffect(() => {
+    saveReaderSettings({
+      readingMode,
+      zoomMode,
+      preloadCount,
+      doublePage,
+      brightness,
+      webtoonGap,
+    });
+  }, [readingMode, zoomMode, preloadCount, doublePage, brightness, webtoonGap]);
 
   // High-Speed Browser Cache Preloading Engine (NHApp pattern)
   useEffect(() => {
@@ -375,9 +432,11 @@ const ReaderModalContent: React.FC<ReaderModalProps & { gallery: Gallery }> = ({
               {title}
             </h2>
             <div className="text-[11px] text-gray-400 font-mono flex items-center gap-2">
-              <span>Page {currentPage + 1} sur {totalPages}</span>
+              <span>Page {currentPage + 1} · {title.slice(0, 40)}{title.length > 40 ? "…" : ""}</span>
               <span>•</span>
-              <span className="text-[#ed2553]">#d{currentGallery.id}</span>
+              <span className="text-[#ed2553]">nhentai:{currentGallery.id}</span>
+              <span>•</span>
+              <span className="text-gray-500">source nHentai</span>
               {preloadStatus === "loading" && (
                 <span className="flex items-center gap-1 text-amber-400 text-[10px]">
                   <Icon name="sync" size={12} className="animate-spin" />

@@ -374,9 +374,12 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path output-windows | Out-Null
-          $exe = Get-ChildItem -Path release -Filter "*.exe" | Select-Object -First 1
+          $exe = Get-ChildItem -Path release -Filter "YomuReader*.exe" | Select-Object -First 1
+          if (-not $exe) {
+            $exe = Get-ChildItem -Path release -Filter "*.exe" | Select-Object -First 1
+          }
           if ($exe) {
-            Copy-Item -Path $exe.FullName -Destination "output-windows/nHentai-Launcher-Portable.exe"
+            Copy-Item -Path $exe.FullName -Destination "output-windows/YomuReader-Portable.exe"
           } else {
             throw "Portable .exe non trouvé dans release/"
           }
@@ -462,7 +465,7 @@ jobs:
           if [ -n "${INPUT_TITLE}" ]; then
             TITLE="${INPUT_TITLE}"
           else
-            TITLE="🌸 Release ${TAG_VER} — nHentai Launcher & Yomu Reader"
+            TITLE="Yomu Reader ${TAG_VER}"
           fi
           echo "title=${TITLE}" >> "${GITHUB_OUTPUT}"
 
@@ -504,7 +507,7 @@ jobs:
 
           cat << 'EOF' >> release_body.md
           | 📱 **`YomuReader-debug.apk`** | **Android Debug / Dev** | Version de test avec React Native DevTools activés |
-          | 💻 **`nHentai-Launcher-Portable.exe`** | **Windows 64-bit** | Exécutable autonome sans installation |
+          | 💻 **`YomuReader-Portable.exe`** | **Windows 64-bit** | Exécutable autonome sans installation |
           | 🗜️ **`nhentai-launcher-source.zip`** | **Code Source** | Archive ZIP propre du code source Git |
 
           ---

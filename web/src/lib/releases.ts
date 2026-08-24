@@ -129,4 +129,4 @@ export function createAttachmentDisposition(filePath: string): string {
   return `attachment; filename="${asciiName}"; filename*=UTF-8''${encodedName}`;
 }
 
-export const releaseVersion = "1.0.0";
+export const releaseVersion = "2.0.0";

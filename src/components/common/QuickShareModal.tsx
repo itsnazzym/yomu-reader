@@ -28,7 +28,7 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({ gallery, onClo
   const title = getGalleryDisplayTitle(gallery);
   const lang = getGalleryLanguage(gallery);
   const shareUrl = `https://nhentai.net/g/${gallery.id}/`;
-  const deepLinkUrl = `nh://gallery/${gallery.id}`;
+  const deepLinkUrl = `yomureader://gallery/nhentai:${gallery.id}`;
   const markdownLink = `[${title}](${shareUrl})`;
   const bbcodeLink = `[url=${shareUrl}]${title}[/url]`;
   const idTag = `#d${gallery.id}`;

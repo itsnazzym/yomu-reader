@@ -2,38 +2,38 @@
 
   <img src="public/app-icon.png" alt="Yomu Reader & nHentai Launcher Logo" width="110" height="110" style="border-radius: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); margin-bottom: 10px;" />
 
-  # 🌸 nHentai Launcher & Yomu Reader
-  ### Client Desktop & Application Mobile Tactile Nouvelle Génération
+  # 🌸 Yomu Reader
+  ### Client Desktop & Application Mobile — une liseuse, une bibliothèque, deux appareils
 
   <p align="center">
-    <strong>L'écosystème open-source ultime, ultra-rapide et anti-blocage pour nHentai.</strong><br>
-    <em>Liseuse Manga & Webtoon, Téléchargements CBZ multi-flux avec ComicInfo.xml, Proxy Miroir Photon avec solveur PoW SHA-256 et Bibliothèque hors-ligne.</em>
+    <strong>Écosystème open-source pour lire, télécharger et reprendre la même page sur téléphone et PC.</strong><br>
+    <em>Liseuse Manga & Webtoon, CBZ + ComicInfo.xml, backup JSON partagé, Proxy Miroir Photon (PoW SHA-256).</em>
   </p>
 
   <p align="center">
-    <a href="https://github.com/itsnazzym/nHentai-Laucher--unofficial-/releases/latest">
+    <a href="https://github.com/itsnazzym/yomu-reader/releases/latest">
       <img src="https://img.shields.io/badge/⬇️_TÉLÉCHARGER_LA_DERNIÈRE_VERSION-RELEASES_OFFICIELLES-ff0055?style=for-the-badge&logo=github&logoColor=white" alt="Download Latest Release" height="38" />
     </a>
   </p>
 
   <p align="center">
-    <a href="https://github.com/itsnazzym/nHentai-Laucher--unofficial-/releases/latest"><img src="https://img.shields.io/badge/Android_APK-ARM64_%7C_Universel-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Android APK" /></a>
-    <a href="https://github.com/itsnazzym/nHentai-Laucher--unofficial-/releases/latest"><img src="https://img.shields.io/badge/Windows_EXE-Portable_64--bit-0078D6?style=flat-square&logo=windows&logoColor=white" alt="Windows EXE" /></a>
-    <a href="https://github.com/itsnazzym/nHentai-Laucher--unofficial-/releases/latest"><img src="https://img.shields.io/badge/Code_Source-ZIP_Archive-orange?style=flat-square&logo=zip&logoColor=white" alt="Source ZIP" /></a>
-    <a href="https://github.com/itsnazzym/nHentai-Laucher--unofficial-/releases"><img src="https://img.shields.io/github/v/release/itsnazzym/nHentai-Laucher--unofficial-?style=flat-square&label=Version&color=7928ca" alt="Release Version" /></a>
+    <a href="https://github.com/itsnazzym/yomu-reader/releases/latest"><img src="https://img.shields.io/badge/Android_APK-ARM64_%7C_Universel-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Android APK" /></a>
+    <a href="https://github.com/itsnazzym/yomu-reader/releases/latest"><img src="https://img.shields.io/badge/Windows_EXE-Portable_64--bit-0078D6?style=flat-square&logo=windows&logoColor=white" alt="Windows EXE" /></a>
+    <a href="https://github.com/itsnazzym/yomu-reader/releases/latest"><img src="https://img.shields.io/badge/Code_Source-ZIP_Archive-orange?style=flat-square&logo=zip&logoColor=white" alt="Source ZIP" /></a>
+    <a href="https://github.com/itsnazzym/yomu-reader/releases"><img src="https://img.shields.io/github/v/release/itsnazzym/yomu-reader?style=flat-square&label=Version&color=7928ca" alt="Release Version" /></a>
   </p>
 
   <p align="center">
     <a href="#-démarrage-rapide--desktop"><img src="https://img.shields.io/badge/Desktop-Démarrage-ed2553?style=for-the-badge&logo=electron&logoColor=white" alt="Desktop Quickstart" /></a>
-    <a href="#-démarrage-rapide--mobile-expo"><img src="https://img.shields.io/badge/Mobile-Expo%20SDK%2052-1f2328?style=for-the-badge&logo=expo&logoColor=white" alt="Mobile Quickstart" /></a>
+    <a href="#-démarrage-rapide--mobile-expo"><img src="https://img.shields.io/badge/Mobile-Expo%20SDK%2054-1f2328?style=for-the-badge&logo=expo&logoColor=white" alt="Mobile Quickstart" /></a>
     <a href="#-proxy-miroir-photon"><img src="https://img.shields.io/badge/Proxy-Miroir%20Photon-6366f1?style=for-the-badge&logo=cloudflare&logoColor=white" alt="Photon Proxy" /></a>
     <a href="#-architecture"><img src="https://img.shields.io/badge/Archi-Monorepo-059669?style=for-the-badge&logo=mermaid&logoColor=white" alt="Architecture" /></a>
   </p>
 
   <p align="center">
     <img src="https://img.shields.io/badge/React-19.1-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React 19" />
-    <img src="https://img.shields.io/badge/React%20Native-0.76-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React Native" />
-    <img src="https://img.shields.io/badge/Expo-SDK%2052-000020?style=flat-square&logo=expo&logoColor=white" alt="Expo 52" />
+    <img src="https://img.shields.io/badge/React%20Native-0.81-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React Native" />
+    <img src="https://img.shields.io/badge/Expo-SDK%2054-000020?style=flat-square&logo=expo&logoColor=white" alt="Expo 54" />
     <img src="https://img.shields.io/badge/TypeScript-5.8-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
     <img src="https://img.shields.io/badge/Electron-43.4-47848F?style=flat-square&logo=electron&logoColor=white" alt="Electron" />
     <img src="https://img.shields.io/badge/TailwindCSS-v4.3-38B2AC?style=flat-square&logo=tailwindcss&logoColor=white" alt="Tailwind CSS" />
@@ -69,14 +69,14 @@
 
 ## 📥 Téléchargements & Releases
 
-Tous les paquets prêts à l'emploi sont disponibles sur la page **[Releases Officielles](https://github.com/itsnazzym/nHentai-Laucher--unofficial-/releases/latest)** :
+Tous les paquets prêts à l'emploi sont disponibles sur la page **[Releases Officielles](https://github.com/itsnazzym/yomu-reader/releases/latest)** :
 
 | Paquet / Fichier | Plateforme | Description | Téléchargement direct |
 | :--- | :--- | :--- | :---: |
-| 📱 **`YomuReader-arm64-v8a-release.apk`** | Android 64-bit | Version ultra-légère et fluide (~35 Mo) pour smartphones récents *(Recommandé)* | [⬇️ Télécharger](https://github.com/itsnazzym/nHentai-Laucher--unofficial-/releases/latest) |
-| 📱 **`YomuReader-universal-full-release.apk`** | Android Universel | Compatible 100% avec tous les appareils Android (ARMv7, ARM64, x86) | [⬇️ Télécharger](https://github.com/itsnazzym/nHentai-Laucher--unofficial-/releases/latest) |
-| 💻 **`nHentai-Launcher-Portable.exe`** | Windows 64-bit | Exécutable Desktop portable autonome sans installation | [⬇️ Télécharger](https://github.com/itsnazzym/nHentai-Laucher--unofficial-/releases/latest) |
-| 🗜️ **`nhentai-launcher-source.zip`** | Tous OS | Archive complète du code source du projet | [⬇️ Télécharger](https://github.com/itsnazzym/nHentai-Laucher--unofficial-/releases/latest) |
+| 📱 **`YomuReader-arm64-v8a-release.apk`** | Android 64-bit | Version ultra-légère et fluide (~35 Mo) pour smartphones récents *(Recommandé)* | [⬇️ Télécharger](https://github.com/itsnazzym/yomu-reader/releases/latest) |
+| 📱 **`YomuReader-universal-full-release.apk`** | Android Universel | Compatible 100% avec tous les appareils Android (ARMv7, ARM64, x86) | [⬇️ Télécharger](https://github.com/itsnazzym/yomu-reader/releases/latest) |
+| 💻 **`YomuReader-Portable.exe`** | Windows 64-bit | Exécutable Desktop portable autonome | [⬇️ Télécharger](https://github.com/itsnazzym/yomu-reader/releases/latest) |
+| 🗜️ **`nhentai-launcher-source.zip`** | Tous OS | Archive complète du code source du projet | [⬇️ Télécharger](https://github.com/itsnazzym/yomu-reader/releases/latest) |
 
 ---
 
@@ -129,12 +129,12 @@ Tous les paquets prêts à l'emploi sont disponibles sur la page **[Releases Off
 
 ## 📱 Comparatif Fonctionnel (Desktop vs Mobile)
 
-| Fonctionnalité | 🖥️ Client Desktop (Electron + React 19) | 📱 App Mobile (Expo SDK 52 + React Native) |
+| Fonctionnalité | 🖥️ Client Desktop (Electron + React 19) | 📱 App Mobile (Expo SDK 54 + React Native) |
 | :--- | :---: | :---: |
 | **Modes de Lecture** | Manga (Simple / Double planche) & Webtoon | Manga (RTL / LTR) & Webtoon Tap-to-Turn |
 | **Mode Immersif** | Plein écran natif (<kbd>F</kbd>) | Immersif Sticky (`expo-navigation-bar`) |
 | **Export CBZ & ComicInfo.xml** | ✅ Enregistrement direct sur disque | ✅ Format indexé & exportable |
-| **Moteur de Recommandations** | ✅ Historique & suggestions | ✅ Moteur multi-signaux & score d'affinité |
+| **Moteur de Recommandations** | Historique + Continuer | Moteur multi-signaux & score d'affinité |
 | **Téléchargement par lot (Batch)** | ✅ File d'attente multi-tâches | ✅ Batch downloader intégré |
 | **Sauvegarde / Restauration** | ✅ Export JSON | ✅ Export JSON & partage système natif |
 | **Bypass FAI & Anti-Blocage** | ✅ DoH natif dans le Processus Principal | ✅ Proxy Miroir Photon + solveur PoW |

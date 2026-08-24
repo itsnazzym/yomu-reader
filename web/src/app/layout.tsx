@@ -9,7 +9,7 @@ const exo = Exo_2({
 });
 
 export const metadata: Metadata = {
-  title: "NReader — Your library. Your way.",
+  title: "Yomu — One library. Two devices.",
   description:
     "A fast, private, cross-platform and open source manga library app. Unofficial and not affiliated with NHentai.",
   icons: {

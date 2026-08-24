@@ -451,7 +451,7 @@ function formatFilename(pattern, gallery) {
   return sanitizeFilename(result);
 }
 
-function generateComicInfoXml(gallery) {
+function generateComicInfoXml(gallery, options = {}) {
   const norm = normalizeGallery(gallery);
   const artist = norm.tags?.find((t) => t.type === "artist")?.name || "";
   const group = norm.tags?.find((t) => t.type === "group")?.name || "";
@@ -475,6 +475,15 @@ function generateComicInfoXml(gallery) {
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&apos;");
 
+  // 1-based page bookmark for cross-device resume (ComicInfo / Komga / Kavita).
+  const bookmarkPage =
+    typeof options.bookmarkPage === "number" && options.bookmarkPage >= 1
+      ? Math.floor(options.bookmarkPage)
+      : null;
+  const bookmarkXml = bookmarkPage
+    ? `\n  <Bookmark>${bookmarkPage}</Bookmark>`
+    : "";
+
   return `<?xml version="1.0" encoding="utf-8"?>
 <ComicInfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <Title>${escapeXml(title)}</Title>
@@ -493,8 +502,8 @@ function generateComicInfoXml(gallery) {
   <Year>${year}</Year>
   <Month>${month}</Month>
   <Day>${day}</Day>
-  <ScanInformation>nHentai Downloader #${norm.id}</ScanInformation>
-  <Manga>YesAndRightToLeft</Manga>
+  <ScanInformation>Yomu Reader #${norm.id}</ScanInformation>
+  <Manga>YesAndRightToLeft</Manga>${bookmarkXml}
 </ComicInfo>`;
 }
 
@@ -1224,7 +1233,7 @@ function createMainWindow() {
     height: 860,
     minWidth: 1024,
     minHeight: 680,
-    title: "nHentai Launcher & Downloader",
+    title: "Yomu Reader",
     backgroundColor: "#0c0c10",
     icon: path.join(__dirname, "../public/tauri.svg"),
     autoHideMenuBar: true,
@@ -2169,7 +2178,7 @@ ipcMain.handle("start-download", async (event, { gallery, formatType, pattern, d
     if (Notification.isSupported()) {
       const displayTitle = fullGallery.title?.pretty || fullGallery.title?.english || `Galerie #${galleryId}`;
       new Notification({
-        title: "nHentai Launcher",
+        title: "Yomu Reader",
         body: `✅ Téléchargement terminé (${formatType.toUpperCase()}) : ${displayTitle}`,
       }).show();
     }

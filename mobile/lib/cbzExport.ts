@@ -9,6 +9,8 @@ import {
   isValidLocalGalleryMetadata,
 } from "./localLibrary";
 import { base64ToBytes, bytesToBase64, buildZipStore, type ZipStoreEntry } from "./zipStore";
+import { getHistory } from "./historyStore";
+import { makeGlobalId } from "./sources/types";
 
 const PAGE_FILE_RE = /^Image(\d+)\.(jpg|jpeg|png|webp|gif)$/i;
 
@@ -80,10 +82,35 @@ export async function exportLocalGalleryToCbz(
   }
 
   try {
+    const history = getHistory();
+    const anyGallery = gallery as Gallery & {
+      globalId?: string;
+      origin?: string;
+    };
+    const globalId =
+      anyGallery.globalId ||
+      makeGlobalId("nhentai", gallery.id);
+    const hist = history.find((entry) => {
+      const entryGid =
+        entry.source && entry.gallery?.id != null
+          ? `${entry.source}:${entry.gallery.id}`
+          : makeGlobalId("nhentai", entry.gallery.id);
+      return (
+        entryGid === globalId ||
+        entry.localId === localId ||
+        Number(entry.gallery?.id) === Number(gallery.id)
+      );
+    });
+    // ComicInfo Bookmark is 1-based; history lastPage is 0-based.
+    const bookmarkPage =
+      hist && hist.lastPage >= 0 ? hist.lastPage + 1 : undefined;
+
     const entries: ZipStoreEntry[] = [
       {
         name: "ComicInfo.xml",
-        data: new TextEncoder().encode(buildComicInfoXml(gallery)),
+        data: new TextEncoder().encode(
+          buildComicInfoXml(gallery, { bookmarkPage })
+        ),
       },
     ];
 

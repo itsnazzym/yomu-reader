@@ -130,9 +130,13 @@ function isValidBackupData(value: unknown): value is BackupData {
   if (
     value.favorites !== undefined &&
     (!Array.isArray(value.favorites) ||
-      value.favorites.some(
-        (item) => !isPlainObject(item) || !Number.isFinite(Number(item.id))
-      ))
+      value.favorites.some((item) => {
+        if (!isPlainObject(item)) return true;
+        const hasNumericId = Number.isFinite(Number(item.id));
+        const hasGlobalId =
+          typeof item.globalId === "string" && item.globalId.includes(":");
+        return !hasNumericId && !hasGlobalId;
+      }))
   ) {
     return false;
   }

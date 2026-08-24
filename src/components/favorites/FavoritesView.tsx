@@ -33,7 +33,7 @@ export const FavoritesView: React.FC<FavoritesViewProps> = ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `nhentai_favorites_${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `yomu_favorites_${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -149,13 +149,33 @@ export const FavoritesView: React.FC<FavoritesViewProps> = ({
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
           {filteredFavorites.map((fav) => (
-            <GalleryCard
-              key={fav.id}
-              gallery={fav.gallery}
-              onSelect={onSelectGallery}
-              onRead={onReadGallery}
-              onQuickDownload={onQuickDownload}
-            />
+            <div key={fav.id} className="relative">
+              {fav.sourceUnavailable && (
+                <div className="absolute inset-x-1 top-1 z-10 rounded-md bg-amber-950/90 border border-amber-500/40 px-1.5 py-0.5 text-[10px] text-amber-200 font-semibold text-center">
+                  Source mobile seule ({fav.id.split(":")[0]})
+                </div>
+              )}
+              <GalleryCard
+                gallery={fav.gallery}
+                onSelect={(g) => {
+                  if (fav.sourceUnavailable) {
+                    window.alert(
+                      `Cette galerie (${fav.id}) vient d’une source non disponible sur le desktop. Ouvre-la sur Yomu mobile.`
+                    );
+                    return;
+                  }
+                  onSelectGallery(g);
+                }}
+                onRead={
+                  fav.sourceUnavailable
+                    ? undefined
+                    : onReadGallery
+                }
+                onQuickDownload={
+                  fav.sourceUnavailable ? undefined : onQuickDownload
+                }
+              />
+            </div>
           ))}
         </div>
       )}

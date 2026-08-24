@@ -17,6 +17,8 @@ import { TabType, SortOption, Gallery, Tag } from "./types";
 import { searchGalleries, getGallery, getRandomGallery, onCloudflareChallengeNeeded } from "./utils/ipc";
 import { useDownloadStore } from "./stores/downloadStore";
 import { useSettingsStore } from "./stores/settingsStore";
+import { useHistoryStore } from "./stores/historyStore";
+import { nativeIdAsNumber } from "./utils/globalId";
 
 export function App() {
   const [currentTab, setCurrentTab] = useState<TabType>("explorer");
@@ -41,6 +43,16 @@ export function App() {
 
   const { queue, addToQueue, initListener } = useDownloadStore();
   const { settings, loadSettings } = useSettingsStore();
+  const history = useHistoryStore((s) => s.history);
+  const resumeCandidate = history.find((entry) => {
+    const total = entry.totalPages || 1;
+    return (
+      !entry.sourceUnavailable &&
+      entry.lastReadPage > 0 &&
+      total > 1 &&
+      entry.lastReadPage < total - 1
+    );
+  });
 
   const queuedIds = new Set(
     queue
@@ -236,7 +248,44 @@ export function App() {
         {/* Scrollable View Content */}
         <main className="flex-1 overflow-y-auto bg-[#101018] relative">
           {currentTab === "explorer" && (
-            <GalleryGrid
+            <>
+              {resumeCandidate && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const nid = nativeIdAsNumber(resumeCandidate.id);
+                    if (!nid) return;
+                    try {
+                      const g = await getGallery(
+                        nid,
+                        settings.cookies,
+                        settings.api_key
+                      );
+                      handleOpenReader(g, resumeCandidate.lastReadPage);
+                    } catch (e) {
+                      console.error("Resume failed:", e);
+                    }
+                  }}
+                  className="mx-4 mt-4 mb-1 w-[calc(100%-2rem)] flex items-center gap-3 px-4 py-3 rounded-2xl bg-[#161620] border border-[#ed2553]/35 hover:border-[#ed2553]/70 text-left cursor-pointer transition-colors"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-[#ed2553]/15 text-[#ed2553] flex items-center justify-center shrink-0">
+                    <span className="text-lg">▶</span>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-[#ed2553]">
+                      Continuer
+                    </div>
+                    <div className="text-sm font-semibold text-white truncate">
+                      {resumeCandidate.title}
+                    </div>
+                    <div className="text-[11px] text-gray-400 font-mono">
+                      Page {resumeCandidate.lastReadPage + 1} /{" "}
+                      {resumeCandidate.totalPages} · {resumeCandidate.id}
+                    </div>
+                  </div>
+                </button>
+              )}
+              <GalleryGrid
               galleries={galleries}
               isLoading={isLoading}
               error={error}
@@ -254,6 +303,7 @@ export function App() {
               currentSearchQuery={activeQuery}
               selectedLanguage={selectedLanguage}
             />
+            </>
           )}
 
         {currentTab === "favorites" && (

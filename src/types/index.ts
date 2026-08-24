@@ -50,6 +50,8 @@ export type DownloadStatus = "queued" | "downloading" | "paused" | "completed" |
 
 export interface DownloadItem {
   id: number;
+  /** Canonical id for backup / multi-source continuity (desktop downloads stay nHentai). */
+  globalId?: string;
   gallery: Gallery;
   format: DownloadFormat;
   status: DownloadStatus;

@@ -30,8 +30,11 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   const handleResume = (item: ReadingHistoryItem) => {
     if (item.isLocal && item.filePath && onOpenLocalReader) {
       onOpenLocalReader(item.filePath);
-    } else if (onOpenOnlineReader) {
-      onOpenOnlineReader(item.id, item.lastReadPage);
+    } else if (onOpenOnlineReader && !item.sourceUnavailable) {
+      const numericId = Number.parseInt(String(item.id).split(":").pop() || "", 10);
+      if (Number.isFinite(numericId) && numericId > 0) {
+        onOpenOnlineReader(numericId, item.lastReadPage);
+      }
     }
   };
 

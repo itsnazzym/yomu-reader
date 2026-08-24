@@ -6,9 +6,9 @@ import { getReleaseFiles, releaseVersion } from "@/lib/releases";
 import { platforms, site } from "@/lib/site-data";
 
 export const metadata: Metadata = {
-  title: "Download — NReader",
+  title: "Download — Yomu",
   description:
-    "Download the NReader app for Windows, Android, Linux and macOS. Free, open source and independent.",
+    "Download Yomu Reader for Windows and Android. Free, open source and independent.",
 };
 
 const platformMeta: Record<
@@ -19,13 +19,13 @@ const platformMeta: Record<
     label: "Windows",
     icon: "🪟",
     available: true,
-    note: "NSIS installer & portable build",
+    note: "NSIS installer & portable EXE (YomuReader-Portable.exe)",
   },
   android: {
     label: "Android",
     icon: "🤖",
-    available: false,
-    note: "APK build pending — coming soon",
+    available: true,
+    note: "APK ARM64 from GitHub Releases (YomuReader-arm64-v8a-release.apk)",
   },
   linux: {
     label: "Linux",

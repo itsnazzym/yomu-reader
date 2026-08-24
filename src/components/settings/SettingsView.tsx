@@ -10,6 +10,10 @@ import {
   isElectron,
 } from "../../utils/ipc";
 import { Icon } from "../common/Icon";
+import {
+  exportBackupToFile,
+  importBackupFromFile,
+} from "../../stores/backupStore";
 
 export const SettingsView: React.FC = () => {
   const {
@@ -25,6 +29,7 @@ export const SettingsView: React.FC = () => {
   const [cookieInput, setCookieInput] = useState(isElectron() ? "" : settings.cookies || "");
   const [apiKeyInput, setApiKeyInput] = useState(isElectron() ? "" : settings.api_key || "");
   const [isSavedNotice, setIsSavedNotice] = useState(false);
+  const [backupStatus, setBackupStatus] = useState<string | null>(null);
 
   const sampleGallery = {
     id: 482910,
@@ -134,18 +139,73 @@ export const SettingsView: React.FC = () => {
           <div>
             <h1 className="text-xl font-bold text-white">Paramètres de l'Application</h1>
             <p className="text-xs text-gray-400">
-              Personnalisez les dossiers de sortie, les modèles de nommage de fichiers et votre session nHentai.
+              Yomu Reader — dossiers, session nHentai, et sauvegarde partagée avec le mobile.
             </p>
           </div>
         </div>
+      </div>
 
-        {isSavedNotice && (
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs font-semibold animate-in fade-in duration-200">
-            <Icon name="check" size={16} />
-            <span>Enregistré !</span>
-          </div>
+      {/* Yomu backup round-trip (mobile BackupData v3) */}
+      <div className="bg-[#15151e] border border-[#262636] rounded-2xl p-6 space-y-4 shadow-lg">
+        <div className="flex items-center gap-2">
+          <Icon name="cloud_upload" size={20} className="text-cyan-400" />
+          <h2 className="text-sm font-bold text-white uppercase tracking-wider">
+            Sauvegarde Yomu (mobile ↔ desktop)
+          </h2>
+        </div>
+        <p className="text-xs text-gray-400">
+          Même format JSON que l’app Android. Favoris, historique et blacklist transitent entre les deux appareils — sans compte cloud.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              exportBackupToFile();
+              setBackupStatus("Sauvegarde Yomu exportée.");
+              setTimeout(() => setBackupStatus(null), 3000);
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#1c1c28] hover:bg-[#282838] text-xs font-semibold text-gray-200 border border-[#2c2c3e] cursor-pointer"
+          >
+            <Icon name="download" size={16} />
+            Exporter yomu-backup.json
+          </button>
+          <label className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#1c1c28] hover:bg-[#282838] text-xs font-semibold text-gray-200 border border-[#2c2c3e] cursor-pointer">
+            <Icon name="upload" size={16} />
+            Importer une sauvegarde
+            <input
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (!file) return;
+                try {
+                  const counts = await importBackupFromFile(file);
+                  setBackupStatus(
+                    `Import OK — favoris: ${counts.favorites}, historique: ${counts.history}, blacklist: ${counts.blacklist}`
+                  );
+                } catch (err) {
+                  setBackupStatus(
+                    err instanceof Error ? err.message : "Import échoué"
+                  );
+                }
+                setTimeout(() => setBackupStatus(null), 5000);
+              }}
+            />
+          </label>
+        </div>
+        {backupStatus && (
+          <p className="text-xs text-emerald-400 font-medium">{backupStatus}</p>
         )}
       </div>
+
+      {isSavedNotice && (
+        <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs font-semibold animate-in fade-in duration-200 w-fit">
+          <Icon name="check" size={16} />
+          <span>Enregistré !</span>
+        </div>
+      )}
 
       <div className="space-y-6">
         {/* Section 1: Download Folder */}

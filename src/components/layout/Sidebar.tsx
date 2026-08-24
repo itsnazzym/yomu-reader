@@ -126,7 +126,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               onClick={() => onTabChange("explorer")}
               className="w-10 h-10 rounded-xl bg-[#ed2553] text-white flex items-center justify-center font-black text-base shadow-lg shadow-[#ed2553]/30 mx-auto cursor-pointer"
-              title="nHentai Launcher"
+              title="Yomu Reader"
             >
               nH
             </button>

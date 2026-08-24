@@ -3,6 +3,7 @@ import { DownloadItem, Gallery, DownloadFormat, DownloadProgressPayload } from "
 import { cancelDownload, onDownloadProgress, isElectron, startDownload } from "../utils/ipc";
 import { executeHighSpeedDownload } from "../utils/browserDownloader";
 import { useSettingsStore } from "./settingsStore";
+import { galleryGlobalId } from "../utils/globalId";
 
 const STORAGE_KEY = "nhentai_download_history";
 const activeAbortControllers = new Map<number, AbortController>();
@@ -92,6 +93,7 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
     const defaultFormat = useSettingsStore.getState().settings.default_format;
     const newItem: DownloadItem = {
       id: gallery.id,
+      globalId: galleryGlobalId(gallery),
       gallery,
       format: format || defaultFormat || "cbz",
       status: "queued",
@@ -122,6 +124,7 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
       if (!existing || existing.status !== "completed") {
         newItems.push({
           id: gallery.id,
+          globalId: galleryGlobalId(gallery),
           gallery,
           format: format || defaultFormat || "cbz",
           status: "queued",

@@ -4,12 +4,13 @@
 // ---------------------------------------------------------------------------
 
 export const site = {
-  name: "NReader",
-  tagline: "Your library. Your way.",
+  name: "Yomu",
+  tagline: "One library. Two devices.",
   description:
-    "A modern unofficial app designed to make browsing, organizing and discovering your personal manga library faster and more enjoyable.",
-  disclaimer: "Independent third-party project. Not affiliated with or endorsed by NHentai.",
-  githubUrl: "https://github.com/",
+    "Yomu Reader is an unofficial open-source manga & webtoon client for desktop and Android — CBZ exports, local library, and a shared backup between phone and PC.",
+  disclaimer:
+    "Independent third-party project. Not affiliated with or endorsed by nHentai.",
+  githubUrl: "https://github.com/itsnazzym/yomu-reader",
   license: "MIT",
 };
 
@@ -17,7 +18,7 @@ export const navLinks = [
   { label: "Features", href: "#features" },
   { label: "Screenshots", href: "#screenshots" },
   { label: "FAQ", href: "#faq" },
-  { label: "GitHub", href: "https://github.com/", external: true },
+  { label: "GitHub", href: site.githubUrl, external: true },
 ];
 
 export const qualityChips = [
@@ -48,9 +49,9 @@ export const features = [
     icon: "grid",
   },
   {
-    title: "Search & Recommendations",
+    title: "Search & Continuity",
     description:
-      "Full search syntax over tags, artists, parodies and characters, plus a local predictive engine scoring personalized recommendations from your history.",
+      "Full search syntax over tags, artists, parodies and characters. Export a Yomu backup JSON and resume the same page on your other device.",
     icon: "devices",
   },
   {
@@ -83,38 +84,34 @@ export const views = [
   {
     index: "02",
     label: "READER",
-    title: "Manga & Webtoon",
-    meta: "Dual engine",
+    title: "Read your way",
+    meta: "Manga & Webtoon",
     rows: [
-      { label: "Manga mode", muted: "RTL / LTR" },
-      { label: "Webtoon mode", muted: "Continuous" },
-      { label: "Tap-to-turn", muted: "Edge zones" },
+      { label: "RTL / LTR manga with double-page spreads", muted: "" },
+      { label: "Continuous webtoon scroll", muted: "" },
+      { label: "Resume exactly where you left off", muted: "" },
     ],
   },
   {
     index: "03",
     label: "LIBRARY",
-    title: "Offline library",
-    meta: "Downloaded volumes",
+    title: "Keep it offline",
+    meta: "CBZ + ComicInfo",
     rows: [
-      { label: "Favorites", muted: "Bookmarked" },
-      { label: "Reading now", muted: "In progress" },
-      { label: "Read later", muted: "Queued" },
-      { label: "Archived", muted: "CBZ files" },
+      { label: "Batch downloads with ETA", muted: "" },
+      { label: "Standard CBZ for Komga / Kavita", muted: "" },
+      { label: "Backup JSON shared phone ↔ PC", muted: "" },
     ],
   },
 ];
 
-// Real numbers from the project
 export const stats = [
-  { value: "2 Engines", label: "Manga & Webtoon" },
-  { value: "4 Platforms", label: "Win • Android • Linux • macOS" },
-  { value: "25 Themes", label: "OLED & hue-tuned" },
-  { value: "CBZ", label: "ComicInfo.xml ready" },
+  { value: "2", label: "Platforms" },
+  { value: "MIT", label: "License" },
+  { value: "CBZ", label: "Export" },
+  { value: "OTA", label: "Mobile updates" },
 ];
 
-// Real galleries from the nHentai API (popular-week top), with real covers
-// downloaded from the Photon mirror proxy.
 export const galleryGrid = [
   {
     id: 672545,
@@ -172,12 +169,11 @@ export const galleryGrid = [
 
 export const platforms = ["Windows", "Android", "Linux", "macOS"];
 
-// FAQ answers sourced from the README legal notice & features
 export const faqs = [
   {
-    question: "Is this an official NHentai app?",
+    question: "Is this an official nHentai app?",
     answer:
-      "No. NReader is an independent, unofficial third-party project. It is neither affiliated with, sponsored by, nor endorsed by NHentai.",
+      "No. Yomu is an independent, unofficial third-party project. It is neither affiliated with, sponsored by, nor endorsed by nHentai.",
   },
   {
     question: "Is the app free?",
@@ -195,8 +191,13 @@ export const faqs = [
       "Downloaded volumes are stored locally and readable instantly, offline, as standard CBZ archives with ComicInfo.xml metadata, compatible with Komga, Kavita and YACReader.",
   },
   {
+    question: "Can I move my library between phone and PC?",
+    answer:
+      "Yes. Export a Yomu backup JSON from Settings on either device and import it on the other. Favorites, reading history and blacklist travel with you.",
+  },
+  {
     question: "Where can I report bugs?",
     answer:
-      "Open an issue on the GitHub repository and describe the problem you encountered. We try to respond quickly.",
+      "Open an issue on the GitHub repository and describe the problem you encountered.",
   },
 ];

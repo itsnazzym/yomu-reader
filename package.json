@@ -1,8 +1,8 @@
 {
   "name": "nhentai-launcher",
   "private": true,
-  "version": "1.0.0",
-  "description": "nHentai Launcher application",
+  "version": "2.0.0",
+  "description": "Yomu Reader — unofficial desktop reader & downloader",
   "author": "Your Name",
   "main": "electron/main.cjs",
   "type": "module",
@@ -14,14 +14,14 @@
     "electron": "electron .",
     "proxy": "node proxy/nhentai-mirror.mjs",
     "check:electron": "node --check electron/main.cjs && node --check electron/preload.cjs",
-    "test:electron": "node --test electron/lib/archiveReader.test.cjs electron/lib/secretVault.test.cjs electron/lib/secretsContract.test.cjs",
+    "test:electron": "node --test electron/lib/archiveReader.test.cjs electron/lib/secretVault.test.cjs electron/lib/secretsContract.test.cjs src/utils/globalId.test.cjs",
     "test:proxy": "node --test proxy/nhentai-mirror.test.mjs",
     "dist:win": "tsc && vite build && electron-builder --win",
     "tauri": "tauri"
   },
   "build": {
-    "appId": "com.nhentai.launcher",
-    "productName": "nHentai Launcher",
+    "appId": "com.yomu.reader",
+    "productName": "Yomu Reader",
     "directories": {
       "output": "release"
     },
@@ -34,7 +34,8 @@
       "target": [
         "nsis",
         "portable"
-      ]
+      ],
+      "artifactName": "YomuReader-${version}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,

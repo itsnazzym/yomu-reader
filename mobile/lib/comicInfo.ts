@@ -54,8 +54,11 @@ export function galleryDisplayTitle(gallery: Gallery): string {
   );
 }
 
-/** ComicInfo.xml aligned with the desktop Tauri exporter (Komga / Kavita / Mihon). */
-export function buildComicInfoXml(gallery: Gallery): string {
+/** ComicInfo.xml aligned with desktop exporter (Komga / Kavita / Mihon). */
+export function buildComicInfoXml(
+  gallery: Gallery,
+  options?: { bookmarkPage?: number }
+): string {
   const tags = Array.isArray(gallery.tags) ? gallery.tags : [];
   const title = galleryDisplayTitle(gallery);
   const parody = firstTagName(tags, "parody");
@@ -66,6 +69,13 @@ export function buildComicInfoXml(gallery: Gallery): string {
   const pages = gallery.num_pages || gallery.images?.pages?.length || 0;
   const lang = languageIsoFromTags(tags);
   const id = Number(gallery.id) || 0;
+  const bookmarkPage =
+    typeof options?.bookmarkPage === "number" && options.bookmarkPage >= 1
+      ? Math.floor(options.bookmarkPage)
+      : null;
+  const bookmarkXml = bookmarkPage
+    ? `\n  <Bookmark>${bookmarkPage}</Bookmark>`
+    : "";
 
   return `<?xml version="1.0" encoding="utf-8"?>
 <ComicInfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
@@ -80,6 +90,6 @@ export function buildComicInfoXml(gallery: Gallery): string {
   <PageCount>${pages}</PageCount>
   <LanguageISO>${escapeXml(lang)}</LanguageISO>
   <Web>https://nhentai.net/g/${id}/</Web>
-  <Manga>YesAndRightToLeft</Manga>
+  <Manga>YesAndRightToLeft</Manga>${bookmarkXml}
 </ComicInfo>`;
 }
