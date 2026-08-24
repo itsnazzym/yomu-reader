@@ -25,6 +25,11 @@ on:
         required: false
         type: boolean
         default: true
+      build_universal:
+        description: "Inclure l'APK universel 4 ABIs (~15 min de plus)"
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -104,11 +109,49 @@ jobs:
           echo "Next release: ${TAG} (versionCode=${RUN_NUMBER})"
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # 1. Android ARM64-v8a Release (Ultra Rapide & Recommandé pour tous téléphones)
+  # 1. Android prebuild partagé (1× npm ci + expo prebuild pour tous les APK)
+  # ─────────────────────────────────────────────────────────────────────────────
+  android-prepare:
+    name: 🤖 Android prebuild (shared)
+    needs: prepare-version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Apply release version
+        env:
+          APP_VERSION: ${{ needs.prepare-version.outputs.version }}
+          APP_VERSION_CODE: ${{ needs.prepare-version.outputs.version_code }}
+        run: node .github/scripts/apply-release-version.cjs
+
+      - name: Install dependencies & prebuild Android once
+        working-directory: mobile
+        run: |
+          npm ci
+          npx expo prebuild --platform android --no-install
+
+      - name: Upload prebuilt android/ tree
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-prebuild
+          path: mobile/android/
+          retention-days: 1
+          compression-level: 6
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 2. Android ARM64-v8a Release
   # ─────────────────────────────────────────────────────────────────────────────
   build-arm64-apk:
     name: 📱 Android ARM64-v8a Release
-    needs: prepare-version
+    needs: [prepare-version, android-prepare]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -130,22 +173,15 @@ jobs:
       - name: Setup Gradle Cache
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Apply release version
-        env:
-          APP_VERSION: ${{ needs.prepare-version.outputs.version }}
-          APP_VERSION_CODE: ${{ needs.prepare-version.outputs.version_code }}
-        run: node .github/scripts/apply-release-version.cjs
+      - name: Restore shared Android prebuild
+        uses: actions/download-artifact@v4
+        with:
+          name: android-prebuild
+          path: mobile/android
 
-      - name: Install Dependencies & Prebuild
+      - name: Install node_modules (native module paths for Gradle)
         working-directory: mobile
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: |
-          npm ci
-          npx expo prebuild --platform android --no-install
+        run: npm ci
 
       - name: Restore production release keystore
         env:
@@ -163,19 +199,14 @@ jobs:
       - name: Build & Sign ARM64-v8a APK
         env:
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4096m -Dorg.gradle.caching=true"
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        working-directory: mobile/android
         run: |
-          chmod +x gradlew
-          ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --build-cache --no-configure-on-demand --no-parallel
-          
-          mkdir -p ../../output-arm64
-          RAW_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
-          TARGET_APK="../../output-arm64/YomuReader-arm64-v8a-release.apk"
-          cp "$RAW_APK" "$TARGET_APK"
+          bash .github/scripts/android-gradle-build.sh assembleRelease arm64-v8a
+          mkdir -p output-arm64
+          RAW_APK=$(find mobile/android/app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          cp "$RAW_APK" output-arm64/YomuReader-arm64-v8a-release.apk
 
       - name: Upload ARM64 APK
         uses: actions/upload-artifact@v4
@@ -185,11 +216,12 @@ jobs:
           retention-days: 14
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # 2. Android Universal Full Release (Tous processeurs)
+  # 3. Android Universal (manuel uniquement — 4 ABIs, très long)
   # ─────────────────────────────────────────────────────────────────────────────
   build-universal-apk:
     name: 📱 Android Universal Full Release
-    needs: prepare-version
+    needs: [prepare-version, android-prepare]
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.build_universal != 'false'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -211,22 +243,15 @@ jobs:
       - name: Setup Gradle Cache
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Apply release version
-        env:
-          APP_VERSION: ${{ needs.prepare-version.outputs.version }}
-          APP_VERSION_CODE: ${{ needs.prepare-version.outputs.version_code }}
-        run: node .github/scripts/apply-release-version.cjs
+      - name: Restore shared Android prebuild
+        uses: actions/download-artifact@v4
+        with:
+          name: android-prebuild
+          path: mobile/android
 
-      - name: Install Dependencies & Prebuild
+      - name: Install node_modules (native module paths for Gradle)
         working-directory: mobile
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: |
-          npm ci
-          npx expo prebuild --platform android --no-install
+        run: npm ci
 
       - name: Restore production release keystore
         env:
@@ -244,19 +269,14 @@ jobs:
       - name: Build & Sign Universal APK
         env:
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4096m -Dorg.gradle.caching=true"
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        working-directory: mobile/android
         run: |
-          chmod +x gradlew
-          ./gradlew assembleRelease -PreactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64 --build-cache --no-configure-on-demand --no-parallel
-          
-          mkdir -p ../../output-universal
-          RAW_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
-          TARGET_APK="../../output-universal/YomuReader-universal-full-release.apk"
-          cp "$RAW_APK" "$TARGET_APK"
+          bash .github/scripts/android-gradle-build.sh assembleRelease "armeabi-v7a,arm64-v8a,x86,x86_64"
+          mkdir -p output-universal
+          RAW_APK=$(find mobile/android/app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          cp "$RAW_APK" output-universal/YomuReader-universal-full-release.apk
 
       - name: Upload Universal APK
         uses: actions/upload-artifact@v4
@@ -266,11 +286,11 @@ jobs:
           retention-days: 14
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # 3. Android Debug APK
+  # 4. Android Debug APK
   # ─────────────────────────────────────────────────────────────────────────────
   build-debug-apk:
     name: 📱 Android Debug APK
-    needs: prepare-version
+    needs: [prepare-version, android-prepare]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -292,29 +312,24 @@ jobs:
       - name: Setup Gradle Cache
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Apply release version
-        env:
-          APP_VERSION: ${{ needs.prepare-version.outputs.version }}
-          APP_VERSION_CODE: ${{ needs.prepare-version.outputs.version_code }}
-        run: node .github/scripts/apply-release-version.cjs
+      - name: Restore shared Android prebuild
+        uses: actions/download-artifact@v4
+        with:
+          name: android-prebuild
+          path: mobile/android
 
-      - name: Install Dependencies & Prebuild
+      - name: Install node_modules (native module paths for Gradle)
         working-directory: mobile
-        run: |
-          npm ci
-          npx expo prebuild --platform android --no-install
+        run: npm ci
 
       - name: Build Debug APK
         env:
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4096m -Dorg.gradle.caching=true"
-        working-directory: mobile/android
         run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug --build-cache --no-configure-on-demand --no-parallel
-          
-          mkdir -p ../../output-debug
-          RAW_APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
-          cp "$RAW_APK" ../../output-debug/YomuReader-debug.apk
+          bash .github/scripts/android-gradle-build.sh assembleDebug
+          mkdir -p output-debug
+          RAW_APK=$(find mobile/android/app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          cp "$RAW_APK" output-debug/YomuReader-debug.apk
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
@@ -324,7 +339,7 @@ jobs:
           retention-days: 14
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # 4. Windows Desktop .EXE Portable (Electron)
+  # 5. Windows Desktop .EXE Portable (Electron)
   # ─────────────────────────────────────────────────────────────────────────────
   windows-portable:
     name: 💻 Windows .EXE Portable
@@ -374,7 +389,7 @@ jobs:
           retention-days: 14
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # 5. Clean Source Code ZIP Archive
+  # 6. Clean Source Code ZIP Archive
   # ─────────────────────────────────────────────────────────────────────────────
   source-zip:
     name: 🗜️ Package Source Code ZIP
@@ -396,12 +411,29 @@ jobs:
           retention-days: 14
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # 6. GitHub Release (Runs immediately when all 5 parallel jobs finish)
+  # 7. GitHub Release
   # ─────────────────────────────────────────────────────────────────────────────
   publish-release:
     name: 🚀 Publish GitHub Release
-    needs: [prepare-version, build-arm64-apk, build-universal-apk, build-debug-apk, windows-portable, source-zip]
-    if: github.event_name == 'push' || github.event.inputs.create_release != 'false'
+    needs:
+      - prepare-version
+      - android-prepare
+      - build-arm64-apk
+      - build-universal-apk
+      - build-debug-apk
+      - windows-portable
+      - source-zip
+    if: |
+      (github.event_name == 'push' || github.event.inputs.create_release != 'false') &&
+      always() &&
+      !cancelled() &&
+      needs.prepare-version.result == 'success' &&
+      needs.android-prepare.result == 'success' &&
+      needs.build-arm64-apk.result == 'success' &&
+      needs.build-debug-apk.result == 'success' &&
+      needs.windows-portable.result == 'success' &&
+      needs.source-zip.result == 'success' &&
+      (needs.build-universal-apk.result == 'success' || needs.build-universal-apk.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -419,6 +451,7 @@ jobs:
           TAG_VER: ${{ needs.prepare-version.outputs.tag }}
           INPUT_TITLE: ${{ github.event.inputs.release_title }}
           INPUT_NOTES: ${{ github.event.inputs.release_notes }}
+          HAS_UNIVERSAL: ${{ needs.build-universal-apk.result }}
         run: |
           if [ -z "${TAG_VER}" ]; then
             echo "Tag de release manquant" >&2
@@ -445,7 +478,7 @@ jobs:
           cat << 'EOF' > release_body.md
           ## ✨ Notes de mise à jour
           EOF
-          
+
           echo "$CUSTOM_NOTES" >> release_body.md
 
           cat << 'EOF' >> release_body.md
@@ -456,10 +489,22 @@ jobs:
 
           | Fichier | Plateforme / Architecture | Description |
           | :--- | :--- | :--- |
-          | 📱 **`YomuReader-arm64-v8a-release.apk`** | **Android 64-bit (Recommandé)** | Version ultra-légère et optimisée pour smartphones récents (~35 Mo) |
-          | 📱 **`YomuReader-universal-full-release.apk`** | **Android Universel (Tous processeurs)** | Compatible 100% appareils Android (ARMv7, ARM64, x86, x86_64) |
+          | 📱 **`YomuReader-arm64-v8a-release.apk`** | **Android 64-bit (Recommandé)** | Version optimisée pour smartphones récents (~35 Mo) |
+          EOF
+
+          if [ "${HAS_UNIVERSAL}" = "success" ]; then
+            cat << 'EOF' >> release_body.md
+          | 📱 **`YomuReader-universal-full-release.apk`** | **Android Universel (Tous processeurs)** | Compatible ARMv7, ARM64, x86, x86_64 |
+          EOF
+          else
+            cat << 'EOF' >> release_body.md
+          | 📱 *APK universel* | — | Disponible via **Actions → Run workflow** avec l'option *build_universal* |
+          EOF
+          fi
+
+          cat << 'EOF' >> release_body.md
           | 📱 **`YomuReader-debug.apk`** | **Android Debug / Dev** | Version de test avec React Native DevTools activés |
-          | 💻 **`nHentai-Launcher-Portable.exe`** | **Windows 64-bit** | Exécutable autonome sans installation (lanceur Desktop complet) |
+          | 💻 **`nHentai-Launcher-Portable.exe`** | **Windows 64-bit** | Exécutable autonome sans installation |
           | 🗜️ **`nhentai-launcher-source.zip`** | **Code Source** | Archive ZIP propre du code source Git |
 
           ---
