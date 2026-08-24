@@ -15,7 +15,8 @@
     "verify:signing": "node scripts/verify-keystore.cjs",
     "build:apk": "node scripts/build-apk-arm64.cjs",
     "build:apk:unsigned": "cd android && gradlew.bat assembleRelease",
-    "build:apk:debug": "cd android && gradlew.bat assembleDebug"
+    "build:apk:debug": "cd android && gradlew.bat assembleDebug",
+    "ui:check": "node scripts/ui-audit.cjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
