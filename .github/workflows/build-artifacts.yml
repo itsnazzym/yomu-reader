@@ -442,10 +442,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download all build artifacts
+      - name: Download release artifacts only
         uses: actions/download-artifact@v4
         with:
           path: release-assets
+          pattern: "{apk-*,windows-portable-exe,source-code-zip}"
           merge-multiple: true
 
       - name: Generate Structured Release Notes & Checksums
@@ -469,8 +470,9 @@ jobs:
           fi
           echo "title=${TITLE}" >> "${GITHUB_OUTPUT}"
 
+          mkdir -p release-assets
           cd release-assets
-          sha256sum * > SHA256SUMS.txt
+          find . -maxdepth 1 -type f ! -name 'SHA256SUMS.txt' -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
           cd ..
 
           CUSTOM_NOTES="${INPUT_NOTES}"
@@ -531,7 +533,10 @@ jobs:
           tag_name: ${{ steps.release_meta.outputs.tag_name }}
           name: ${{ steps.release_meta.outputs.title }}
           body_path: release_body.md
-          files: release-assets/*
+          files: |
+            release-assets/*.apk
+            release-assets/*.exe
+            release-assets/*.zip
           draft: false
           prerelease: false
           make_latest: true
