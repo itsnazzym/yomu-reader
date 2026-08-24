@@ -6,9 +6,12 @@ import {
   stripTags,
   extractAttribute,
   stripNhentaiOperators,
+  translateQueryForSource,
   sanitizeMediaUrl,
 } from "../lib/sources/html";
-import { parseDoujinsListCards } from "../lib/sources/doujins";
+import { parseDoujinsListCards, parseDoujinsTagsPage } from "../lib/sources/doujins";
+import { parseThreeHentaiTagsPage } from "../lib/sources/threehentai";
+import { dedupeTags } from "../lib/sources/tagUtils";
 
 test("extractLinks: trouve les galeries d'un listing 3hentai", () => {
   const html = `<div class="doujin-col"><div class="doujin ">
@@ -77,4 +80,67 @@ test("parseDoujinsListCards: href + img wrappés + titre encodé", () => {
   assert.equal(cards[0].coverUrl, "https://static.doujins.com/f2-dyqj6q2p.jpg?st=abc&e=1");
   assert.equal(cards[1].globalId, "doujins:102527");
   assert.equal(cards[1].title, "Tall Aunty");
+});
+
+test("translateQueryForSource: conserve les valeurs des opérateurs nhentai", () => {
+  assert.equal(translateQueryForSource('tag:"vanilla"'), "vanilla");
+  assert.equal(translateQueryForSource('tag:"rough translation" language:french'), "rough translation french");
+  // Filtres techniques sans valeur textuelle utile : retirés.
+  assert.equal(translateQueryForSource("nurse pages:>20 order:popular"), "nurse");
+  // Négation : la valeur reste mais le préfixe disparaît (plein texte).
+  assert.equal(translateQueryForSource('-tag:"yaoi" naruto'), "yaoi naruto");
+  // Texte libre : inchangé.
+  assert.equal(translateQueryForSource("bakunyu"), "bakunyu");
+  assert.equal(translateQueryForSource(undefined), undefined);
+});
+
+test("parseDoujinsTagsPage: extrait nom + id depuis /tags", () => {
+  const html = `
+    <a href="/series">Series</a>
+    <a href="/tags/Bakunyuu-14?x=13">Bakunyuu</a>
+    <a href="/tags/BBW-1320?x=13">BBW</a>
+    <a href="/tags/Audio-45943">Audio</a>
+    <a href="/tags/Bakunyuu-14?x=13">Bakunyuu</a>
+  `;
+  const tags = parseDoujinsTagsPage(html);
+  assert.equal(tags.length, 3);
+  assert.deepEqual(tags[0], { name: "Bakunyuu", id: "14" });
+  assert.deepEqual(tags[1], { name: "BBW", id: "1320" });
+  assert.deepEqual(tags[2], { name: "Audio", id: "45943" });
+});
+
+test("parseDoujinsTagsPage: liste vide -> tableau vide", () => {
+  assert.deepEqual(parseDoujinsTagsPage("<html><body>rien</body></html>"), []);
+});
+
+test("dedupeTags: dédup insensible à la casse et tri alphabétique", () => {
+  const merged = dedupeTags([
+    { name: "Vanilla" },
+    { name: "vanilla" },
+    { name: "Bakunyuu", count: 14 },
+    { name: "Audio" },
+  ]);
+  assert.deepEqual(
+    merged.map((t) => t.name),
+    ["Audio", "Bakunyuu", "Vanilla"]
+  );
+});
+
+test("parseThreeHentaiTagsPage: nom + compteur data-qty depuis /tags?letter=", () => {
+  const html = `
+    <div class="tag-listing-container">
+      <span class="filter-elem">
+        <a class="name" href="https://fr.3hentai.net/tags/abortion-female" data-qty="24">abortion (female)</a>
+      </span><span class="filter-elem">
+        <a class="name" href="https://fr.3hentai.net/tags/absorption-female" data-qty="413">absorption (female)</a>
+      </span><span class="filter-elem">
+        <a class="name" href="https://fr.3hentai.net/tags/afro-male" data-qty="7">afro (male)</a>
+      </span>
+    </div>
+  `;
+  const tags = parseThreeHentaiTagsPage(html);
+  assert.equal(tags.length, 3);
+  assert.deepEqual(tags[0], { name: "abortion (female)", count: 24 });
+  assert.deepEqual(tags[1], { name: "absorption (female)", count: 413 });
+  assert.deepEqual(tags[2], { name: "afro (male)", count: 7 });
 });

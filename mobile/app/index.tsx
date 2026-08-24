@@ -63,7 +63,7 @@ import {
   setHomeSearchQuery,
 } from "@/lib/homeSearchStore";
 import { firstRouteParam } from "@/lib/searchQuery";
-import { stripNhentaiOperators } from "@/lib/sources/html";
+import { translateQueryForSource } from "@/lib/sources/html";
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -78,6 +78,7 @@ export default function HomeScreen() {
     query?: string;
     type?: string;
     appendTag?: string;
+    src?: string;
   }>();
 
   // Filter & Search states
@@ -103,17 +104,26 @@ export default function HomeScreen() {
     const tag = firstRouteParam(params.tag);
     const appendTag = firstRouteParam(params.appendTag);
     const type = firstRouteParam(params.type) || "tag";
-    if (!query && !tag && !appendTag) return;
+    const src = firstRouteParam(params.src);
+    if (!query && !tag && !appendTag && !src) return;
 
-    const key = `${query}|${tag}|${appendTag}|${type}`;
+    const key = `${query}|${tag}|${appendTag}|${type}|${src}`;
     if (consumedParamsRef.current === key) return;
     consumedParamsRef.current = key;
+
+    // Un tag sélectionné depuis la taxonomie d'une source cible
+    // automatiquement cette source pour que les résultats viennent du bon site.
+    if (src && ["nhentai", "3hentai", "doujins"].includes(src)) {
+      const sid = src as SourceId;
+      setActiveSource((prev) => (prev === sid ? prev : sid));
+      setPage(1);
+    }
 
     if (query) {
       applySearchQuery(query);
     } else if (tag) {
       applySearchQuery(replaceHomeSearchTerm(type, tag));
-    } else {
+    } else if (appendTag) {
       const result = appendHomeSearchTerm(type, appendTag);
       applySearchQuery(result.query);
     }
@@ -123,8 +133,9 @@ export default function HomeScreen() {
       query: undefined,
       type: undefined,
       appendTag: undefined,
+      src: undefined,
     });
-  }, [params.query, params.tag, params.appendTag, params.type, applySearchQuery, router]);
+  }, [params.query, params.tag, params.appendTag, params.type, params.src, applySearchQuery, router]);
 
   // Suggestions automatiques de tags
   const tagSuggestions = useMemo(() => {
@@ -161,6 +172,12 @@ export default function HomeScreen() {
   // Start in a loading state so Android never flashes a blank grid while
   // the first mirror request is being established.
   const [isInitialLoading, setIsInitialLoading] = useState(true);
+  // Chargement d'un plein rafraîchissement (changement de source, refresh,
+  // nouvelle recherche) quand du contenu est déjà affiché : bannière fine
+  // au lieu de vider la grille.
+  const [isFeedLoading, setIsFeedLoading] = useState(false);
+  const [feedTrackWidth, setFeedTrackWidth] = useState(0);
+  const feedBarAnim = useRef(new Animated.Value(0)).current;
   const [isFetchingMore, setIsFetchingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -210,6 +227,10 @@ export default function HomeScreen() {
         loadingMoreRef.current = true;
       } else if (galleriesRef.current.length === 0) {
         setIsInitialLoading(true);
+      } else {
+        // Contenu déjà affiché (changement de source, refresh, recherche) :
+        // on garde la grille visible mais on signale le rechargement.
+        setIsFeedLoading(true);
       }
       setError(null);
 
@@ -265,7 +286,7 @@ export default function HomeScreen() {
           const altPromises = altSources.map(async (sid) => {
             try {
               const r = await getSource(sid).search({
-                query: stripNhentaiOperators(effectiveQuery),
+                query: translateQueryForSource(effectiveQuery),
                 page: p,
                 sort: sort === "recent" ? "recent" : "popular",
               });
@@ -324,7 +345,7 @@ export default function HomeScreen() {
             query:
               activeSource === "nhentai"
                 ? effectiveQuery || undefined
-                : stripNhentaiOperators(effectiveQuery),
+                : translateQueryForSource(effectiveQuery),
             page: p,
             sort: sort === "recent" ? "recent" : "popular",
           });
@@ -370,6 +391,7 @@ export default function HomeScreen() {
       } finally {
         if (requestId === latestRequestRef.current) {
           setIsInitialLoading(false);
+          setIsFeedLoading(false);
           setIsFetchingMore(false);
           loadingMoreRef.current = false;
         }
@@ -387,6 +409,44 @@ export default function HomeScreen() {
   useEffect(() => {
     fetchGalleries(activeQuery, filterOptions, page);
   }, [activeQuery, filterOptions, page, fetchGalleries]);
+
+  // Barre de progression indéterminée pendant un rechargement de flux.
+  useEffect(() => {
+    if (!isFeedLoading || feedTrackWidth <= 0) return;
+    feedBarAnim.setValue(0);
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(feedBarAnim, {
+          toValue: 1,
+          duration: 850,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(feedBarAnim, {
+          toValue: 0,
+          duration: 850,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [isFeedLoading, feedTrackWidth, feedBarAnim]);
+
+  const feedBarTranslateX = feedBarAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-feedTrackWidth * 0.4, feedTrackWidth],
+  });
+
+  // Retour en haut de liste quand la source change (le contenu va être
+  // remplacé, rester sur l'offset précédent serait déroutant).
+  const prevActiveSource = useRef<SourceId | "all">(activeSource);
+  useEffect(() => {
+    if (prevActiveSource.current === activeSource) return;
+    prevActiveSource.current = activeSource;
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+  }, [activeSource]);
 
   useEffect(() => {
     setHomeSearchQuery(activeQuery);
@@ -648,6 +708,70 @@ export default function HomeScreen() {
           );
         })}
       </View>
+
+      {/* Bannière de rechargement du flux (changement de source, refresh…) :
+          la grille reste visible mais assombrie pendant le fetch. */}
+      {isFeedLoading && galleries.length > 0 && !error ? (
+        <View
+          style={[styles.feedLoadingBanner, { backgroundColor: colors.searchBg }]}
+          accessibilityLiveRegion="polite"
+          accessibilityLabel={`Chargement ${
+            activeSource === "all"
+              ? "du flux toutes sources"
+              : `de la source ${sourceMetas.find((m) => m.id === activeSource)?.label ?? activeSource}`
+          }`}
+        >
+          <View style={styles.feedLoadingRow}>
+            <ActivityIndicator size="small" color={colors.accent} />
+            <Text style={[styles.feedLoadingText, { color: colors.sub }]}>
+              {activeSource === "all"
+                ? "Actualisation du flux…"
+                : `Chargement de ${sourceMetas.find((m) => m.id === activeSource)?.label ?? activeSource}…`}
+            </Text>
+          </View>
+          <View
+            style={[styles.feedLoadingTrack, { backgroundColor: colors.tagBg }]}
+            onLayout={(e) => setFeedTrackWidth(e.nativeEvent.layout.width)}
+          >
+            <Animated.View
+              style={[
+                styles.feedLoadingBar,
+                {
+                  backgroundColor: colors.accent,
+                  transform: [{ translateX: feedBarTranslateX }],
+                },
+              ]}
+            />
+          </View>
+        </View>
+      ) : null}
+
+      {/* Échec d'un rechargement avec contenu déjà affiché : notice inline. */}
+      {!isFeedLoading && error && galleries.length > 0 ? (
+        <View
+          style={[styles.feedLoadingBanner, { backgroundColor: "#ff475722" }]}
+          accessibilityLiveRegion="polite"
+        >
+          <View style={styles.feedLoadingRow}>
+            <IconAlertCircle size={15} color="#ff4757" strokeWidth={2} />
+            <Text
+              style={[styles.feedLoadingText, { color: "#ff4757" }]}
+              numberOfLines={2}
+            >
+              {activeSource === "all"
+                ? "Flux indisponible"
+                : `${sourceMetas.find((m) => m.id === activeSource)?.label ?? activeSource} indisponible`}
+              {" — "}
+              {error}
+            </Text>
+            <TouchableOpacity onPress={handleRefresh} hitSlop={6}>
+              <Text style={[styles.feedLoadingText, { color: colors.accent }]}>
+                Réessayer
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
 
       {resumeEntry ? (
         <TouchableOpacity
@@ -927,6 +1051,7 @@ export default function HomeScreen() {
           getItemType={() => "gallery_card"}
           drawDistance={500}
           numColumns={numColumns}
+          style={{ opacity: isFeedLoading ? 0.35 : 1 }}
           ListHeaderComponent={homeHeader}
           ListFooterComponent={
             isFetchingMore ? (
@@ -1154,6 +1279,35 @@ const styles = StyleSheet.create({
   sourceChipText: {
     fontSize: 12,
     fontWeight: "700",
+  },
+  feedLoadingBanner: {
+    marginHorizontal: 16,
+    marginBottom: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    gap: 6,
+  },
+  feedLoadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  feedLoadingText: {
+    fontSize: 12,
+    fontWeight: "600",
+    flexShrink: 1,
+  },
+  feedLoadingTrack: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+  feedLoadingBar: {
+    width: "40%",
+    height: "100%",
+    borderRadius: 2,
   },
   headerLeft: {
     flexDirection: "row",

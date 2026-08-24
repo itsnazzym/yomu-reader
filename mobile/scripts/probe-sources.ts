@@ -1,7 +1,8 @@
 /**
  * Sonde live des sources : search -> getGallery -> HEAD sur la page 1.
  * Usage : node scripts/probe.mjs [query]
- *         node scripts/probe.mjs --id doujins:80117   (résolution directe)
+ *         node scripts/probe.mjs --id doujins:80117    (résolution directe)
+ *         node scripts/probe.mjs --tags 3hentai        (liste réelle de tags)
  */
 
 import { ThreeHentaiSource } from "../lib/sources/threehentai";
@@ -68,10 +69,41 @@ async function probeById(globalId: string): Promise<boolean> {
   }
 }
 
+async function probeTags(sourceId: string): Promise<boolean> {
+  console.log(`\n=== Tags ${sourceId} ===`);
+  try {
+    const src = getSource(sourceId);
+    if (!src.getTags) {
+      console.log("ERREUR: source sans getTags()");
+      return false;
+    }
+    const t0 = Date.now();
+    const tags = await src.getTags();
+    const withCount = tags.filter((t) => (t.count || 0) > 0).length;
+    console.log(
+      `tags: ${tags.length} (${withCount} avec comptes) en ${Date.now() - t0}ms`
+    );
+    console.log(`exemples: ${tags.slice(0, 5).map((t) => `${t.name}${t.count ? `(${t.count})` : ""}`).join(", ")}`);
+    return tags.length > 0;
+  } catch (e) {
+    console.log(`ERREUR: ${e instanceof Error ? e.message : e}`);
+    return false;
+  }
+}
+
 (async () => {
   const idIdx = process.argv.indexOf("--id");
   if (idIdx >= 0 && process.argv[idIdx + 1]) {
     const ok = await probeById(process.argv[idIdx + 1]);
+    console.log(`\nRésultat: ${ok ? "OK" : "KO"}`);
+    process.exit(ok ? 0 : 1);
+  }
+  const tagsIdx = process.argv.indexOf("--tags");
+  if (tagsIdx >= 0 && process.argv[tagsIdx + 1]) {
+    let ok = true;
+    for (const sid of process.argv[tagsIdx + 1].split(",")) {
+      ok = (await probeTags(sid.trim())) && ok;
+    }
     console.log(`\nRésultat: ${ok ? "OK" : "KO"}`);
     process.exit(ok ? 0 : 1);
   }

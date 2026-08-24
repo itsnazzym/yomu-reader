@@ -39,6 +39,14 @@ await build({
           { filter: /^expo-secure-store$/ },
           () => ({ path: path.join(here, "..", "test", "mockSecureStore.ts") })
         );
+        b.onResolve(
+          { filter: /^react-native\// },
+          () => ({ path: path.join(here, "..", "test", "mockReactNative.ts") })
+        );
+        b.onResolve(
+          { filter: /^@tabler\/icons-react-native$/ },
+          () => ({ path: path.join(here, "..", "test", "mockTablerIcons.cjs") })
+        );
       },
     },
   ],

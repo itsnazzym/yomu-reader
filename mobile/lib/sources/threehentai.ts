@@ -19,7 +19,6 @@ import {
   extractMatches,
   stripTags,
   decodeEntities,
-  extractAttribute,
 } from "./html";
 import {
   makeGlobalId,
@@ -28,6 +27,7 @@ import {
   type SourceGalleryCard,
   type SourceMeta,
   type SourceSearchOptions,
+  type SourceTaxonomyItem,
 } from "./types";
 
 const BASE = "https://fr.3hentai.net";
@@ -66,6 +66,13 @@ const CARD_RE =
 const TAG_BLOCK_RE =
   /tag-container field-name">\s*([A-Za-zÀ-ÿéèêàçûôî]+s? :)\s*<span class="filter-elem">([\s\S]*?)<\/span><\/div>/g;
 
+/**
+ * Item de la liste /tags?letter=<x> : nom + compteur réel (data-qty).
+ * Les href sont absolus sur ce site, d'où le domaine dans le motif.
+ */
+const TAXONOMY_ITEM_RE =
+  /<span class="filter-elem">\s*<a class="name" href="https?:\/\/(?:fr\.)?3hentai\.net\/tags\/([a-z0-9-]+)"[^>]*data-qty="(\d+)"[^>]*>([\s\S]*?)<\/a>\s*<\/span>/g;
+
 const TAG_LINK_RE =
   /<a class="name" href="[^"]*(?:\/tags|\/series|\/artists|\/characters|\/groups|\/language|\/category)?[^"]*"[^>]*>\s*([\s\S]*?)\s*<\/a>/g;
 
@@ -101,6 +108,17 @@ function parseTags(galleryHtml: string): { name: string; type?: string }[] {
         out.push({ name, type });
       }
     }
+  }
+  return out;
+}
+
+/** Parse une page /tags?letter=<x> : nom + compteur réel (data-qty). */
+export function parseThreeHentaiTagsPage(html: string): SourceTaxonomyItem[] {
+  const out: SourceTaxonomyItem[] = [];
+  for (const m of extractMatches(html, TAXONOMY_ITEM_RE)) {
+    const name = decodeEntities(m[3]).trim();
+    if (!name) continue;
+    out.push({ name, count: parseInt(m[2], 10) || 0 });
   }
   return out;
 }
@@ -224,5 +242,27 @@ export class ThreeHentaiSource implements SourceAdapter {
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  /**
+   * Liste réelle des tags du site : une requête par lettre (#, a…z), en lots
+   * parallèles. Chaque item porte son compteur (data-qty). Une lettre en
+   * échec est ignorée : le reste de la liste reste exploitable.
+   */
+  async getTags(): Promise<SourceTaxonomyItem[]> {
+    const letters = ["%23", ..."abcdefghijklmnopqrstuvwxyz"];
+    const results: SourceTaxonomyItem[] = [];
+    const BATCH = 6;
+    for (let i = 0; i < letters.length; i += BATCH) {
+      const batch = letters.slice(i, i + BATCH);
+      const settled = await Promise.allSettled(
+        batch.map((l) => fetchHtml(`${BASE}/tags?letter=${l}`))
+      );
+      for (const outcome of settled) {
+        if (outcome.status !== "fulfilled") continue;
+        results.push(...parseThreeHentaiTagsPage(outcome.value));
+      }
+    }
+    return results;
   }
 }

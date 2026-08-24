@@ -41,6 +41,17 @@ for (const entry of testEntries) {
             { filter: /^react-native$/ },
             () => ({ path: path.join(here, "mockReactNative.ts") })
           );
+          // Sous-chemins internes de RN (codegen...) tirés par certaines
+          // dépendances transitives (icônes, modules expo).
+          b.onResolve(
+            { filter: /^react-native\// },
+            () => ({ path: path.join(here, "mockReactNative.ts") })
+          );
+          // Wrapper d'icônes : stub générique (aucun rendu testé ici).
+          b.onResolve(
+            { filter: /^@tabler\/icons-react-native$/ },
+            () => ({ path: path.join(here, "mockTablerIcons.cjs") })
+          );
           b.onResolve(
             { filter: /^@\/lib\/api\/nhentai$/ },
             () => ({ path: path.join(here, "mockNhentai.ts") })

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useRef } from "react";
+import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import {
   StyleSheet,
   View,
@@ -7,6 +7,9 @@ import {
   Pressable,
   Modal,
   ScrollView,
+  ActivityIndicator,
+  Animated,
+  Easing,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import {
@@ -37,12 +40,21 @@ import { lightTap } from "@/lib/haptics";
 import {
   getAllTaxonomies,
   CATEGORY_META,
-  TaxonomyItem,
 } from "@/lib/taxonomyData";
 import { useTagFavs } from "@/lib/tagFavoritesStore";
 import { useTagCollections, TagCollection } from "@/lib/tagCollectionsStore";
 import { useHomeSearch } from "@/lib/homeSearchStore";
 import { queryContainsTerm } from "@/lib/searchQuery";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  getSourceTags,
+} from "@/lib/sourceTaxonomyStore";
+import {
+  getSource,
+  listSources,
+} from "@/lib/sources/registry";
+import type { SourceId } from "@/lib/sources/types";
+import type { TaxonomyItem } from "@/lib/taxonomyData";
 
 type ActiveTab =
   | "all"
@@ -85,6 +97,97 @@ export default function TagsScreen() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("all");
   const [searchFilter, setSearchFilter] = useState("");
 
+  // ── Sélecteur de source pour les tags réels ────────────────────────────
+  // "all" = DB statique nhentai (comportement historique) ; sinon la liste
+  // réelle du site via l'adaptateur + cache local.
+  const TAGS_SOURCE_KEY = "@tags_screen_source";
+  const [tagSource, setTagSourceState] = useState<SourceId | "all">("all");
+  const setTagSource = useCallback((s: SourceId | "all") => {
+    setTagSourceState(s);
+    AsyncStorage.setItem(TAGS_SOURCE_KEY, s).catch(() => {});
+  }, []);
+  useEffect(() => {
+    AsyncStorage.getItem(TAGS_SOURCE_KEY)
+      .then((v) => {
+        if (v === "nhentai" || v === "3hentai" || v === "doujins") {
+          setTagSourceState(v);
+        }
+      })
+      .catch(() => {});
+
+    return () => {};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const sourceMetas = useMemo(() => listSources(), []);
+  const [liveTags, setLiveTags] = useState<TaxonomyItem[]>([]);
+  const [taxLoading, setTaxLoading] = useState(false);
+  const [taxError, setTaxError] = useState<string | null>(null);
+  const taxTrackWidth = useRef(new Animated.Value(0)).current;
+  const [taxTrackW, setTaxTrackW] = useState(0);
+  const [taxRetry, setTaxRetry] = useState(0);
+  const taxReqRef = useRef(0);
+
+  const isLiveSource = tagSource === "3hentai" || tagSource === "doujins";
+
+  useEffect(() => {
+    if (!isLiveSource) {
+      setTaxError(null);
+      setTaxLoading(false);
+      return;
+    }
+    const reqId = ++taxReqRef.current;
+    setTaxLoading(true);
+    setTaxError(null);
+    getSourceTags(tagSource, () => getSource(tagSource).getTags())
+      .then((items) => {
+        if (reqId !== taxReqRef.current) return;
+        setLiveTags(
+          items.map((t, idx) => ({
+            id: 500000 + idx,
+            name: t.name,
+            category: "tags" as const,
+            count: t.count || 0,
+          }))
+        );
+      })
+      .catch((err) => {
+        if (reqId !== taxReqRef.current) return;
+        setTaxError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (reqId === taxReqRef.current) setTaxLoading(false);
+      });
+  }, [isLiveSource, tagSource, taxRetry]);
+
+  // Barre de progression indéterminée de la bannière de chargement.
+  useEffect(() => {
+    if (!taxLoading || taxTrackW <= 0) return;
+    taxTrackWidth.setValue(0);
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(taxTrackWidth, {
+          toValue: 1,
+          duration: 850,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(taxTrackWidth, {
+          toValue: 0,
+          duration: 850,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [taxLoading, taxTrackW, taxTrackWidth]);
+  const taxBarX = taxTrackWidth.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-taxTrackW * 0.4, taxTrackW],
+  });
+
   // Create Collection Modal state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [newColName, setNewColName] = useState("");
@@ -94,25 +197,41 @@ export default function TagsScreen() {
     { type: string; name: string }[]
   >([]);
 
-  const categories: { key: ActiveTab; label: string; icon: any }[] = [
-    { key: "all", label: "Tous", icon: IconSparkles },
-    {
-      key: "collections",
-      label: `Packs (${collections.length})`,
-      icon: IconFolder,
-    },
-    {
-      key: "favs",
-      label: favCount > 0 ? `Favoris (${favCount})` : "Favoris",
-      icon: IconHeart,
-    },
-    { key: "tags", label: "Tags", icon: IconTag },
-    { key: "artists", label: "Artistes", icon: IconFeather },
-    { key: "parodies", label: "Séries", icon: IconDeviceTv },
-    { key: "characters", label: "Personnages", icon: IconUser },
-    { key: "groups", label: "Groupes", icon: IconUsers },
-    { key: "languages", label: "Langues", icon: IconWorld },
-  ];
+  const categories: { key: ActiveTab; label: string; icon: any }[] = useMemo(
+    () => [
+      { key: "all", label: "Tous", icon: IconSparkles },
+      {
+        key: "collections",
+        label: `Packs (${collections.length})`,
+        icon: IconFolder,
+      },
+      {
+        key: "favs",
+        label: favCount > 0 ? `Favoris (${favCount})` : "Favoris",
+        icon: IconHeart,
+      },
+      { key: "tags", label: "Tags", icon: IconTag },
+      { key: "artists", label: "Artistes", icon: IconFeather },
+      { key: "parodies", label: "Séries", icon: IconDeviceTv },
+      { key: "characters", label: "Personnages", icon: IconUser },
+      { key: "groups", label: "Groupes", icon: IconUsers },
+      { key: "languages", label: "Langues", icon: IconWorld },
+    ],
+    [collections.length, favCount]
+  );
+
+  // Onglets proposés : pour une source live, seuls les onglets alimentés
+  // (tags) + les onglets globaux (packs, favoris) sont pertinents.
+  const visibleCategories = useMemo(() => {
+    if (!isLiveSource) return categories;
+    return categories.filter(
+      (c) =>
+        c.key === "all" ||
+        c.key === "collections" ||
+        c.key === "favs" ||
+        c.key === "tags"
+    );
+  }, [categories, isLiveSource]);
 
   const filteredItems = useMemo(() => {
     let baseList: TaxonomyItem[] = [];
@@ -139,27 +258,39 @@ export default function TagsScreen() {
         const q = searchFilter.toLowerCase();
         baseList = baseList.filter((t) => (t.name || "").toLowerCase().includes(q));
       }
-    } else if (activeTab !== "collections") {
+    } else if (isLiveSource && (activeTab === "tags" || activeTab === "all")) {
+      // Liste réelle de la source, filtrage local sur la saisie.
+      baseList = liveTags;
+      if (searchFilter.trim()) {
+        const q = searchFilter.toLowerCase();
+        baseList = baseList.filter((t) => (t.name || "").toLowerCase().includes(q));
+      }
+    } else if (!isLiveSource && activeTab !== "collections") {
       baseList = getAllTaxonomies(activeTab, searchFilter);
     }
 
     return baseList;
-  }, [activeTab, searchFilter, favoriteList]);
+  }, [activeTab, searchFilter, favoriteList, isLiveSource, liveTags]);
 
   const { query: homeQuery, toggleTerm, replaceTerm } = useHomeSearch();
   const [appendNotice, setAppendNotice] = useState<string | null>(null);
   const appendLockRef = useRef(false);
 
-  // Clic sur le tag -> remplace la recherche et ouvre l'accueil
+  // Clic sur le tag -> remplace la recherche, bascule l'accueil sur la
+  // source d'origine du tag et ouvre l'accueil.
   const handleSelectTag = useCallback((tag: TaxonomyItem) => {
     lightTap();
     const type = CATEGORY_TYPE_MAP[tag.category] || "tag";
     replaceTerm(type, tag.name);
     router.push({
       pathname: "/",
-      params: { tag: tag.name, type },
+      params: {
+        tag: tag.name,
+        type,
+        ...(isLiveSource ? { src: tagSource } : {}),
+      },
     });
-  }, [replaceTerm, router]);
+  }, [replaceTerm, router, isLiveSource, tagSource]);
 
   // Clic sur +/- : ajoute ou retire le tag de la recherche actuelle, sans quitter la page
   const handleToggleSearchTag = useCallback((tag: TaxonomyItem) => {
@@ -368,6 +499,88 @@ export default function TagsScreen() {
         )}
       </View>
 
+      {/* Sélecteur de source : DB statique nhentai ou tags réels du site */}
+      <View style={styles.sourceChipsRow}>
+        {([["all", "Tout"]] as [SourceId | "all", string][])
+          .concat(sourceMetas.map((m) => [m.id, m.label] as [SourceId, string]))
+          .map(([sid, label]) => {
+            const isActive = tagSource === sid;
+            const meta = sid === "all" ? undefined : sourceMetas.find((m2) => m2.id === sid);
+            return (
+              <Pressable
+                key={sid}
+                onPress={() => {
+                  lightTap();
+                  setTagSource(sid);
+                }}
+                style={[
+                  styles.sourceChip,
+                  {
+                    borderColor: isActive ? colors.accent : colors.tagBg,
+                    backgroundColor: isActive ? colors.accent + "26" : "transparent",
+                  },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={`Tags de la source ${label}`}
+                accessibilityState={{ selected: isActive }}
+              >
+                {meta && (
+                  <View
+                    style={[styles.sourceChipDot, { backgroundColor: meta.accentColor }]}
+                  />
+                )}
+                <Text
+                  style={[
+                    styles.sourceChipText,
+                    { color: isActive ? colors.accent : colors.sub },
+                  ]}
+                >
+                  {label}
+                </Text>
+              </Pressable>
+            );
+          })}
+      </View>
+
+      {/* Bannière de chargement des tags réels (liste live) */}
+      {taxLoading ? (
+        <View style={[styles.taxBanner, { backgroundColor: colors.searchBg }]}>
+          <View style={styles.taxBannerRow}>
+            <ActivityIndicator size="small" color={colors.accent} />
+            <Text style={[styles.taxBannerText, { color: colors.sub }]}>
+              Chargement des tags{" "}
+              {sourceMetas.find((m) => m.id === tagSource)?.label ?? tagSource}…
+            </Text>
+          </View>
+          <View
+            style={[styles.taxTrack, { backgroundColor: colors.tagBg }]}
+            onLayout={(e) => setTaxTrackW(e.nativeEvent.layout.width)}
+          >
+            <Animated.View
+              style={[
+                styles.taxBar,
+                { backgroundColor: colors.accent, transform: [{ translateX: taxBarX }] },
+              ]}
+            />
+          </View>
+        </View>
+      ) : null}
+
+      {/* Échec du chargement des tags réels : notice inline + Réessayer */}
+      {!taxLoading && taxError ? (
+        <View style={[styles.taxBanner, { backgroundColor: "#ff475722" }]}>
+          <View style={styles.taxBannerRow}>
+            <IconX size={14} color="#ff4757" strokeWidth={2.5} />
+            <Text style={[styles.taxBannerText, { color: "#ff4757", flexShrink: 1 }]} numberOfLines={2}>
+              Impossible de charger les tags — {taxError}
+            </Text>
+            <Pressable onPress={() => setTaxRetry((r) => r + 1)} hitSlop={6}>
+              <Text style={[styles.taxBannerText, { color: colors.accent }]}>Réessayer</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+
       {appendNotice ? (
         <View style={[styles.appendNotice, { backgroundColor: colors.accent + "22", borderColor: colors.accent }]}>
           <Text style={[styles.appendNoticeText, { color: colors.accent }]}>{appendNotice}</Text>
@@ -405,7 +618,7 @@ export default function TagsScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ paddingHorizontal: 16 }}
         >
-          {categories.map((item) => {
+          {visibleCategories.map((item) => {
             const isActive = activeTab === item.key;
             const TabIcon = item.icon;
             return (
@@ -679,6 +892,61 @@ export default function TagsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  sourceChipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 6,
+  },
+  sourceChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    flexShrink: 0,
+  },
+  sourceChipDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  sourceChipText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  taxBanner: {
+    marginHorizontal: 16,
+    marginBottom: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    gap: 6,
+  },
+  taxBannerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  taxBannerText: {
+    fontSize: 12,
+    fontWeight: "600",
+    flexShrink: 0,
+  },
+  taxTrack: {
+    height: 4,
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+  taxBar: {
+    width: "40%",
+    height: "100%",
+    borderRadius: 2,
   },
   header: {
     flexDirection: "row",

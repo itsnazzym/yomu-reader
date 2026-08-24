@@ -99,4 +99,20 @@ export interface SourceAdapter {
   }>;
   getGallery(nativeId: string, knownTitle?: string): Promise<SourceGallery>;
   getRandomNativeId?(): Promise<string>;
+  /**
+   * Liste réelle des tags du site (périmètre : tags uniquement). Absente si
+   * la source n'expose pas de taxonomie exploitable ; l'appelant retombe
+   * alors sur la DB statique nhentai.
+   */
+  getTags?(): Promise<SourceTaxonomyItem[]>;
+}
+
+/** Entrée de la liste de tags native d'une source. */
+export interface SourceTaxonomyItem {
+  /** Libellé tel qu'utilisé dans la recherche du site. */
+  name: string;
+  /** Nombre de galeries portant ce tag, quand le site le fournit. */
+  count?: number;
+  /** Identifiant natif du tag (ex. tag_id doujins), si le site en a un. */
+  id?: string;
 }

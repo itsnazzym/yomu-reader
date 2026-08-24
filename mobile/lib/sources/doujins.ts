@@ -29,7 +29,9 @@ import {
   type SourceMeta,
   type SourceSearchOptions,
   type SourceTag,
+  type SourceTaxonomyItem,
 } from "./types";
+import { recordObservedTags } from "../sourceTaxonomyStore";
 
 const BASE = "https://doujins.com";
 const TIMEOUT_MS = 12000;
@@ -166,6 +168,12 @@ function folderToCard(it: FolderItem): SourceGalleryCard | null {
     tags,
     uploadDate: folderDateMs(it),
   });
+  // Enrichissement cumulatif : les tags rencontrés dans les listings
+  // complètent la liste officielle (36) de /tags. Fire-and-forget.
+  recordObservedTags([
+    ...tags.map((t) => t.name),
+    ...folderTagsArtists(it),
+  ]).catch(() => {});
   return {
     globalId: makeGlobalId("doujins", nativeId),
     title,
@@ -174,6 +182,15 @@ function folderToCard(it: FolderItem): SourceGalleryCard | null {
     uploadDate: folderDateMs(it),
     tags,
   };
+}
+
+/** Artistes + série d'un item folder, pour le cumul taxonomie. */
+function folderTagsArtists(it: FolderItem): string[] {
+  const out: string[] = [];
+  if (Array.isArray(it.artists)) out.push(...it.artists);
+  else if (it.artistList) out.push(...it.artistList.split(","));
+  if (it.series) out.push(it.series);
+  return out.filter((s): s is string => Boolean(s && s.trim()));
 }
 
 /** Parse les cartes HTML /list (href + img + titre, wrappers internes OK). */
@@ -206,8 +223,26 @@ export function parseDoujinsListCards(html: string): SourceGalleryCard[] {
   return cards;
 }
 
-function extractPageUrls(html: string): string[] {
-  const fromDataFile = extractMatches(
+/** Item de la page /tags : href="/tags/<Nom>-<tag_id>" (+ query ?x=N). */
+const TAGS_PAGE_ITEM_RE = /<a href="(\/tags\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
+
+/** Parse la page /tags (tags populaires officiels, avec leur id natif). */
+export function parseDoujinsTagsPage(html: string): SourceTaxonomyItem[] {
+  const out: SourceTaxonomyItem[] = [];
+  const seen = new Set<string>();
+  for (const m of extractMatches(html, TAGS_PAGE_ITEM_RE)) {
+    const href = decodeEntities(m[1]);
+    const name = stripTags(m[2]).trim();
+    // L'id est le dernier segment numérique du href ("Bakunyuu-14?x=13").
+    const idMatch = href.match(/-([0-9]+)(?:[?#]|$)/);
+    if (!name || seen.has(name.toLowerCase()) || !idMatch) continue;
+    seen.add(name.toLowerCase());
+    out.push({ name, id: idMatch[1] });
+  }
+  return out;
+}
+
+function extractPageUrls(html: string): string[] {  const fromDataFile = extractMatches(
     html,
     /<img\s+class="doujin[^"]*"[\s\S]{0,400}?data-file="(https:\/\/static\.doujins\.com\/[^"]+)"/g
   )
@@ -354,6 +389,18 @@ export class DoujinsSource implements SourceAdapter {
     const cards = parseDoujinsListCards(html);
     if (cards.length === 0) throw new Error("Doujins random: liste vide");
     return splitNative(cards[Math.floor(Math.random() * cards.length)].globalId);
+  }
+
+  /**
+   * Tags officiels de la page /tags (~36, avec id natif). La liste complète
+   * affichée par l'app y ajoute le cumul local des tags observés dans les
+   * listings (voir sourceTaxonomyStore.mergeDoujins).
+   */
+  async getTags(): Promise<SourceTaxonomyItem[]> {
+    const html = await fetchHtml(`${BASE}/tags`);
+    const tags = parseDoujinsTagsPage(html);
+    if (tags.length === 0) throw new Error("Doujins /tags: aucun tag parsé");
+    return tags;
   }
 }
 

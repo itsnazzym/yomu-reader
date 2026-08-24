@@ -5,6 +5,7 @@
 
 import * as api from "../api/nhentai";
 import type { Gallery } from "../api/types";
+import { DB_CATEGORIES } from "../taxonomyData";
 import {
   makeGlobalId,
   type SourceAdapter,
@@ -67,5 +68,13 @@ export class NhentaiSource implements SourceAdapter {
   async getRandomNativeId(): Promise<string> {
     const g = await api.getRandomGallery();
     return String(g.id);
+  }
+
+  /** DB statique embarquée (données réelles nhentai, zéro réseau). */
+  async getTags() {
+    return (DB_CATEGORIES.tags || []).map((t) => ({
+      name: t.name,
+      count: t.count,
+    }));
   }
 }

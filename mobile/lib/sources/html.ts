@@ -95,6 +95,30 @@ export function stripNhentaiOperators(query: string | undefined): string | undef
   return cleaned || undefined;
 }
 
+/**
+ * Traduit une requête nhentai pour les sources alternatives (3hentai,
+ * doujins) qui n'ont que des recherches plein texte : on CONSERVE les
+ * valeurs (`tag:"vanilla" language:english` → `vanilla english`) au lieu
+ * de les jeter, et on retire les préfixes d'opérateurs non supportés.
+ */
+export function translateQueryForSource(
+  query: string | undefined
+): string | undefined {
+  if (!query) return undefined;
+  const cleaned = query
+    // Valeurs d'opérateurs quotées : garde la valeur, jette le préfixe
+    // (et l'éventuelle négation "-" qui n'a pas d'équivalent plein texte).
+    .replace(/-?\b[a-z]+:\s*"([^"]+)"/gi, "$1")
+    // Valeurs simples (pages:>20, language:english, -tag:"x"...) : garde la
+    // valeur sauf pour les filtres techniques sans valeur textuelle utile.
+    .replace(/\b(?:pages|uploaded|comments|favorites|order):"?[<>!]?\s*[^"\s]*"?(?=\s|$)/gi, " ")
+    .replace(/\b(?:language|category|tag|artist|parody|character|group):\s*([^"\s]+)/gi, "$1")
+    .replace(/"/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned || undefined;
+}
+
 /** Enlève le suffixe srcset (` 2x`) et décode les entités d'une URL média. */
 export function sanitizeMediaUrl(raw: string): string {
   if (!raw) return "";
