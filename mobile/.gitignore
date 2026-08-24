@@ -21,6 +21,8 @@ dist/
 screen_*.png
 test-bundle.js
 test/*.test.cjs
+!test/tablerIcons.test.cjs
+!test/withAndroidDoh.test.cjs
 
 # Production signing keystore (NEVER commit)
 keys/

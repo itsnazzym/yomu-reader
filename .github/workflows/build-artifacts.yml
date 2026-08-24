@@ -162,6 +162,7 @@ jobs:
 
       - name: Build & Sign ARM64-v8a APK
         env:
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4096m -Dorg.gradle.caching=true"
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
@@ -169,7 +170,7 @@ jobs:
         working-directory: mobile/android
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --build-cache --parallel
+          ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --build-cache --no-configure-on-demand --no-parallel
           
           mkdir -p ../../output-arm64
           RAW_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
@@ -242,6 +243,7 @@ jobs:
 
       - name: Build & Sign Universal APK
         env:
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4096m -Dorg.gradle.caching=true"
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
@@ -249,7 +251,7 @@ jobs:
         working-directory: mobile/android
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease -PreactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64 --build-cache --parallel
+          ./gradlew assembleRelease -PreactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64 --build-cache --no-configure-on-demand --no-parallel
           
           mkdir -p ../../output-universal
           RAW_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
@@ -303,10 +305,12 @@ jobs:
           npx expo prebuild --platform android --no-install
 
       - name: Build Debug APK
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4096m -Dorg.gradle.caching=true"
         working-directory: mobile/android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --build-cache --parallel
+          ./gradlew assembleDebug --build-cache --no-configure-on-demand --no-parallel
           
           mkdir -p ../../output-debug
           RAW_APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)

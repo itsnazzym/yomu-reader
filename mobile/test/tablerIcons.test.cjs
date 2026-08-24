@@ -60,6 +60,14 @@ function collectExportedIcons() {
   );
 }
 
+test("esbuild mock for @tabler/icons-react-native is committed", () => {
+  assert.equal(
+    fs.existsSync(path.join(__dirname, "mockTablerIcons.cjs")),
+    true,
+    "mobile/test/mockTablerIcons.cjs missing — CI bundle.mjs cannot alias Tabler icons"
+  );
+});
+
 test("TablerIcons wrapper exports every icon imported by the app", () => {
   const imported = collectImportedIcons();
   const exported = collectExportedIcons();

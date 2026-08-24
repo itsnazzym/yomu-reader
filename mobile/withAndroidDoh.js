@@ -74,6 +74,13 @@ const DOH_INSTALL = `
     })
 `;
 
+const FILE_SUPPRESS = '@file:Suppress("DEPRECATION")';
+const CLASS_MARKER =
+  "class MainApplication : Application(), ReactApplication {";
+const ON_CREATE_MARKER = `  override fun onCreate() {
+    super.onCreate()
+`;
+
 function setGradleProperty(properties, key, value) {
   const existing = properties.find(
     (item) => item.type === "property" && item.key === key
@@ -89,25 +96,81 @@ function setGradleProperty(properties, key, value) {
   }
 }
 
-function withAndroidDoh(config) {
-  // 1. Configure gradle.properties for arm64-v8a target and high-speed build
-  config = withGradleProperties(config, (modConfig) => {
-    setGradleProperty(modConfig.modResults, "reactNativeArchitectures", "arm64-v8a");
-    setGradleProperty(modConfig.modResults, "org.gradle.parallel", "true");
-    setGradleProperty(modConfig.modResults, "org.gradle.caching", "true");
-    setGradleProperty(modConfig.modResults, "org.gradle.daemon", "true");
-    setGradleProperty(modConfig.modResults, "org.gradle.configureondemand", "true");
-    setGradleProperty(modConfig.modResults, "kotlin.incremental", "true");
-    setGradleProperty(
-      modConfig.modResults,
-      "org.gradle.jvmargs",
-      "-Xmx4096m -XX:MaxMetaspaceSize=1024m -XX:+UseG1GC"
+function applyDohGradleProperties(properties) {
+  const next = Array.isArray(properties) ? properties : [];
+  setGradleProperty(next, "reactNativeArchitectures", "arm64-v8a");
+  setGradleProperty(next, "org.gradle.parallel", "true");
+  setGradleProperty(next, "org.gradle.caching", "true");
+  setGradleProperty(next, "org.gradle.daemon", "true");
+  // configure-on-demand + New Architecture: :app:configureCMake* can run
+  // before library codegen creates android/build/generated/source/codegen/jni.
+  setGradleProperty(next, "org.gradle.configureondemand", "false");
+  setGradleProperty(next, "kotlin.incremental", "true");
+  setGradleProperty(
+    next,
+    "org.gradle.jvmargs",
+    "-Xmx4096m -XX:MaxMetaspaceSize=1024m -XX:+UseG1GC"
+  );
+  setGradleProperty(next, "android.enablePngCrunchInReleaseBuilds", "true");
+  return next;
+}
+
+function patchMainApplicationKt(contents) {
+  if (typeof contents !== "string" || contents.trim() === "") {
+    throw new Error("MainApplication.kt vide");
+  }
+
+  let source = contents.replace(/\r\n/g, "\n");
+  source = source.split(FILE_SUPPRESS).join("").replace(/\n{3,}/g, "\n\n");
+  source = `${FILE_SUPPRESS}\n${source.replace(/^\n+/, "")}`;
+
+  if (!source.includes("DohFallbackDns")) {
+    if (!source.includes(CLASS_MARKER)) {
+      throw new Error("MainApplication Android utilise un format inattendu");
+    }
+
+    const lines = source.split("\n");
+    const existing = new Set(lines.map((line) => line.trim()));
+    const importsToAdd = DOH_IMPORTS.split("\n").filter(
+      (line) => line.length > 0 && !existing.has(line)
     );
-    setGradleProperty(modConfig.modResults, "android.enablePngCrunchInReleaseBuilds", "true");
+
+    let lastImportIndex = -1;
+    let packageIndex = -1;
+    for (let i = 0; i < lines.length; i += 1) {
+      const trimmed = lines[i].trim();
+      if (trimmed.startsWith("package ")) {
+        packageIndex = i;
+      }
+      if (trimmed.startsWith("import ")) {
+        lastImportIndex = i;
+      }
+    }
+    if (packageIndex < 0) {
+      throw new Error("MainApplication.kt sans déclaration package");
+    }
+
+    const insertAt = lastImportIndex >= 0 ? lastImportIndex + 1 : packageIndex + 1;
+    lines.splice(insertAt, 0, ...importsToAdd, "", DOH_SUPPORT.trim(), "");
+    source = lines.join("\n");
+
+    if (!source.includes(ON_CREATE_MARKER)) {
+      throw new Error("Impossible de trouver onCreate dans MainApplication.kt");
+    }
+    if (!source.includes("OkHttpClientProvider.setOkHttpClientFactory")) {
+      source = source.replace(ON_CREATE_MARKER, `${ON_CREATE_MARKER}${DOH_INSTALL}`);
+    }
+  }
+
+  return source;
+}
+
+function withAndroidDoh(config) {
+  config = withGradleProperties(config, (modConfig) => {
+    applyDohGradleProperties(modConfig.modResults);
     return modConfig;
   });
 
-  // 2. Configure app/build.gradle with DoH dependency and NDK ABI filter
   config = withAppBuildGradle(config, (modConfig) => {
     if (!modConfig.modResults.contents.includes("okhttp-dnsoverhttps")) {
       const marker = "dependencies {";
@@ -135,43 +198,14 @@ function withAndroidDoh(config) {
   });
 
   return withMainApplication(config, (modConfig) => {
-    if (!modConfig.modResults.contents.includes("@file:Suppress(\"DEPRECATION\")")) {
-      modConfig.modResults.contents = modConfig.modResults.contents.replace(
-        "package com.nhentaidownlo.mobile\n",
-        "package com.nhentaidownlo.mobile\n\n@file:Suppress(\"DEPRECATION\")\n"
-      );
-    }
-
-    if (modConfig.modResults.contents.includes("DohFallbackDns")) {
-      return modConfig;
-    }
-
-    // SDK 54 : le template MainApplication.kt n'importe plus SoLoader.
-    // On s'ancre sur la déclaration de classe, toujours présente, et on
-    // insère les imports juste avant `class MainApplication`.
-    const classMarker =
-      "class MainApplication : Application(), ReactApplication {";
-    if (!modConfig.modResults.contents.includes(classMarker)) {
-      throw new Error("MainApplication Android utilise un format inattendu");
-    }
-    modConfig.modResults.contents = modConfig.modResults.contents.replace(
-      classMarker,
-      `${DOH_IMPORTS}\n\n${DOH_SUPPORT}\n\n${classMarker}`
+    modConfig.modResults.contents = patchMainApplicationKt(
+      modConfig.modResults.contents
     );
-
-    const onCreateMarker = `  override fun onCreate() {
-    super.onCreate()
-`;
-    if (!modConfig.modResults.contents.includes(onCreateMarker)) {
-      throw new Error("Impossible de trouver onCreate dans MainApplication.kt");
-    }
-    modConfig.modResults.contents = modConfig.modResults.contents.replace(
-      onCreateMarker,
-      `${onCreateMarker}${DOH_INSTALL}`
-    );
-
     return modConfig;
   });
 }
 
-module.exports = createRunOncePlugin(withAndroidDoh, "with-android-doh", "1.0.1");
+const plugin = createRunOncePlugin(withAndroidDoh, "with-android-doh", "1.0.2");
+plugin.patchMainApplicationKt = patchMainApplicationKt;
+plugin.applyDohGradleProperties = applyDohGradleProperties;
+module.exports = plugin;
