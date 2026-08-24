@@ -911,7 +911,8 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    flexShrink: 0,
+    flexShrink: 1,
+    minWidth: 0,
   },
   sourceChipDot: {
     width: 7,

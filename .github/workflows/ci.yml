@@ -37,6 +37,7 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm test
       - run: npm run lint
+      - run: npm run ui:check
       - run: npx expo-doctor
         continue-on-error: true
 
