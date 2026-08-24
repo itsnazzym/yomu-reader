@@ -534,6 +534,8 @@ export default function TagsScreen() {
                     styles.sourceChipText,
                     { color: isActive ? colors.accent : colors.sub },
                   ]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
                 >
                   {label}
                 </Text>
@@ -919,6 +921,9 @@ const styles = StyleSheet.create({
   sourceChipText: {
     fontSize: 12,
     fontWeight: "700",
+    flexShrink: 1,
+    paddingRight: 3,
+    includeFontPadding: false,
   },
   taxBanner: {
     marginHorizontal: 16,
