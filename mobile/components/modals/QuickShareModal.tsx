@@ -137,7 +137,7 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
           {/* Manga Badge Info */}
           <View style={[styles.mangaBadge, { backgroundColor: colors.tagBg }]}>
             <Text style={[styles.mangaId, { color: colors.accent }]}>#d{id}</Text>
-            <Text style={[styles.mangaTitle, { color: colors.txt }]} numberOfLines={1}>
+            <Text style={[styles.mangaTitle, { color: colors.txt }]} numberOfLines={1} ellipsizeMode="tail">
               {title}
             </Text>
           </View>
@@ -238,7 +238,7 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
               >
                 <View style={styles.linkInfo}>
                   <Text style={styles.linkLabel}>Lien web</Text>
-                  <Text style={styles.linkVal} numberOfLines={1}>
+                  <Text style={styles.linkVal} numberOfLines={1} ellipsizeMode="tail">
                     {shareUrl}
                   </Text>
                 </View>
@@ -265,7 +265,7 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
               >
                 <View style={styles.linkInfo}>
                   <Text style={styles.linkLabel}>Discord / Markdown</Text>
-                  <Text style={styles.linkVal} numberOfLines={1}>
+                  <Text style={styles.linkVal} numberOfLines={1} ellipsizeMode="tail">
                     {markdownLink}
                   </Text>
                 </View>

@@ -66,7 +66,7 @@ export function AuthPowProgressBar({
       <View style={styles.headerRow}>
         <View style={styles.copy}>
           <Text style={styles.title}>Calcul cryptographique</Text>
-          <Text style={styles.meta} numberOfLines={1}>
+          <Text style={styles.meta} numberOfLines={1} ellipsizeMode="tail">
             {progress.nonce.toLocaleString("fr-FR")} essais ·{" "}
             {formatRate(progress.attemptsPerSecond)} · ETA{" "}
             {formatDuration(progress.etaMs)}

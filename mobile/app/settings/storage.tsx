@@ -167,7 +167,7 @@ export default function StorageSettingsScreen() {
                 ]}
               >
                 <View style={{ flex: 1, paddingRight: 8 }}>
-                  <Text style={[styles.rowTitle, { color: colors.txt }]} numberOfLines={1}>
+                  <Text style={[styles.rowTitle, { color: colors.txt }]} numberOfLines={1} ellipsizeMode="tail">
                     {bucket.label}
                   </Text>
                   <Text style={[styles.hint, { color: colors.sub }]}>

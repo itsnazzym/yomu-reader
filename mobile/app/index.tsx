@@ -37,6 +37,7 @@ import { useTheme } from "@/lib/ThemeContext";
 import { useDrawer } from "@/lib/DrawerContext";
 import { BookCard } from "@/components/BookCard";
 import { SearchBar } from "@/components/SearchBar";
+import { TagLabel } from "@/components/ui/TagLabel";
 import { FilterModal, FilterOptions } from "@/components/modals/FilterModal";
 import { ReverseImageSearchModal } from "@/components/modals/ReverseImageSearchModal";
 import { searchGalleries } from "@/lib/api/nhentai";
@@ -871,7 +872,7 @@ export default function HomeScreen() {
           </View>
           <View style={styles.resumeInfo}>
             <Text style={[styles.resumeLabel, { color: colors.accent }]}>Reprendre</Text>
-            <Text style={styles.resumeTitle} numberOfLines={1}>
+            <Text style={styles.resumeTitle} numberOfLines={1} ellipsizeMode="tail">
               {resumeEntry.gallery.title?.pretty ||
                 resumeEntry.gallery.title?.english ||
                 `Gallery #${resumeEntry.gallery.id}`}
@@ -942,9 +943,7 @@ export default function HomeScreen() {
                           {meta?.label || "Tag"}
                         </Text>
                       </View>
-                      <Text style={styles.suggestionName} numberOfLines={1}>
-                        {item.name}
-                      </Text>
+                      <TagLabel name={item.name} variant="list" style={styles.suggestionNameOverride} />
                     </View>
                     <Text style={styles.suggestionCount}>
                       {item.count > 1000 ? `${Math.round(item.count / 1000)}k` : item.count}
@@ -1063,7 +1062,11 @@ export default function HomeScreen() {
                   accessibilityLabel={`Collection ${col.name}`}
                 >
                   <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: col.color }} />
-                  <Text style={[styles.quickChipText, isColActive && { color: "#ffffff", fontWeight: "800" }]}>
+                  <Text
+                    style={[styles.quickChipText, isColActive && { color: "#ffffff", fontWeight: "800" }]}
+                    numberOfLines={2}
+                    ellipsizeMode="tail"
+                  >
                     {col.name}
                   </Text>
                 </TouchableOpacity>
@@ -1351,8 +1354,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     flexShrink: 1,
+    minWidth: 0,
     paddingRight: 3,
-    includeFontPadding: false,
   },
   feedLoadingBanner: {
     marginHorizontal: 16,
@@ -1671,6 +1674,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     flex: 1,
+    minWidth: 0,
   },
   categoryBadge: {
     paddingHorizontal: 8,
@@ -1682,10 +1686,14 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   suggestionName: {
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
+  },
+  suggestionNameOverride: {
     fontSize: 13.5,
     fontWeight: "600",
     color: "#f3f4f6",
-    flex: 1,
   },
   suggestionCount: {
     fontSize: 12,
@@ -1709,9 +1717,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     color: "#d1d5db",
-    flexShrink: 0,
+    flexShrink: 1,
+    minWidth: 0,
     paddingRight: 4,
-    includeFontPadding: false,
   },
   quickChipTextActive: {
     color: "#ffffff",

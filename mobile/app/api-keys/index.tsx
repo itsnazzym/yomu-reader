@@ -201,7 +201,7 @@ export default function ApiKeysScreen() {
           </View>
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <Text style={[styles.keyName, { color: colors.txt }]} numberOfLines={1}>
+              <Text style={[styles.keyName, { color: colors.txt }]} numberOfLines={1} ellipsizeMode="tail">
                 {item.name}
               </Text>
               {isCurrentActive && (
@@ -275,7 +275,7 @@ export default function ApiKeysScreen() {
                 <Text style={[styles.statusBannerTitle, { color: colors.accent }]}>
                   Mode Clé API Actif
                 </Text>
-                <Text style={[styles.statusBannerSub, { color: colors.sub }]} numberOfLines={1}>
+                <Text style={[styles.statusBannerSub, { color: colors.sub }]} numberOfLines={1} ellipsizeMode="tail">
                   Clé validée et conservée dans le stockage sécurisé Android
                 </Text>
               </View>

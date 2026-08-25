@@ -208,7 +208,7 @@ export function WebViewLoginModal({
               <IconShield size={16} color={colors.accent} strokeWidth={2} />
               <Text style={styles.headerTitle}>Connexion Officielle nHentai</Text>
             </View>
-            <Text style={styles.headerSubtitle} numberOfLines={1}>
+            <Text style={styles.headerSubtitle} numberOfLines={1} ellipsizeMode="tail">
               {statusMessage}
             </Text>
           </View>

@@ -38,6 +38,7 @@ import { useTheme } from "@/lib/ThemeContext";
 import { lightTap } from "@/lib/haptics";
 import { BookCard } from "@/components/BookCard";
 import { CardPressable } from "@/components/ui/CardPressable";
+import { TagLabel } from "@/components/ui/TagLabel";
 import { Gallery } from "@/lib/api/types";
 import {
   generateRecommendations,
@@ -311,9 +312,7 @@ export default function RecommendationsScreen() {
                     { backgroundColor: colors.tagBg, borderColor: colors.tagBg },
                   ]}
                 >
-                  <Text style={[styles.preferenceChipText, { color: colors.tagText }]} numberOfLines={1}>
-                    {tag.name}
-                  </Text>
+                  <TagLabel name={tag.name} color={colors.tagText} variant="compact" style={styles.preferenceChipText} />
                   {tag.count > 0 && (
                     <Text style={[styles.preferenceChipScore, { color: colors.accent }]}>
                       {formatCount(tag.count)}
@@ -629,7 +628,7 @@ export default function RecommendationsScreen() {
                       accessibilityLabel={`Rechercher ${tag.name}`}
                       style={styles.termRow}
                     >
-                      <Text style={[styles.termName, { color: colors.txt }]} numberOfLines={1}>{tag.name}</Text>
+                      <TagLabel name={tag.name} color={colors.txt} variant="row" />
                       <View style={styles.termRight}>
                         {tag.sources.map((source) => (
                           <View key={source} style={[styles.sourceBadge, { backgroundColor: colors.accent + "22" }]}> 
@@ -661,7 +660,7 @@ export default function RecommendationsScreen() {
                       }`}
                       style={styles.termRow}
                     >
-                      <Text style={[styles.termName, { color: colors.txt }]} numberOfLines={1}>{artist.name}</Text>
+                      <TagLabel name={artist.name} color={colors.txt} variant="row" />
                       <View style={styles.termRight}>
                         {artist.sources.map((source) => (
                           <View key={source} style={[styles.sourceBadge, { backgroundColor: colors.accent + "22" }]}>
@@ -696,7 +695,7 @@ export default function RecommendationsScreen() {
                       accessibilityLabel={`Rechercher ${parody.name}`}
                       style={styles.termRow}
                     >
-                      <Text style={[styles.termName, { color: colors.txt }]} numberOfLines={1}>{parody.name}</Text>
+                      <TagLabel name={parody.name} color={colors.txt} variant="row" />
                       <View style={styles.termRight}>
                         {parody.sources.map((source) => (
                           <View key={source} style={[styles.sourceBadge, { backgroundColor: colors.accent + "22" }]}>
@@ -718,7 +717,7 @@ export default function RecommendationsScreen() {
                   <Text style={[styles.sectionLabel, { color: colors.sub }]}>REQUÊTES DE DÉCOUVERTE</Text>
                   <View style={[styles.queryBox, { backgroundColor: colors.bg, borderColor: colors.tagBg }]}> 
                     {result.queriesUsed.map((query, index) => (
-                      <Text key={`${query}-${index}`} style={[styles.queryLine, { color: colors.sub }]} numberOfLines={1}>
+                      <Text key={`${query}-${index}`} style={[styles.queryLine, { color: colors.sub }]} numberOfLines={1} ellipsizeMode="tail">
                         <Text style={{ color: colors.accent }}>→ </Text>{query}
                       </Text>
                     ))}
@@ -777,8 +776,8 @@ const styles = StyleSheet.create({
   preferenceTitle: { fontSize: 12, fontWeight: "800" },
   preferenceHint: { fontSize: 9.5 },
   preferenceScroll: { gap: 6, paddingRight: 4 },
-  preferenceChip: { maxWidth: 150, flexDirection: "row", alignItems: "center", borderRadius: 9, borderWidth: 1, paddingHorizontal: 9, paddingVertical: 6 },
-  preferenceChipText: { maxWidth: 112, fontSize: 10.5, fontWeight: "700" },
+  preferenceChip: { maxWidth: 180, flexDirection: "row", alignItems: "center", borderRadius: 9, borderWidth: 1, paddingHorizontal: 9, paddingVertical: 6, flexShrink: 1, minWidth: 0 },
+  preferenceChipText: { maxWidth: 140, flexShrink: 1, minWidth: 0 },
   preferenceChipScore: { fontSize: 9, fontWeight: "900", marginLeft: 7 },
   preferenceChipChevron: { marginLeft: 5 },
   heroActions: { flexDirection: "row", gap: 8, marginTop: 15 },
@@ -835,7 +834,6 @@ const styles = StyleSheet.create({
   dataValue: { fontSize: 13, fontWeight: "900" },
   modalSection: { marginTop: 19 },
   termRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 4 },
-  termName: { flex: 1, fontSize: 12.5, fontWeight: "600", paddingRight: 8 },
   termRight: { flexDirection: "row", alignItems: "center", gap: 5 },
   sourceBadge: { paddingHorizontal: 5, paddingVertical: 2, borderRadius: 5 },
   sourceBadgeText: { fontSize: 8.5, fontWeight: "800" },

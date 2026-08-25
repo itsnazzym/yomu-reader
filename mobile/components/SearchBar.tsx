@@ -232,6 +232,8 @@ export function SearchBar({
                     styles.langChipText,
                     { color: isActive ? "#fff" : colors.sub },
                   ]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
                 >
                   {item.label}
                 </Text>
@@ -343,10 +345,14 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 14,
     borderWidth: 1,
+    flexShrink: 1,
+    minWidth: 0,
   },
   langChipText: {
     fontSize: 11.5,
     fontWeight: "700",
+    flexShrink: 1,
+    minWidth: 0,
   },
   modalBackdrop: {
     flex: 1,

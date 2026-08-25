@@ -386,7 +386,7 @@ export default function ProfileScreen() {
 
               <View style={{ flex: 1, gap: 3 }}>
                 <View style={styles.usernameRow}>
-                  <Text style={[styles.usernameText, { color: colors.txt }]} numberOfLines={1}>
+                  <Text style={[styles.usernameText, { color: colors.txt }]} numberOfLines={1} ellipsizeMode="tail">
                     {username}
                   </Text>
                   <View style={styles.badgeOfficial}>
@@ -397,7 +397,7 @@ export default function ProfileScreen() {
 
                 <View style={styles.emailRow}>
                   <IconMail size={12} color={colors.sub} strokeWidth={1.8} />
-                  <Text style={[styles.emailText, { color: colors.sub }]} numberOfLines={1}>
+                  <Text style={[styles.emailText, { color: colors.sub }]} numberOfLines={1} ellipsizeMode="tail">
                     {email}
                   </Text>
                 </View>
@@ -542,7 +542,7 @@ export default function ProfileScreen() {
                     style={[styles.commentCard, { backgroundColor: colors.page, borderColor: colors.tagBg }]}
                   >
                     <View style={styles.commentHeader}>
-                      <Text style={[styles.commentGalleryTitle, { color: colors.txt }]} numberOfLines={1}>
+                      <Text style={[styles.commentGalleryTitle, { color: colors.txt }]} numberOfLines={1} ellipsizeMode="tail">
                         {comment.gallery_title}
                       </Text>
                       <Text style={[styles.commentDate, { color: colors.sub }]}>
@@ -1132,13 +1132,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
+    minWidth: 0,
+    flexShrink: 1,
   },
   actionBtnText: {
     fontSize: 13,
     fontWeight: "700",
-    flexShrink: 0,
+    flexShrink: 1,
+    minWidth: 0,
     paddingRight: 4,
-    includeFontPadding: false,
   },
   modalBackdrop: {
     flex: 1,

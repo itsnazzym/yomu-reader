@@ -25,8 +25,6 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconPlayerPlay,
-  IconPlus,
-  IconMinus,
   IconFolderPlus,
 } from "@tabler/icons-react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -56,6 +54,7 @@ import { sourceGalleryToGallery } from "@/lib/sources/galleryMapper";
 import type { SourceId } from "@/lib/sources/types";
 import { makeGlobalId } from "@/lib/sources/types";
 import { CollectionPickerModal } from "@/components/modals/CollectionPickerModal";
+import { GalleryTagChip } from "@/components/ui/GalleryTagChip";
 import {
   findDuplicateGroups,
   galleryToDuplicateCandidate,
@@ -578,81 +577,24 @@ export default function BookDetailScreen() {
                   const isTagFavorited = isTagFav(t.type, t.name);
                   const inSearch = queryContainsTerm(homeQuery, t.type, t.name);
                   return (
-                    <View
+                    <GalleryTagChip
                       key={t.id}
-                      style={[
-                        styles.tagChipContainer,
-                        {
-                          backgroundColor: inSearch ? colors.accent + "22" : colors.tagBg,
-                          borderColor: inSearch
-                            ? colors.accent
-                            : isTagFavorited
-                              ? colors.accent
-                              : "rgba(255,255,255,0.06)",
-                        },
-                      ]}
-                    >
-                      {/* Clic direct pour chercher ce tag */}
-                      <TouchableOpacity
-                        activeOpacity={0.75}
-                        onPress={() => openTagSearch(t.name, t.type)}
-                        style={styles.tagChipMainPress}
-                      >
-                        <Text style={[styles.tagChipText, { color: colors.tagText }]}>
-                          {t.name}
-                        </Text>
-                        {typeof t.count === "number" && t.count > 0 ? (
-                          <Text style={[styles.tagChipCount, { color: colors.sub }]}>
-                            {t.count > 999 ? `${(t.count / 1000).toFixed(0)}k` : t.count}
-                          </Text>
-                        ) : null}
-                      </TouchableOpacity>
-
-                      {/* Bouton +/- pour ajouter/retirer de la recherche sans quitter la page */}
-                      <TouchableOpacity
-                        activeOpacity={0.7}
-                        hitSlop={6}
-                        onPress={() => toggleTagSearch(t.name, t.type)}
-                        style={[
-                          styles.tagChipActionBtn,
-                          {
-                            borderLeftColor: "rgba(255,255,255,0.1)",
-                            backgroundColor: inSearch ? colors.accent + "33" : "transparent",
-                          },
-                        ]}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: inSearch }}
-                        accessibilityLabel={
-                          inSearch
-                            ? `Retirer ${t.name} de la recherche`
-                            : `Ajouter ${t.name} à la recherche`
-                        }
-                      >
-                        {inSearch ? (
-                          <IconMinus size={13} color={colors.accent} strokeWidth={2.5} />
-                        ) : (
-                          <IconPlus size={13} color={colors.accent} strokeWidth={2.5} />
-                        )}
-                      </TouchableOpacity>
-
-                      {/* Bouton cœur pour mettre en favoris */}
-                      <TouchableOpacity
-                        activeOpacity={0.7}
-                        hitSlop={6}
-                        onPress={() => {
-                          lightTap();
-                          toggleTagFav({ type: t.type, name: t.name, count: t.count });
-                        }}
-                        style={styles.tagChipActionBtn}
-                      >
-                        <IconHeart
-                          size={13}
-                          color={isTagFavorited ? "#f43f5e" : colors.sub}
-                          fill={isTagFavorited ? "#f43f5e" : "transparent"}
-                          strokeWidth={1.8}
-                        />
-                      </TouchableOpacity>
-                    </View>
+                      tag={t}
+                      colors={{
+                        accent: colors.accent,
+                        tagBg: colors.tagBg,
+                        tagText: colors.tagText,
+                        sub: colors.sub,
+                      }}
+                      inSearch={inSearch}
+                      isFavorited={isTagFavorited}
+                      onPressSearch={() => openTagSearch(t.name, t.type)}
+                      onToggleSearch={() => toggleTagSearch(t.name, t.type)}
+                      onToggleFavorite={() => {
+                        lightTap();
+                        toggleTagFav({ type: t.type, name: t.name, count: t.count });
+                      }}
+                    />
                   );
                 })}
               </View>
@@ -941,7 +883,8 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     lineHeight: 20,
     color: "#f3f4f6",
-    flexShrink: 0,
+    flexShrink: 1,
+    minWidth: 0,
     paddingRight: 4,
   },
   titleJap: { fontSize: 11, marginTop: 4, lineHeight: 15, color: "#9ca3af" },
@@ -960,9 +903,9 @@ const styles = StyleSheet.create({
   statText: {
     fontSize: 11,
     fontWeight: "700",
-    flexShrink: 0,
+    flexShrink: 1,
+    minWidth: 0,
     paddingRight: 2,
-    includeFontPadding: false,
   },
   actionsContainer: {
     gap: 10,
@@ -1003,11 +946,13 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: 14,
     flexShrink: 1,
+    minWidth: 0,
   },
   secondaryBtnText: {
     fontWeight: "700",
     fontSize: 13,
     flexShrink: 1,
+    minWidth: 0,
   },
   dupeBadge: {
     marginHorizontal: 16,
@@ -1017,7 +962,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  dupeBadgeText: { fontSize: 12, fontWeight: "700" },
+  dupeBadgeText: {
+    fontSize: 12,
+    fontWeight: "700",
+    flexShrink: 1,
+    minWidth: 0,
+  },
   tagsSection: {
     marginHorizontal: 16,
     marginTop: 20,
@@ -1037,50 +987,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     marginBottom: 6,
-    flexShrink: 0,
+    flexShrink: 1,
+    minWidth: 0,
     paddingRight: 4,
   },
   tagChipsWrap: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  tagChipContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 8,
-    borderWidth: 1,
-    overflow: "visible",
-    flexShrink: 0,
-    maxWidth: "100%",
-  },
-  tagChipMainPress: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    gap: 6,
-    flexShrink: 0,
-  },
-  tagChipActionBtn: {
-    paddingHorizontal: 6,
-    paddingVertical: 5,
-    alignItems: "center",
-    justifyContent: "center",
-    borderLeftWidth: StyleSheet.hairlineWidth,
-    borderLeftColor: "rgba(255,255,255,0.08)",
-    flexShrink: 0,
-  },
-  tagChipText: {
-    fontSize: 12,
-    fontWeight: "600",
-    flexShrink: 0,
-    paddingRight: 4,
-    includeFontPadding: false,
-  },
-  tagChipCount: {
-    fontSize: 11,
-    fontWeight: "700",
-    flexShrink: 0,
-    paddingRight: 2,
-    includeFontPadding: false,
-  },
   commentsSection: {
     marginHorizontal: 16,
     marginTop: 16,

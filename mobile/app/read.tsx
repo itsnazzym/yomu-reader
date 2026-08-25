@@ -645,7 +645,7 @@ export default function ReaderScreen() {
           </IconBtn>
 
           <View style={styles.titleWrapper}>
-            <Text style={styles.readerTitle} numberOfLines={1}>
+            <Text style={styles.readerTitle} numberOfLines={1} ellipsizeMode="tail">
               {galleryTitle}
             </Text>
             <Text style={styles.readerPageCount}>

@@ -350,7 +350,7 @@ export function AvatarCropModal({
             </View>
 
             <View style={styles.previewMeta}>
-              <Text style={styles.metaTitle} numberOfLines={1}>
+              <Text style={styles.metaTitle} numberOfLines={1} ellipsizeMode="tail">
                 {username}
               </Text>
               <Text style={styles.metaSub}>

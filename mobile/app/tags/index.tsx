@@ -37,6 +37,7 @@ import { useTheme } from "@/lib/ThemeContext";
 import { CardPressable } from "@/components/ui/CardPressable";
 import { IconBtn } from "@/components/ui/IconBtn";
 import { lightTap } from "@/lib/haptics";
+import { TagLabel } from "@/components/ui/TagLabel";
 import {
   getAllTaxonomies,
   CATEGORY_META,
@@ -407,10 +408,8 @@ export default function TagsScreen() {
               <IconComp size={15} color={meta.color} strokeWidth={1.8} />
             </View>
 
-            <View style={{ flex: 1 }}>
-              <Text style={styles.tagName} numberOfLines={1}>
-                {item.name}
-              </Text>
+            <View style={styles.tagTextCol}>
+              <TagLabel name={item.name} variant="list" />
               <Text style={styles.tagSubMeta}>
                 {meta.label} {item.count > 0 ? `• ${item.count.toLocaleString("fr-FR")}` : ""}
               </Text>
@@ -728,16 +727,12 @@ export default function TagsScreen() {
                 <View style={styles.colTagsWrap}>
                   {col.tags.map((t, idx) => (
                     <View key={idx} style={[styles.colTagBadge, { backgroundColor: col.color + "20" }]}>
-                      <Text style={[styles.colTagBadgeText, { color: col.color }]}>
-                        +{t.name}
-                      </Text>
+                      <TagLabel name={t.name} color={col.color} variant="inline" prefix="+" />
                     </View>
                   ))}
                   {col.excludeTags?.map((t, idx) => (
                     <View key={`ex_${idx}`} style={[styles.colTagBadge, { backgroundColor: "rgba(239, 68, 68, 0.15)" }]}>
-                      <Text style={[styles.colTagBadgeText, { color: "#ef4444" }]}>
-                        -{t.name}
-                      </Text>
+                      <TagLabel name={t.name} color="#ef4444" variant="inline" prefix="-" />
                     </View>
                   ))}
                 </View>
@@ -860,14 +855,12 @@ export default function TagsScreen() {
                         },
                       ]}
                     >
-                      <Text
-                        style={[
-                          styles.selectTagText,
-                          { color: isSelected ? "#ffffff" : "#d1d5db" },
-                        ]}
-                      >
-                        {f.name}
-                      </Text>
+                      <TagLabel
+                        name={f.name}
+                        color={isSelected ? "#ffffff" : "#d1d5db"}
+                        variant="inline"
+                        style={styles.selectTagTextOverride}
+                      />
                     </Pressable>
                   );
                 })}
@@ -923,8 +916,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     flexShrink: 1,
+    minWidth: 0,
     paddingRight: 3,
-    includeFontPadding: false,
   },
   taxBanner: {
     marginHorizontal: 16,
@@ -942,9 +935,9 @@ const styles = StyleSheet.create({
   taxBannerText: {
     fontSize: 12,
     fontWeight: "600",
-    flexShrink: 0,
+    flexShrink: 1,
+    minWidth: 0,
     paddingRight: 4,
-    includeFontPadding: false,
   },
   taxTrack: {
     height: 4,
@@ -1039,6 +1032,8 @@ const styles = StyleSheet.create({
   },
   tabChipText: {
     fontSize: 12,
+    flexShrink: 1,
+    minWidth: 0,
   },
   favActionBanner: {
     paddingHorizontal: 16,
@@ -1068,11 +1063,16 @@ const styles = StyleSheet.create({
   },
   tagCardInner: {
     flex: 1,
+    minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
     paddingVertical: 9,
     paddingHorizontal: 12,
+  },
+  tagTextCol: {
+    flex: 1,
+    minWidth: 0,
   },
   tagIconWrap: {
     width: 30,
@@ -1082,18 +1082,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  tagName: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#f3f4f6",
-    flexShrink: 0,
-    paddingRight: 4,
-    includeFontPadding: false,
-  },
   tagSubMeta: {
     fontSize: 10.5,
     color: "#9ca3af",
     marginTop: 1,
+    flexShrink: 1,
+    minWidth: 0,
   },
   tagActionBtn: {
     paddingHorizontal: 12,
@@ -1147,10 +1141,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
+    maxWidth: "100%",
+    flexShrink: 1,
+    minWidth: 0,
   },
-  colTagBadgeText: {
-    fontSize: 11,
-    fontWeight: "700",
+  selectTagTextOverride: {
+    fontSize: 11.5,
   },
   colSearchBtn: {
     flexDirection: "row",
@@ -1251,10 +1247,9 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 8,
     borderWidth: 1,
-  },
-  selectTagText: {
-    fontSize: 11.5,
-    fontWeight: "600",
+    maxWidth: "100%",
+    flexShrink: 1,
+    minWidth: 0,
   },
   modalSubmitBtn: {
     paddingVertical: 11,

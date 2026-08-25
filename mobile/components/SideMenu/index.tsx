@@ -382,7 +382,8 @@ const styles = StyleSheet.create({
   },
   menuText: {
     flex: 1,
-    flexShrink: 0,
+    flexShrink: 1,
+    minWidth: 0,
     fontSize: 13.5,
     paddingRight: 4,
   },
@@ -406,9 +407,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "900",
     letterSpacing: 0.8,
-    flexShrink: 0,
+    flexShrink: 1,
+    minWidth: 0,
     paddingRight: 4,
-    includeFontPadding: false,
   },
   sparkleFloral: {
     color: "#1c191a",

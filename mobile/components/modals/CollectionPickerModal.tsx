@@ -16,6 +16,7 @@ import {
   IconSparkles,
 } from "@tabler/icons-react-native";
 import { useTheme } from "@/lib/ThemeContext";
+import { TagLabel } from "@/components/ui/TagLabel";
 import {
   collectionContains,
   useLibraryCollections,
@@ -318,9 +319,12 @@ export function CollectionPickerModal({
                       onPress={() => removeTag(t, "include")}
                       style={[styles.tagChip, { borderColor: colors.accent }]}
                     >
-                      <Text style={[styles.tagChipText, { color: colors.accent }]}>
-                        +{t.type}:{t.name}
-                      </Text>
+                      <TagLabel
+                        name={t.name}
+                        color={colors.accent}
+                        variant="inline"
+                        prefix={`+${t.type}:`}
+                      />
                     </TouchableOpacity>
                   ))}
                   {excludeTags.map((t) => (
@@ -330,9 +334,12 @@ export function CollectionPickerModal({
                       onPress={() => removeTag(t, "exclude")}
                       style={[styles.tagChip, { borderColor: "#ff4757" }]}
                     >
-                      <Text style={[styles.tagChipText, { color: "#ff4757" }]}>
-                        −{t.type}:{t.name}
-                      </Text>
+                      <TagLabel
+                        name={t.name}
+                        color="#ff4757"
+                        variant="inline"
+                        prefix={`−${t.type}:`}
+                      />
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -350,9 +357,12 @@ export function CollectionPickerModal({
                       onPress={() => addTag(t, tagTarget)}
                       style={[styles.suggestChip, { backgroundColor: colors.bg }]}
                     >
-                      <Text style={[styles.suggestText, { color: colors.sub }]} numberOfLines={1}>
-                        {t.type}:{t.name}
-                      </Text>
+                      <TagLabel
+                        name={t.name}
+                        color={colors.sub}
+                        variant="inline"
+                        prefix={`${t.type}:`}
+                      />
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
@@ -461,6 +471,8 @@ const styles = StyleSheet.create({
   modeChipText: {
     fontSize: 12,
     fontWeight: "700",
+    flexShrink: 1,
+    minWidth: 0,
   },
   createRow: {
     flexDirection: "row",
@@ -494,13 +506,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
-  },
-  tagChipText: {
-    fontSize: 11,
-    fontWeight: "600",
-    flexShrink: 0,
-    paddingRight: 3,
-    includeFontPadding: false,
+    maxWidth: "100%",
+    flexShrink: 1,
+    minWidth: 0,
   },
   suggestRow: {
     gap: 6,
@@ -510,10 +518,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 5,
-    maxWidth: 160,
-  },
-  suggestText: {
-    fontSize: 11,
+    maxWidth: 220,
+    flexShrink: 1,
+    minWidth: 0,
   },
   list: {
     maxHeight: 240,

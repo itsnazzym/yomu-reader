@@ -5,9 +5,11 @@ import { useRouter } from "expo-router";
 import { Gallery } from "@/lib/api/types";
 import { useTheme } from "@/lib/ThemeContext";
 import { CardPressable } from "@/components/ui/CardPressable";
+import { TagLabel } from "@/components/ui/TagLabel";
 import SmartImage from "@/components/SmartImage";
 import { useFavorites } from "@/lib/favoritesStore";
 import { lightTap } from "@/lib/haptics";
+import { TAG_TYPE_COLORS } from "@/lib/tagDisplay";
 import {
   listSources,
   type SourceMeta,
@@ -19,16 +21,7 @@ export interface BookCardProps {
   onPress?: () => void;
 }
 
-// Pastel category tint colors for chips
-const TAG_TYPE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  artist: { bg: "rgba(236, 72, 153, 0.12)", text: "#f472b6", border: "rgba(236, 72, 153, 0.28)" },
-  group: { bg: "rgba(168, 85, 247, 0.12)", text: "#c084fc", border: "rgba(168, 85, 247, 0.28)" },
-  parody: { bg: "rgba(124, 58, 237, 0.12)", text: "#a78bfa", border: "rgba(124, 58, 237, 0.28)" },
-  character: { bg: "rgba(6, 182, 212, 0.12)", text: "#22d3ee", border: "rgba(6, 182, 212, 0.28)" },
-  tag: { bg: "rgba(59, 130, 246, 0.10)", text: "#93c5fd", border: "rgba(59, 130, 246, 0.22)" },
-  language: { bg: "rgba(245, 158, 11, 0.12)", text: "#fbbf24", border: "rgba(245, 158, 11, 0.28)" },
-};
-
+// Pastel category tint colors for chips — voir lib/tagDisplay.ts
 /** Métadonnées des sources indexées par id (badges). */
 const SOURCE_METAS: Record<string, SourceMeta> = Object.fromEntries(
   listSources().map((m) => [m.id, m])
@@ -205,9 +198,11 @@ export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
                     { backgroundColor: themeStyle.bg, borderColor: themeStyle.border },
                   ]}
                 >
-                  <Text style={[styles.tagChipText, { color: themeStyle.text }]} numberOfLines={1}>
-                    {t.name}
-                  </Text>
+                  <TagLabel
+                    name={t.name}
+                    color={themeStyle.text}
+                    variant="compact"
+                  />
                 </Pressable>
               );
             })}
@@ -322,8 +317,8 @@ const styles = StyleSheet.create({
     color: "#f3f4f6",
     lineHeight: 15,
     flexShrink: 1,
+    minWidth: 0,
     paddingRight: 2,
-    includeFontPadding: false,
   },
   tagsRow: {
     flexDirection: "row",
@@ -336,13 +331,8 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     borderWidth: 0.8,
     maxWidth: "100%",
-    flexShrink: 0,
-  },
-  tagChipText: {
-    fontSize: 9.5,
-    fontWeight: "600",
-    flexShrink: 0,
-    paddingRight: 2,
+    flexShrink: 1,
+    minWidth: 0,
   },
   extraTagChip: {
     paddingHorizontal: 4,

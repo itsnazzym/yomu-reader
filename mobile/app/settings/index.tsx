@@ -50,6 +50,7 @@ import {
   usePreventScreenCapture,
 } from "@/lib/privacyCaptureStore";
 import { PinLockModal } from "@/components/modals/PinLockModal";
+import { TagLabel } from "@/components/ui/TagLabel";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/lib/ThemeContext";
@@ -411,7 +412,7 @@ export default function SettingsScreen() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <View style={styles.accountNameRow}>
-                    <Text style={styles.accountName} numberOfLines={1}>
+                    <Text style={styles.accountName} numberOfLines={1} ellipsizeMode="tail">
                       {session.username || "Compte nHentai"}
                     </Text>
                     <View style={styles.activePill}>
@@ -678,11 +679,13 @@ export default function SettingsScreen() {
                               <Text style={styles.previewLangText}>{item.lang}</Text>
                             </View>
                           </View>
-                          <Text style={styles.previewTitle} numberOfLines={1}>
+                          <Text style={styles.previewTitle} numberOfLines={1} ellipsizeMode="tail">
                             {item.title}
                           </Text>
                           <View style={styles.previewMetaRow}>
-                            <Text style={styles.previewMetaTag} numberOfLines={1}>{item.tag}</Text>
+                            <Text style={styles.previewMetaTag} numberOfLines={1} ellipsizeMode="tail">
+                              {item.tag}
+                            </Text>
                             <Text style={styles.previewMetaPages}>{item.pages}</Text>
                           </View>
                         </View>
@@ -1330,7 +1333,7 @@ export default function SettingsScreen() {
               ) : (
                 blacklistedTags.map((tag) => (
                   <View key={tag} style={styles.blackTagChip}>
-                    <Text style={styles.blackTagText}>{tag}</Text>
+                    <TagLabel name={tag} color="#ff4757" variant="inline" style={styles.blackTagTextOverride} />
                     <Pressable onPress={() => removeTag(tag)} style={{ padding: 2 }}>
                       <IconX size={13} color="#ff4757" strokeWidth={2} />
                     </Pressable>
@@ -1629,7 +1632,8 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
     fontWeight: "700",
     color: "#f3f4f6",
-    flexShrink: 0,
+    flexShrink: 1,
+    minWidth: 0,
     paddingRight: 4,
   },
   rowToggleSub: {
@@ -1710,9 +1714,9 @@ const styles = StyleSheet.create({
   quickActionText: {
     fontSize: 11.5,
     fontWeight: "600",
-    flexShrink: 0,
+    flexShrink: 1,
+    minWidth: 0,
     paddingRight: 4,
-    includeFontPadding: false,
   },
   loginPromptCard: {
     backgroundColor: "#161622",
@@ -1876,9 +1880,9 @@ const styles = StyleSheet.create({
     color: "#93c5fd",
     fontWeight: "600",
     flex: 1,
-    flexShrink: 0,
+    flexShrink: 1,
+    minWidth: 0,
     paddingRight: 3,
-    includeFontPadding: false,
   },
   previewMetaPages: {
     fontSize: 8,
@@ -1948,7 +1952,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#f3f4f6",
     fontWeight: "600",
-    flexShrink: 0,
+    flexShrink: 1,
+    minWidth: 0,
     paddingRight: 4,
   },
   cacheRow: {
@@ -2033,6 +2038,8 @@ const styles = StyleSheet.create({
   suggestChipText: {
     fontSize: 11,
     color: "#9ca3af",
+    flexShrink: 1,
+    minWidth: 0,
   },
   tagsContainer: {
     flexDirection: "row",
@@ -2055,10 +2062,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
+    maxWidth: "100%",
+    flexShrink: 1,
+    minWidth: 0,
   },
-  blackTagText: {
+  blackTagTextOverride: {
     fontSize: 11.5,
-    color: "#ff4757",
     fontWeight: "700",
   },
   mirrorStatusRow: {

@@ -100,7 +100,11 @@ export default function UpdatesScreen() {
               }}
               style={[styles.chip, { borderColor: colors.tagBg, backgroundColor: colors.page }]}
             >
-              <Text style={[styles.chipText, { color: colors.txt }]} numberOfLines={1}>
+              <Text
+                style={[styles.chipText, { color: colors.txt }]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
                 {pin.query}
               </Text>
               <Pressable
@@ -237,6 +241,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     maxWidth: 180,
+    flexShrink: 1,
+    minWidth: 0,
   },
   section: {
     paddingTop: 14,

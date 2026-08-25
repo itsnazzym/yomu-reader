@@ -181,7 +181,7 @@ export default function CollectionDetailScreen() {
         <View style={{ flex: 1 }}>
           <View style={styles.titleRow}>
             <View style={[styles.dot, { backgroundColor: collection.color }]} />
-            <Text style={[styles.headerTitle, { color: colors.txt }]} numberOfLines={1}>
+            <Text style={[styles.headerTitle, { color: colors.txt }]} numberOfLines={1} ellipsizeMode="tail">
               {collection.name}
             </Text>
             {isSmart ? (

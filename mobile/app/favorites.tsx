@@ -201,7 +201,7 @@ export default function FavoritesScreen() {
         {syncProg.active && syncProg.total > 0 && (
           <View style={styles.progressWrap}>
             <View style={styles.progressTextRow}>
-              <Text style={styles.progressText} numberOfLines={1}>
+              <Text style={styles.progressText} numberOfLines={1} ellipsizeMode="tail">
                 {syncProg.msg}
               </Text>
               <Text style={styles.progressPct}>
