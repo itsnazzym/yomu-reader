@@ -11,6 +11,7 @@ import {
 import type { Gallery, Tag } from "@/lib/api/types";
 import {
   ApiError,
+  nhApi,
   shouldClearTokensAfterRefreshError,
 } from "@/lib/api/v2/client";
 
@@ -68,6 +69,46 @@ test("seuls les rejets explicites de refresh invalident les jetons", () => {
     shouldClearTokensAfterRefreshError(new Error("network timeout")),
     false
   );
+});
+
+test("un Retry-After long échoue immédiatement au lieu de bloquer l'UI", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ detail: "Slow down" }), {
+      status: 429,
+      headers: { "Retry-After": "60", "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const startedAt = Date.now();
+    await assert.rejects(nhApi.get("/galleries/1", { public: true }), /Slow down/);
+    assert.ok(Date.now() - startedAt < 500, "la requête ne doit pas attendre 60 s");
+    assert.equal(calls, 1, "pas de retry après un Retry-After long");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("une mutation 429 n'est jamais rejouée implicitement", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ detail: "Slow down" }), {
+      status: 429,
+      headers: { "Retry-After": "1", "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    await assert.rejects(nhApi.post("/galleries/1/favorite", {}, { public: true }), /Slow down/);
+    assert.equal(calls, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("cycle complet : signaux, exclusion, classement et compteur de tag", async () => {
@@ -366,6 +407,18 @@ test("la file d'écriture persiste dans l'ordre", async () => {
     }),
   ]);
   assert.deepEqual(order, [1, 2]);
+});
+
+test("une initialisation échouée peut être relancée", async () => {
+  const { createInitOnce } = await import("@/lib/persistQueue");
+  let attempts = 0;
+  const init = createInitOnce(async () => {
+    attempts += 1;
+    if (attempts === 1) throw new Error("storage unavailable");
+  });
+  await assert.rejects(init(), /storage unavailable/);
+  await init();
+  assert.equal(attempts, 2);
 });
 
 test("isCompleteDownload refuse les fichiers trop petits ou au mauvais magic", async () => {

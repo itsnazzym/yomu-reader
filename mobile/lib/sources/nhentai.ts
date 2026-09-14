@@ -14,7 +14,7 @@ import {
   type SourceMeta,
   type SourceSearchOptions,
 } from "./types";
-import { probeAdapterHealth } from "./probeHealth";
+import { getSiteConfig } from "../api/v2/config";
 
 function toCard(g: Gallery): SourceGalleryCard {
   return {
@@ -46,6 +46,7 @@ function toFull(g: Gallery): SourceGallery {
 }
 
 export class NhentaiSource implements SourceAdapter {
+  capabilities = { search: true, pagination: true, tags: true, random: true } as const;
   meta: SourceMeta = {
     id: "nhentai",
     label: "nHentai",
@@ -80,6 +81,16 @@ export class NhentaiSource implements SourceAdapter {
   }
 
   async healthCheck() {
-    return probeAdapterHealth(this);
+    const startedAt = Date.now();
+    try {
+      await getSiteConfig();
+      return { ok: true, latencyMs: Date.now() - startedAt };
+    } catch (err) {
+      return {
+        ok: false,
+        latencyMs: Date.now() - startedAt,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
   }
 }

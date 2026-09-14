@@ -97,6 +97,21 @@ test("parseDoujinsListCards: ignore /tags/ /artists/ /series/ hrefs", () => {
   assert.equal(cards[0].title, "Natsumi's Sex Partner");
 });
 
+test("parseDoujinsListCards: ignore une carte réservée aux abonnés", () => {
+  const html = `
+    <a href="/original-doujins-series/locked-title-55555">
+      <img src="https://static.doujins.com/f2-locked.jpg" data-link="/subscribe" />
+      <div class="text">Locked title</div>
+    </a>
+    <a href="/original-doujins-series/free-title-55556">
+      <img src="https://static.doujins.com/f2-free.jpg" />
+      <div class="text">Free title</div>
+    </a>
+  `;
+  const cards = parseDoujinsListCards(html);
+  assert.deepEqual(cards.map((card) => card.globalId), ["doujins:55556"]);
+});
+
 test("translateQueryForSource: conserve les valeurs des opérateurs nhentai", () => {
   assert.equal(translateQueryForSource('tag:"vanilla"'), "vanilla");
   assert.equal(translateQueryForSource('tag:"rough translation" language:french'), "rough translation french");
@@ -167,7 +182,7 @@ test("parseNozomiIds: lit les IDs uint32 big-endian Hitomi", () => {
 });
 
 test("thumbUrl: chemin webpsmalltn atn|btn (common.js tn)", () => {
-  const table = { zeroSet: new Set<number>(), b: "1787551201/", fetchedAt: 0 };
+  const table = { oneSet: new Set<number>(), b: "1787551201/", fetchedAt: 0 };
   const hash =
     "aab8cbaf2625515d3c0a390f20f8e925386286214f6a4449f76ae37dc33adfeb";
   const url = thumbUrl(table, hash, "webpsmalltn");

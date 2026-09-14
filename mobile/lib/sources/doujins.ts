@@ -14,6 +14,7 @@
  */
 
 import { Platform } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   extractMatches,
   extractAttribute,
@@ -33,10 +34,11 @@ import {
   type SourceTaxonomyItem,
 } from "./types";
 import { recordObservedTags } from "../sourceTaxonomyStore";
-import { probeAdapterHealth } from "./probeHealth";
 
 const BASE = "https://doujins.com";
 const TIMEOUT_MS = 12000;
+const PAYWALLED_GALLERIES_KEY = "@yomu_doujins_paywalled_v1";
+const MAX_REMEMBERED_PAYWALLS = 500;
 
 const HEADERS: Record<string, string> = {
   "User-Agent":
@@ -79,6 +81,30 @@ interface CachedGallery {
 }
 
 const galleryCache = new Map<string, CachedGallery>();
+const paywalledGalleryIds = new Set<string>();
+let paywalledIdsReady: Promise<void> | null = null;
+
+async function loadPaywalledGalleryIds(): Promise<void> {
+  if (!paywalledIdsReady) {
+    paywalledIdsReady = AsyncStorage.getItem(PAYWALLED_GALLERIES_KEY)
+      .then((raw) => {
+        if (!raw) return;
+        const ids = JSON.parse(raw);
+        if (!Array.isArray(ids)) return;
+        for (const id of ids) {
+          if (typeof id === "string" && /^\d+$/.test(id)) paywalledGalleryIds.add(id);
+        }
+      })
+      .catch(() => {});
+  }
+  await paywalledIdsReady;
+}
+
+function rememberPaywalledGallery(nativeId: string): void {
+  paywalledGalleryIds.add(nativeId);
+  const ids = [...paywalledGalleryIds].slice(-MAX_REMEMBERED_PAYWALLS);
+  void AsyncStorage.setItem(PAYWALLED_GALLERIES_KEY, JSON.stringify(ids)).catch(() => {});
+}
 
 async function fetchHtml(url: string): Promise<string> {
   const controller = new AbortController();
@@ -157,7 +183,7 @@ function folderCover(it: FolderItem): string {
 }
 
 function folderToCard(it: FolderItem): SourceGalleryCard | null {
-  if (!it.id || !it.link || it.hidden || it.private) return null;
+  if (!it.id || !it.link || it.hidden || it.private || paywalledGalleryIds.has(String(it.id))) return null;
   const nativeId = String(it.id);
   const title = decodeEntities(it.name || `Doujins #${nativeId}`);
   const coverUrl = folderCover(it);
@@ -211,6 +237,9 @@ export function parseDoujinsListCards(html: string): SourceGalleryCard[] {
     if (/^\/(tags|artists|series|groups|characters)\//i.test(path)) continue;
     seen.add(nativeId);
     const window = html.slice(start, start + 1800);
+    // Les cartes verrouillées indiquent directement leur lien d'abonnement.
+    // Elles ne doivent jamais entrer dans le catalogue de l'application.
+    if (/data-link\s*=\s*["']\/subscribe["']/i.test(window)) continue;
     const imgM = window.match(/<img[^>]+src="([^"]+)"/i);
     const textM = window.match(/<div class="text">([\s\S]*?)<\/div>/);
     const titleBlockM = window.match(/<div class="title">([\s\S]*?)<\/div>/);
@@ -317,6 +346,7 @@ function isDoujinsPaywalled(html: string): boolean {
 }
 
 export class DoujinsSource implements SourceAdapter {
+  capabilities = { search: true, pagination: true, tags: true, random: false } as const;
   meta: SourceMeta = {
     id: "doujins",
     label: "Doujins",
@@ -330,6 +360,7 @@ export class DoujinsSource implements SourceAdapter {
     cards: SourceGalleryCard[];
     hasMore: boolean;
   }> {
+    await loadPaywalledGalleryIds();
     const query = stripNhentaiOperators(opts.query);
     const sort = (opts.sort || "recent").toLowerCase();
     const wantPopular =
@@ -360,16 +391,21 @@ export class DoujinsSource implements SourceAdapter {
       Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + 1, 1) / 1000
     );
 
-    const json = await fetchJson<{ premium?: FolderItem[] }>(
+    const json = await fetchJson<{ folders?: FolderItem[]; premium?: FolderItem[] }>(
       `${BASE}/folders?start=${startSec}&end=${endSec}`
     );
-    const cards = (json.premium || [])
+    // `premium` est réservé aux abonnés. `folders` est le catalogue normal.
+    const cards = (json.folders || [])
       .map((item) => folderToCard(item))
       .filter((card): card is SourceGalleryCard => card !== null);
     return { cards, hasMore: true };
   }
 
   async getGallery(nativeId: string, knownTitle?: string): Promise<SourceGallery> {
+    await loadPaywalledGalleryIds();
+    if (paywalledGalleryIds.has(nativeId)) {
+      throw new Error("Doujins: lecture réservée aux abonnés.");
+    }
     const cached = galleryCache.get(nativeId);
 
     let html = "";
@@ -385,7 +421,8 @@ export class DoujinsSource implements SourceAdapter {
 
     // Sans abonnement Doujins ne sert qu'un aperçu (1 vignette) alors que
     // objects_count peut afficher 20–50+ pages sur la carte.
-    if (paywalled && expectedPages > pageUrls.length) {
+    if (paywalled) {
+      rememberPaywalledGallery(nativeId);
       throw new Error(
         "Doujins: lecture réservée aux abonnés (aperçu uniquement). Ouvre le titre sur doujins.com ou choisis une autre source."
       );
@@ -491,7 +528,18 @@ export class DoujinsSource implements SourceAdapter {
   }
 
   async healthCheck() {
-    return probeAdapterHealth(this);
+    const startedAt = Date.now();
+    try {
+      const result = await this.search({ page: 1 });
+      if (result.cards.length === 0) throw new Error("Doujins: catalogue vide");
+      return { ok: true, latencyMs: Date.now() - startedAt };
+    } catch (err) {
+      return {
+        ok: false,
+        latencyMs: Date.now() - startedAt,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
   }
 }
 

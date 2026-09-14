@@ -38,6 +38,7 @@ import { displayAvatarUri } from "@/lib/avatarPersist";
 import { useFavorites } from "@/lib/favoritesStore";
 import { CardPressable } from "@/components/ui/CardPressable";
 import { IconBtn } from "@/components/ui/IconBtn";
+import { ButtonLabel } from "@/components/ui/ButtonLabel";
 import { SignInModal } from "@/components/modals/SignInModal";
 import { AvatarCropModal, AvatarCropResult } from "@/components/modals/AvatarCropModal";
 import SmartImage from "@/components/SmartImage";
@@ -341,7 +342,7 @@ export default function ProfileScreen() {
           >
             <View style={styles.connectBtnInner}>
               <IconLogin size={18} color="#fff" strokeWidth={2} />
-              <Text style={styles.connectBtnText}>Se connecter</Text>
+              <ButtonLabel style={styles.connectBtnText}>Se connecter</ButtonLabel>
             </View>
           </CardPressable>
         </View>
@@ -622,9 +623,9 @@ export default function ProfileScreen() {
                       ) : (
                         <IconCheck size={16} color="#fff" strokeWidth={2.5} />
                       )}
-                      <Text style={styles.savePassText}>
+                      <ButtonLabel style={styles.savePassText}>
                         {changingPassword ? "Mise à jour..." : "Enregistrer le mot de passe"}
-                      </Text>
+                      </ButtonLabel>
                     </View>
                   </CardPressable>
                 </View>
@@ -647,9 +648,9 @@ export default function ProfileScreen() {
                   ) : (
                     <IconRefresh size={16} color={colors.accent} strokeWidth={2} />
                   )}
-                  <Text style={[styles.actionBtnText, { color: colors.txt }]}>
+                  <ButtonLabel style={[styles.actionBtnText, { color: colors.txt }]}>
                     Synchroniser les favoris
-                  </Text>
+                  </ButtonLabel>
                 </View>
               </CardPressable>
 
@@ -660,9 +661,9 @@ export default function ProfileScreen() {
               >
                 <View style={styles.actionBtnInner}>
                   <IconKey size={16} color="#60a5fa" strokeWidth={2} />
-                  <Text style={[styles.actionBtnText, { color: colors.txt }]}>
+                  <ButtonLabel style={[styles.actionBtnText, { color: colors.txt }]}>
                     Clés API
-                  </Text>
+                  </ButtonLabel>
                 </View>
               </CardPressable>
 
@@ -673,9 +674,9 @@ export default function ProfileScreen() {
               >
                 <View style={styles.actionBtnInner}>
                   <IconLogout size={16} color="#ff4757" strokeWidth={2} />
-                  <Text style={[styles.actionBtnText, { color: "#ff4757" }]}>
+                  <ButtonLabel style={[styles.actionBtnText, { color: "#ff4757" }]}>
                     Déconnexion
-                  </Text>
+                  </ButtonLabel>
                 </View>
               </CardPressable>
             </View>

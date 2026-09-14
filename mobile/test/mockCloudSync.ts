@@ -1,0 +1,1 @@
+export function scheduleCloudSync(): void {}

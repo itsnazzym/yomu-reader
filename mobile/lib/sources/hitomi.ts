@@ -7,7 +7,6 @@
  */
 
 import { Platform } from "react-native";
-import { probeAdapterHealth } from "./probeHealth";
 import {
   makeGlobalId,
   type SourceAdapter,
@@ -34,8 +33,8 @@ const HEADERS: Record<string, string> = {
 };
 
 interface GgTable {
-  /** g → m(g) ; true = cases où m retourne 0 */
-  zeroSet: Set<number>;
+  /** g → m(g) ; the switch branches in gg.js return 1. */
+  oneSet: Set<number>;
   b: string;
   fetchedAt: number;
 }
@@ -145,18 +144,18 @@ function nozomiFileForLanguage(
 }
 
 function parseGg(js: string): GgTable {
-  const zeroSet = new Set<number>();
+  const oneSet = new Set<number>();
   const caseRe = /case\s+(\d+)\s*:/g;
   let m: RegExpExecArray | null = caseRe.exec(js);
   while (m) {
-    zeroSet.add(Number(m[1]));
+    oneSet.add(Number(m[1]));
     m = caseRe.exec(js);
   }
   const bMatch = js.match(/b:\s*'([^']+)'/);
   if (!bMatch?.[1]) {
     throw new Error("Hitomi gg.js: champ b introuvable");
   }
-  return { zeroSet, b: bMatch[1], fetchedAt: Date.now() };
+  return { oneSet, b: bMatch[1], fetchedAt: Date.now() };
 }
 
 async function loadGg(force = false): Promise<GgTable> {
@@ -173,7 +172,7 @@ async function loadGg(force = false): Promise<GgTable> {
 }
 
 function ggM(table: GgTable, g: number): number {
-  return table.zeroSet.has(g) ? 0 : 1;
+  return table.oneSet.has(g) ? 1 : 0;
 }
 
 function ggS(hash: string): string {
@@ -270,7 +269,28 @@ async function cardFromGalleryId(
   }
 }
 
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor++;
+      results[index] = await fn(items[index]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+function matchesQuery(card: SourceGalleryCard, query?: string): boolean {
+  const terms = (query || "").toLocaleLowerCase().split(/\s+/).filter((term) => term.length > 1);
+  if (terms.length === 0) return true;
+  const haystack = [card.title, ...(card.tags || []).map((tag) => tag.name)].join(" ").toLocaleLowerCase();
+  return terms.every((term) => haystack.includes(term));
+}
+
 export class HitomiSource implements SourceAdapter {
+  capabilities = { search: true, pagination: true, tags: false, random: false } as const;
   meta: SourceMeta = {
     id: "hitomi",
     label: "Hitomi",
@@ -301,12 +321,12 @@ export class HitomiSource implements SourceAdapter {
       return { cards: [], hasMore: false };
     }
 
-    const settled = await Promise.all(
-      ids.map((id) => cardFromGalleryId(id, gg))
-    );
+    // Metadata lookups are deliberately capped: Hitomi returns a compact
+    // nozomi index, while each card is a separate endpoint.
+    const settled = await mapWithConcurrency(ids, 4, (id) => cardFromGalleryId(id, gg));
     const cards = settled.filter(
       (card): card is SourceGalleryCard => card !== null
-    );
+    ).filter((card) => matchesQuery(card, opts.query));
 
     const totalIds =
       totalBytes !== null && Number.isFinite(totalBytes)
@@ -364,13 +384,14 @@ export class HitomiSource implements SourceAdapter {
   }
 
   async healthCheck() {
+    const startedAt = Date.now();
     try {
       await loadGg(true);
-      return probeAdapterHealth(this, { timeoutMs: 10000, query: "" });
+      return { ok: true, latencyMs: Date.now() - startedAt };
     } catch (err) {
       return {
         ok: false,
-        latencyMs: 0,
+        latencyMs: Date.now() - startedAt,
         error: err instanceof Error ? err.message : String(err),
       };
     }

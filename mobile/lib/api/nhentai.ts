@@ -74,10 +74,11 @@ export function getExtension(t: string): string {
 
 async function fetchWithTimeout(
   url: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  timeoutMs = REQUEST_TIMEOUT_MS
 ): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, { ...options, signal: controller.signal });
   } finally {
@@ -85,17 +86,24 @@ async function fetchWithTimeout(
   }
 }
 
-async function nativeFetchJson<T>(url: string): Promise<T> {
+async function nativeFetchJson<T>(
+  url: string,
+  timeoutMs = REQUEST_TIMEOUT_MS
+): Promise<T> {
   if (inFlightRequests.has(url)) {
     return inFlightRequests.get(url)!;
   }
 
   const reqPromise = (async () => {
     try {
-      const res = await fetchWithTimeout(url, {
-        method: "GET",
-        headers: COMMON_HEADERS,
-      });
+      const res = await fetchWithTimeout(
+        url,
+        {
+          method: "GET",
+          headers: COMMON_HEADERS,
+        },
+        timeoutMs
+      );
 
       if (!res.ok) {
         throw new ApiError(`HTTP ${res.status}: ${res.statusText}`, res.status);
@@ -538,7 +546,9 @@ export async function getGallery(id: number | string): Promise<Gallery> {
 
   // 1. API v2 officielle
   try {
-    const v2Detail = await v2GetGallery(id, { include: "comments,related" });
+    // Les compléments (commentaires, suggestions) sont asynchrones dans la
+    // fiche : ils ne doivent pas alourdir l'appel indispensable au lecteur.
+    const v2Detail = await v2GetGallery(id);
     if (v2Detail && v2Detail.id) {
       const appGallery = v2GalleryToAppGallery(v2Detail);
       return appGallery;
@@ -550,28 +560,23 @@ export async function getGallery(id: number | string): Promise<Gallery> {
     }
   }
 
-  // 2. API v1 officielle.
-  try {
-    const data = await nativeFetchJson<any>(`${API_V1_URL}/gallery/${id}`);
-    if (data) {
-      return enrichGalleryImages(data);
-    }
-  } catch (v1Err: any) {
-    console.warn(`[v1 getGallery error] ${v1Err?.message}`);
-    if (v1Err instanceof ApiError && v1Err.status === 404) {
-      throw v1Err;
+  // Les deux fallbacks sont indépendants. Les lancer en parallèle borne le
+  // temps total au plus lent (5 s), au lieu de les additionner.
+  const fallbackResults = await Promise.allSettled([
+    nativeFetchJson<any>(`${API_V1_URL}/gallery/${id}`, 5_000),
+    nativeFetchJson<any>(`${FALLBACK_API_BASE}/api/gallery/${id}`, 1_500),
+  ]);
+  for (const result of fallbackResults) {
+    if (result.status === "fulfilled" && result.value) {
+      return enrichGalleryImages(result.value);
     }
   }
-
-  // 3. Fallback miroir
-  try {
-    const data = await nativeFetchJson<any>(`${FALLBACK_API_BASE}/api/gallery/${id}`);
-    if (data) {
-      const enriched = enrichGalleryImages(data);
-      return enriched;
+  for (const [index, result] of fallbackResults.entries()) {
+    if (result.status === "rejected") {
+      const label = index === 0 ? "v1" : "mirror";
+      const message = result.reason instanceof Error ? result.reason.message : String(result.reason);
+      console.warn(`[${label} getGallery error] ${message}`);
     }
-  } catch (mirrorErr: any) {
-    console.warn(`[mirror getGallery error] ${mirrorErr?.message}`);
   }
 
   throw new Error(`Galerie #${id} indisponible.`);
@@ -608,7 +613,7 @@ export async function getRandomGallery(): Promise<Gallery> {
 export async function getComments(id: number | string): Promise<Comment[]> {
   try {
     const comments = await v2GetComments(id);
-    if (Array.isArray(comments) && comments.length > 0) {
+    if (Array.isArray(comments)) {
       return comments.map((c: any) => ({
         id: c.id,
         gallery_id: Number(id),
@@ -626,12 +631,9 @@ export async function getComments(id: number | string): Promise<Comment[]> {
     }
   } catch {}
 
-  try {
-    const data = await nativeFetchJson<any>(`${FALLBACK_API_BASE}/api/gallery/${id}/comments`);
-    return data || [];
-  } catch {
-    return [];
-  }
+  // L'API v2 a répondu (même vide) ou les commentaires ont échoué : ils sont
+  // facultatifs. Le proxy localhost n'existe normalement pas sur un téléphone.
+  return [];
 }
 
 /** Lightweight related card — never written to `galleryCache`. */

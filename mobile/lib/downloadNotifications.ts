@@ -1,34 +1,12 @@
 /**
- * Local download notifications. May no-op in Expo Go — the APK / dev client
- * is required for a visible system notification on Android 13+.
+ * Completion notifications implemented by the small in-tree Android module.
  */
 
-let channelReady = false;
+import { NativeModules, Platform } from "react-native";
 
-async function getNotificationsModule(): Promise<
-  typeof import("expo-notifications") | null
-> {
-  try {
-    return await import("expo-notifications");
-  } catch {
-    return null;
-  }
-}
-
-async function ensureAndroidChannel(
-  Notifications: typeof import("expo-notifications")
-): Promise<void> {
-  if (channelReady) return;
-  try {
-    await Notifications.setNotificationChannelAsync("downloads", {
-      name: "Téléchargements",
-      importance: Notifications.AndroidImportance.DEFAULT,
-    });
-    channelReady = true;
-  } catch (error) {
-    console.warn("[downloadNotifications] Channel setup failed:", error);
-  }
-}
+type NativeDownloadNotification = {
+  notifyCompleted(title: string, ok: boolean, error: string | null): Promise<void>;
+};
 
 export async function notifyDownloadFinished(params: {
   title: string;
@@ -36,19 +14,9 @@ export async function notifyDownloadFinished(params: {
   errorMessage?: string;
 }): Promise<void> {
   try {
-    const Notifications = await getNotificationsModule();
-    if (!Notifications) return;
-    await ensureAndroidChannel(Notifications);
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: params.ok ? "Téléchargement terminé" : "Échec du téléchargement",
-        body: params.ok
-          ? params.title
-          : `${params.title} — ${params.errorMessage || "erreur"}`,
-        sound: false,
-      },
-      trigger: null,
-    });
+    if (Platform.OS !== "android") return;
+    const native = NativeModules.YomuDownloadNotification as NativeDownloadNotification | undefined;
+    await native?.notifyCompleted(params.title, params.ok, params.errorMessage ?? null);
   } catch (error) {
     console.warn("[downloadNotifications] Post failed:", error);
   }

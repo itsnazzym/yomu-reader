@@ -27,8 +27,9 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import PagerView from "react-native-pager-view";
 import { useTheme } from "@/lib/ThemeContext";
+import { ButtonLabel } from "@/components/ui/ButtonLabel";
 import { getGallery, resolvePageUrl } from "@/lib/api/nhentai";
-import { getSource } from "@/lib/sources/registry";
+import { loadSourceGallery } from "@/lib/sources/galleryLoader";
 import { sourceGalleryToGallery } from "@/lib/sources/galleryMapper";
 import type { SourceId } from "@/lib/sources/types";
 import { readLocalGallery } from "@/lib/localLibrary";
@@ -134,7 +135,7 @@ export default function ReaderScreen() {
         // Sources alternatives (src=3hentai|doujins) : chargement via
         // l'adaptateur, pages déjà résolues avec URLs fraîches.
         if (src && src !== "nhentai") {
-          const sg = await getSource(src).getGallery(id);
+          const sg = await loadSourceGallery(src as SourceId, id);
           if (!cancelled) {
             setGallery(sourceGalleryToGallery(sg, src as SourceId));
           }
@@ -444,7 +445,7 @@ export default function ReaderScreen() {
           onPress={() => router.back()}
           style={[styles.errorBackBtn, { backgroundColor: colors.accent }]}
         >
-          <Text style={styles.errorBackText}>Retour</Text>
+          <ButtonLabel style={styles.errorBackText}>Retour</ButtonLabel>
         </TouchableOpacity>
       </View>
     );

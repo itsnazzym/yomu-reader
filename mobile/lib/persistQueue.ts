@@ -20,7 +20,13 @@ export function createInitOnce(loader: () => Promise<void>) {
 
   return function init(forceReload = false): Promise<void> {
     if (forceReload || !promise) {
-      promise = loader();
+      // A transient storage failure must not poison the module for the rest of
+      // the process. Keep sharing a successful/in-flight initialization, but
+      // clear a rejected one so the next foreground action can retry it.
+      promise = loader().catch((error) => {
+        promise = null;
+        throw error;
+      });
     }
     return promise;
   };

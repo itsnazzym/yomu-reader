@@ -34,6 +34,7 @@ import { useAccount } from "@/lib/accountStore";
 import { ApiKeyItem, createApiKey, deleteApiKey, listApiKeys } from "@/lib/apiKeysStore";
 import { CardPressable } from "@/components/ui/CardPressable";
 import { IconBtn } from "@/components/ui/IconBtn";
+import { ButtonLabel } from "@/components/ui/ButtonLabel";
 import { SignInModal } from "@/components/modals/SignInModal";
 
 export default function ApiKeysScreen() {
@@ -450,7 +451,7 @@ export default function ApiKeysScreen() {
               onPress={() => setIsSignInOpen(true)}
               style={[styles.signInBtn, { backgroundColor: colors.accent }]}
             >
-              <Text style={styles.signInBtnText}>Se connecter au compte</Text>
+              <ButtonLabel style={styles.signInBtnText}>Se connecter au compte</ButtonLabel>
             </CardPressable>
           </View>
         ) : loading ? (
@@ -508,7 +509,7 @@ export default function ApiKeysScreen() {
                 style={[styles.keyModalBtn, { backgroundColor: colors.accent }]}
               >
                 <IconBolt size={16} color="#fff" strokeWidth={2.5} />
-                <Text style={styles.keyModalBtnText}>⚡ Utiliser directement dans l'app</Text>
+                <ButtonLabel style={styles.keyModalBtnText}>⚡ Utiliser directement dans l'app</ButtonLabel>
               </Pressable>
 
               {/* Bouton 2 : Copier */}
@@ -521,9 +522,9 @@ export default function ApiKeysScreen() {
                 ) : (
                   <IconCopy size={16} color={colors.txt} strokeWidth={2} />
                 )}
-                <Text style={[styles.keyModalBtnTextSecondary, { color: colors.txt }]}>
+                <ButtonLabel style={[styles.keyModalBtnTextSecondary, { color: colors.txt }]}>
                   {copiedKey ? "Copié dans le presse-papier !" : "Copier la clé"}
-                </Text>
+                </ButtonLabel>
               </Pressable>
 
               <Pressable

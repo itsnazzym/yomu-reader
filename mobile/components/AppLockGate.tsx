@@ -11,6 +11,7 @@ import { IconLock } from "@tabler/icons-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/lib/ThemeContext";
 import { useAppLock } from "@/lib/appLockStore";
+import { ButtonLabel } from "@/components/ui/ButtonLabel";
 
 export function AppLockGate(): React.ReactElement | null {
   const { colors } = useTheme();
@@ -90,7 +91,7 @@ export function AppLockGate(): React.ReactElement | null {
         {busy ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={styles.btnText}>Déverrouiller</Text>
+          <ButtonLabel style={styles.btnText}>Déverrouiller</ButtonLabel>
         )}
       </Pressable>
       {biometric ? (
@@ -100,7 +101,7 @@ export function AppLockGate(): React.ReactElement | null {
           }}
           style={styles.bioBtn}
         >
-          <Text style={[styles.bioText, { color: colors.accent }]}>Empreinte / Face ID</Text>
+          <ButtonLabel style={[styles.bioText, { color: colors.accent }]}>Empreinte / Face ID</ButtonLabel>
         </Pressable>
       ) : null}
     </View>

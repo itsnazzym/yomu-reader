@@ -29,7 +29,6 @@ import {
   type SourceSearchOptions,
   type SourceTaxonomyItem,
 } from "./types";
-import { probeAdapterHealth } from "./probeHealth";
 
 const BASE = "https://fr.3hentai.net";
 const TIMEOUT_MS = 12000;
@@ -84,48 +83,6 @@ function parseCards(html: string): SourceGalleryCard[] {
   }));
 }
 
-/** Compteur de pages depuis la page galerie (« 212 pages » ou liens /d/id/n). */
-async function fetchNumPagesQuick(nativeId: string): Promise<number> {
-  try {
-    const html = await fetchHtml(`${BASE}/d/${nativeId}`);
-    const labeled = html.match(/>(\d+)\s*pages?</i);
-    if (labeled?.[1]) {
-      const n = parseInt(labeled[1], 10);
-      if (n > 0) return n;
-    }
-    const pageLinks = extractMatches(
-      html,
-      /href="https?:\/\/(?:fr\.)?3hentai\.net\/d\/\d+\/(\d+)"[^>]*rel="nofollow"/g
-    );
-    return pageLinks.reduce((max, p) => Math.max(max, parseInt(p[1], 10) || 0), 0);
-  } catch {
-    return 0;
-  }
-}
-
-/** Enrichit les cartes listing (sans numPages dans le HTML) en parallèle bornée. */
-async function enrichCardPageCounts(
-  cards: SourceGalleryCard[]
-): Promise<SourceGalleryCard[]> {
-  const CONCURRENCY = 8;
-  const out = cards.map((c) => ({ ...c }));
-  for (let i = 0; i < out.length; i += CONCURRENCY) {
-    const slice = out.slice(i, i + CONCURRENCY);
-    const pages = await Promise.all(
-      slice.map(async (card) => {
-        const nativeId = card.globalId.split(":")[1] || "";
-        if (!nativeId) return 0;
-        return fetchNumPagesQuick(nativeId);
-      })
-    );
-    for (let j = 0; j < slice.length; j++) {
-      const n = pages[j];
-      if (n > 0) out[i + j].numPages = n;
-    }
-  }
-  return out;
-}
-
 /** Section FR du label ("Tags :", "Artistes :"...) -> type normalisé. */
 function sectionToType(label: string): string {
   const l = label.toLowerCase();
@@ -173,6 +130,7 @@ export function parseThreeHentaiTagsPage(html: string): SourceTaxonomyItem[] {
 }
 
 export class ThreeHentaiSource implements SourceAdapter {
+  capabilities = { search: true, pagination: true, tags: true, random: true } as const;
   meta: SourceMeta = {
     id: "3hentai",
     label: "3Hentai FR",
@@ -208,15 +166,10 @@ export class ThreeHentaiSource implements SourceAdapter {
       if (page > 1) url += `/${page}`;
     }
     const html = await fetchHtml(url);
-    const rawCards = parseCards(html);
-    // Les cartes listing n'ont pas le nb de pages : enrichissement parallèle
-    // borné (évite d'afficher 0p ; abandonne si trop lent).
-    const cards = await Promise.race([
-      enrichCardPageCounts(rawCards),
-      new Promise<SourceGalleryCard[]>((resolve) =>
-        setTimeout(() => resolve(rawCards), 4500)
-      ),
-    ]);
+    // Do not scrape every detail page from a listing: that was an N+1 burst
+    // of up to twenty requests. Page count is resolved only for the opened
+    // gallery, where its thumbnails provide the real extension as well.
+    const cards = parseCards(html);
     return { cards, hasMore: cards.length >= 20 };
   }
 
@@ -249,7 +202,12 @@ export class ThreeHentaiSource implements SourceAdapter {
     // CDN observé : s1.3hentai.xyz (on réutilise celui de la couverture).
     const cdn = coverM[1].match(/https:\/\/(s[0-9]+\.3hentai\.xyz)/)?.[1] || "s1.3hentai.xyz";
 
-    const extForFirst = await this.probeFirstPageExtension(cdn, mediaDir);
+    // Le HTML contient la miniature de la première page et donc son extension
+    // réelle. Cela évite jusqu'à quatre HEAD séquentiels au clic.
+    const firstThumb = html.match(
+      new RegExp(`https:\\/\\/[^"']+\\/${mediaDir}\\/1t(\\.(?:jpg|png|webp|gif))`, "i")
+    );
+    const extForFirst = firstThumb?.[1]?.toLowerCase() || ".jpg";
 
     const pageUrls = Array.from({ length: numPages }, (_, i) => ({
       url:
@@ -268,28 +226,6 @@ export class ThreeHentaiSource implements SourceAdapter {
       tags: parseTags(html),
       pageUrls,
     };
-  }
-
-  /**
-   * Certaines pages peuvent être en .png/.webp ; on sonde la première page
-   * pour connaître l'extension réelle et on l'applique à toute la galerie
-   * (les galeries 3Hentai sont homogènes). Économique : une requête HEAD.
-   */
-  private async probeFirstPageExtension(cdn: string, mediaDir: string): Promise<string> {
-    for (const ext of [".jpg", ".png", ".webp", ".gif"]) {
-      try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 6000);
-        const res = await fetch(`https://${cdn}/${mediaDir}/1${ext}`, {
-          method: "HEAD",
-          headers: HEADERS,
-          signal: controller.signal,
-        });
-        clearTimeout(timer);
-        if (res.ok) return ext;
-      } catch {}
-    }
-    return ".jpg"; // défaut le plus courant
   }
 
   async getRandomNativeId(): Promise<string> {
@@ -335,6 +271,19 @@ export class ThreeHentaiSource implements SourceAdapter {
   }
 
   async healthCheck() {
-    return probeAdapterHealth(this);
+    const startedAt = Date.now();
+    try {
+      const html = await fetchHtml(`${BASE}/language/french`);
+      if (parseCards(html).length === 0) {
+        throw new Error("3Hentai: catalogue vide");
+      }
+      return { ok: true, latencyMs: Date.now() - startedAt };
+    } catch (err) {
+      return {
+        ok: false,
+        latencyMs: Date.now() - startedAt,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
   }
 }

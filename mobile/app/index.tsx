@@ -38,6 +38,7 @@ import { useDrawer } from "@/lib/DrawerContext";
 import { BookCard } from "@/components/BookCard";
 import { SearchBar } from "@/components/SearchBar";
 import { TagLabel } from "@/components/ui/TagLabel";
+import { ButtonLabel } from "@/components/ui/ButtonLabel";
 import { FilterModal, FilterOptions } from "@/components/modals/FilterModal";
 import { ReverseImageSearchModal } from "@/components/modals/ReverseImageSearchModal";
 import { searchGalleries } from "@/lib/api/nhentai";
@@ -122,7 +123,7 @@ export default function HomeScreen() {
 
     // Un tag sélectionné depuis la taxonomie d'une source cible
     // automatiquement cette source pour que les résultats viennent du bon site.
-    if (src && ["nhentai", "3hentai", "doujins"].includes(src)) {
+    if (src && ["nhentai", "3hentai", "doujins", "hitomi"].includes(src)) {
       const sid = src as SourceId;
       setActiveSource((prev) => (prev === sid ? prev : sid));
       setPage(1);
@@ -324,14 +325,14 @@ export default function HomeScreen() {
           opts.sort === "popular-week"
             ? opts.sort
             : "recent";
-        const popQuery = opts.language && opts.language !== "all" ? `language:${opts.language}` : "";
-
         // ─── Multi-sources ───────────────────────────────────────────────
-        // "all" : nhentai (flux principal + popular) + 3hentai + doujins en
-        // parallèle, résultats entrelacés. Source unique : flux direct.
+        // "all" is progressive: the primary catalogue renders as soon as it
+        // resolves. Slow or failed secondary sources never hold it hostage.
         if (activeSource === "all") {
           const nhentaiPromise = searchGalleries(effectiveQuery, p, sort);
-          const altSources = ["3hentai", "doujins"] as SourceId[];
+          const altSources = (["3hentai", "doujins", "hitomi"] as SourceId[]).filter(
+            (sid) => sourceHealth[sid]?.status !== "down"
+          );
           const altPromises = altSources.map(async (sid) => {
             try {
               const r = await getSource(sid).search({
@@ -363,32 +364,34 @@ export default function HomeScreen() {
             }
           });
 
-          const [response, threeH, dj] = await Promise.all([
-            nhentaiPromise,
-            ...altPromises,
-          ]);
+          const response = await nhentaiPromise;
           if (requestId !== latestRequestRef.current) return;
-
-          // Interleave : nhentai d'abord, puis alternance 3hentai/doujins.
-          const merged: Gallery[] = [...(response.result || [])];
-          const maxAlt = Math.max(threeH.length, dj.length);
-          for (let i = 0; i < maxAlt; i++) {
-            if (threeH[i]) merged.push(threeH[i]);
-            if (dj[i]) merged.push(dj[i]);
-          }
-
           const dedupKey = (g: Gallery) =>
             ((g as any).globalId as string) || `${g.id}`;
           if (isPagination) {
             setGalleries((prev) => {
               const existingIds = new Set(prev.map(dedupKey));
-              const fresh = merged.filter((g) => !existingIds.has(dedupKey(g)));
+              const fresh = (response.result || []).filter((g) => !existingIds.has(dedupKey(g)));
               return [...prev, ...fresh];
             });
           } else {
-            setGalleries(merged);
+            setGalleries(response.result || []);
           }
           setTotalPages(Math.max(1, response.num_pages || 1));
+
+          // Do not await this to display the first usable catalogue. Results
+          // settle independently and are appended without disturbing scroll.
+          void Promise.allSettled(altPromises).then((settled) => {
+            if (requestId !== latestRequestRef.current) return;
+            const additions = settled.flatMap((result) =>
+              result.status === "fulfilled" ? result.value : []
+            );
+            if (additions.length === 0) return;
+            setGalleries((prev) => {
+              const existingIds = new Set(prev.map(dedupKey));
+              return [...prev, ...additions.filter((g) => !existingIds.has(dedupKey(g)))];
+            });
+          });
         } else {
           const adapter = getSource(activeSource);
           const res = await adapter.search({
@@ -448,7 +451,7 @@ export default function HomeScreen() {
         }
       }
     },
-    [spinAnim, activeSource]
+    [spinAnim, activeSource, sourceHealth]
   );
 
   useEffect(() => {
@@ -1105,7 +1108,7 @@ export default function HomeScreen() {
             onPress={handleRefresh}
             style={[styles.retryBtn, { backgroundColor: colors.accent }]}
           >
-            <Text style={styles.retryBtnText}>Réessayer</Text>
+            <ButtonLabel style={styles.retryBtnText}>Réessayer</ButtonLabel>
           </TouchableOpacity>
         </View>
       ) : filteredGalleries.length === 0 ? (
@@ -1271,7 +1274,7 @@ export default function HomeScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Annuler"
               >
-                <Text style={[styles.jumpCancelText, { color: colors.sub }]}>Annuler</Text>
+                <ButtonLabel style={[styles.jumpCancelText, { color: colors.sub }]}>Annuler</ButtonLabel>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1287,7 +1290,7 @@ export default function HomeScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Aller à la page"
               >
-                <Text style={styles.jumpSubmitText}>Aller</Text>
+                <ButtonLabel style={styles.jumpSubmitText}>Aller</ButtonLabel>
                 <IconArrowRight size={16} color="#1c191a" strokeWidth={2.5} />
               </TouchableOpacity>
             </View>

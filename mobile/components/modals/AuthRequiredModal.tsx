@@ -2,6 +2,7 @@ import React from "react";
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { IconHeart, IconLogin, IconUserPlus, IconX } from "@tabler/icons-react-native";
 import { useTheme } from "@/lib/ThemeContext";
+import { ButtonLabel } from "@/components/ui/ButtonLabel";
 
 export interface AuthRequiredModalProps {
   visible: boolean;
@@ -40,7 +41,7 @@ export function AuthRequiredModal({
             accessibilityLabel="Se connecter"
           >
             <IconLogin size={16} color="#fff" strokeWidth={2} />
-            <Text style={styles.primaryText}>Se connecter</Text>
+            <ButtonLabel style={styles.primaryText}>Se connecter</ButtonLabel>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -51,7 +52,7 @@ export function AuthRequiredModal({
             accessibilityLabel="Créer un compte"
           >
             <IconUserPlus size={16} color={colors.accent} strokeWidth={2} />
-            <Text style={[styles.secondaryText, { color: colors.txt }]}>Créer un compte</Text>
+            <ButtonLabel style={[styles.secondaryText, { color: colors.txt }]}>Créer un compte</ButtonLabel>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -62,7 +63,7 @@ export function AuthRequiredModal({
             accessibilityLabel="Annuler"
           >
             <IconX size={14} color={colors.sub} strokeWidth={2} />
-            <Text style={[styles.cancelText, { color: colors.sub }]}>Annuler</Text>
+            <ButtonLabel style={[styles.cancelText, { color: colors.sub }]}>Annuler</ButtonLabel>
           </TouchableOpacity>
         </View>
       </View>

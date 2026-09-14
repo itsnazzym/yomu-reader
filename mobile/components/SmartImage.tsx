@@ -95,6 +95,7 @@ export function SmartImage({
   const [hasError, setHasError] = useState(false);
   const softAttemptRef = useRef(0);
   const softTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const imageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const shimmerAnim = useRef(new Animated.Value(0.3)).current;
 
@@ -103,6 +104,10 @@ export function SmartImage({
     if (softTimerRef.current) {
       clearTimeout(softTimerRef.current);
       softTimerRef.current = null;
+    }
+    if (imageTimeoutRef.current) {
+      clearTimeout(imageTimeoutRef.current);
+      imageTimeoutRef.current = null;
     }
     setRetryIndex(0);
     setSoftAttempt(0);
@@ -113,6 +118,7 @@ export function SmartImage({
   useEffect(() => {
     return () => {
       if (softTimerRef.current) clearTimeout(softTimerRef.current);
+      if (imageTimeoutRef.current) clearTimeout(imageTimeoutRef.current);
     };
   }, []);
 
@@ -125,17 +131,13 @@ export function SmartImage({
       return [uri];
     }
 
-    return [
-      // 1. Photon Edge CDN (Instant 200 OK, bypasses all French/EU ISP DNS blocks)
+    // Peu de candidats, dans un ordre déterministe. Une longue cascade de
+    // proxys transforme une panne CDN ponctuelle en spinner quasi infini.
+    return [...new Set([
       `https://i0.wp.com/${targetHost}/${pathOnly}`,
-      `https://i1.wp.com/${targetHost}/${pathOnly}`,
-      `https://i2.wp.com/${targetHost}/${pathOnly}`,
-      `https://i3.wp.com/${targetHost}/${pathOnly}`,
-      // 2. DuckDuckGo Proxy
-      `https://external-content.duckduckgo.com/iu/?u=${encodeURIComponent(`https://${targetHost}/${pathOnly}`)}`,
-      // 3. Direct original URL
+      `https://${targetHost}/${pathOnly}`,
       uri,
-    ];
+    ])];
   }, [uri]);
 
   // Subtle shimmer pulse when loading
@@ -172,7 +174,28 @@ export function SmartImage({
       ? `${baseUri}${baseUri.includes("?") ? "&" : "?"}_yr=${softAttempt}`
       : baseUri;
   const effectiveRecyclingKey = recyclingKey || uri;
-  const MAX_SOFT_RETRIES = 5;
+  const MAX_SOFT_RETRIES = 2;
+
+  // Certaines piles réseau Android ne signalent ni succès ni erreur pour une
+  // requête bloquée. On passe au candidat suivant, puis on expose un retry.
+  useEffect(() => {
+    if (!loading || hasError || !currentUri) return;
+    if (imageTimeoutRef.current) clearTimeout(imageTimeoutRef.current);
+    imageTimeoutRef.current = setTimeout(() => {
+      if (retryIndex < candidateUrls.length - 1) {
+        setRetryIndex((prev) => prev + 1);
+      } else {
+        setLoading(false);
+        setHasError(true);
+      }
+    }, 10_000);
+    return () => {
+      if (imageTimeoutRef.current) {
+        clearTimeout(imageTimeoutRef.current);
+        imageTimeoutRef.current = null;
+      }
+    };
+  }, [loading, hasError, currentUri, retryIndex, candidateUrls.length]);
 
   const handleError = useCallback(() => {
     if (retryIndex < candidateUrls.length - 1) {
@@ -199,6 +222,10 @@ export function SmartImage({
 
   const handleLoad = useCallback(() => {
     softAttemptRef.current = 0;
+    if (imageTimeoutRef.current) {
+      clearTimeout(imageTimeoutRef.current);
+      imageTimeoutRef.current = null;
+    }
     setLoading(false);
     setHasError(false);
   }, []);
@@ -208,6 +235,10 @@ export function SmartImage({
     if (softTimerRef.current) {
       clearTimeout(softTimerRef.current);
       softTimerRef.current = null;
+    }
+    if (imageTimeoutRef.current) {
+      clearTimeout(imageTimeoutRef.current);
+      imageTimeoutRef.current = null;
     }
     setRetryIndex(0);
     setSoftAttempt(0);
@@ -241,9 +272,10 @@ export function SmartImage({
           transition={0}
           priority={priority}
           cachePolicy="memory-disk"
+          {...rest}
           onError={handleError}
           onLoad={handleLoad}
-          {...rest}
+          onDisplay={handleLoad}
         />
       ) : null}
 

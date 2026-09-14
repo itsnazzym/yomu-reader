@@ -1,8 +1,11 @@
-name: Maestro E2E (optional)
+name: Maestro E2E
 
 on:
   workflow_dispatch:
-  # Ne pas bloquer le build APK signé — job manuel uniquement au démarrage.
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - '.maestro/**'
 
 jobs:
   maestro:
@@ -35,16 +38,20 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Run Maestro (debug APK if present)
+      - name: Build debug APK
         working-directory: mobile
-        continue-on-error: true
         run: |
-          if [ ! -f android/app/build/outputs/apk/debug/app-debug.apk ]; then
-            echo "No debug APK in workspace — skipping Maestro run."
-            echo "Build a local debug APK then re-run this workflow with an artifact upload step."
-            exit 0
-          fi
-          maestro test ../.maestro/ --format junit --output maestro-report.xml
+          cd android
+          ./gradlew assembleDebug -PreactNativeArchitectures=x86_64
+
+      - name: Run Maestro on API 33 emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          arch: x86_64
+          script: |
+            adb install mobile/android/app/build/outputs/apk/debug/app-debug.apk
+            maestro test .maestro/ --format junit --output mobile/maestro-report.xml
 
       - name: Upload Maestro report
         if: always()

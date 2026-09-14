@@ -10,6 +10,7 @@ import {
 import { useTheme } from "@/lib/ThemeContext";
 import { useAccount } from "@/lib/accountStore";
 import { SignInModal } from "@/components/modals/SignInModal";
+import { ButtonLabel } from "@/components/ui/ButtonLabel";
 
 interface StepAccountProps {
   onFinish: () => void;
@@ -64,7 +65,7 @@ export function StepAccount({ onFinish }: StepAccountProps) {
             accessibilityLabel="Se connecter à mon compte nHentai"
           >
             <IconLogin size={16} color="#fff" strokeWidth={2} />
-            <Text style={styles.loginBtnText}>Se connecter à mon compte nHentai</Text>
+            <ButtonLabel style={styles.loginBtnText}>Se connecter à mon compte nHentai</ButtonLabel>
           </Pressable>
         )}
 
@@ -76,9 +77,9 @@ export function StepAccount({ onFinish }: StepAccountProps) {
           accessibilityRole="button"
           accessibilityLabel={isLoggedIn ? "Accéder à la bibliothèque" : "Continuer en mode invité"}
         >
-          <Text style={[styles.guestBtnText, { color: colors.sub }]}>
+          <ButtonLabel style={[styles.guestBtnText, { color: colors.sub }]}>
             {isLoggedIn ? "Accéder à la Bibliothèque →" : "Continuer en mode Invité (Local) →"}
-          </Text>
+          </ButtonLabel>
         </Pressable>
       </View>
 
@@ -150,6 +151,7 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   loginBtn: {
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -166,6 +168,7 @@ const styles = StyleSheet.create({
     height: 1,
   },
   guestBtn: {
+    minHeight: 48,
     alignItems: "center",
     paddingVertical: 4,
   },

@@ -20,6 +20,7 @@ import { StepTheme } from "./StepTheme";
 import { StepReader } from "./StepReader";
 import { StepDownloadFolder } from "./StepDownloadFolder";
 import { StepAccount } from "./StepAccount";
+import { ButtonLabel } from "@/components/ui/ButtonLabel";
 
 export function OnboardingModal() {
   const insets = useSafeAreaInsets();
@@ -61,7 +62,7 @@ export function OnboardingModal() {
             accessibilityRole="button"
             accessibilityLabel="Passer la présentation"
           >
-            <Text style={[styles.skipBtnText, { color: colors.sub }]}>Passer</Text>
+            <ButtonLabel style={[styles.skipBtnText, { color: colors.sub }]}>Passer</ButtonLabel>
             <IconChevronRight size={14} color={colors.sub} strokeWidth={2} />
           </TouchableOpacity>
         </View>
@@ -105,7 +106,7 @@ export function OnboardingModal() {
               accessibilityLabel="Étape précédente"
             >
               <IconArrowLeft size={16} color={colors.sub} strokeWidth={2} />
-              <Text style={[styles.backBtnText, { color: colors.sub }]}>Retour</Text>
+              <ButtonLabel style={[styles.backBtnText, { color: colors.sub }]}>Retour</ButtonLabel>
             </TouchableOpacity>
           ) : (
             <View style={{ width: 80 }} />
@@ -119,9 +120,9 @@ export function OnboardingModal() {
             accessibilityLabel={currentStep === totalSteps - 1 ? "Terminer la présentation" : "Continuer"}
           >
             <View style={styles.nextBtnInner}>
-              <Text style={styles.nextBtnText}>
+              <ButtonLabel style={styles.nextBtnText}>
                 {currentStep === totalSteps - 1 ? "Terminer" : "Continuer"}
-              </Text>
+              </ButtonLabel>
               {currentStep === totalSteps - 1 ? (
                 <IconCheck size={16} color="#fff" strokeWidth={2.5} />
               ) : (

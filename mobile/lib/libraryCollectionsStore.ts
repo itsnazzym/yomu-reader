@@ -36,6 +36,10 @@ let currentCollections: LibraryCollection[] = [];
 const listeners = new Set<() => void>();
 const writes = createWriteQueue();
 
+function scheduleCloudBackup(): void {
+  void import("./cloudSync").then(({ scheduleCloudSync }) => scheduleCloudSync()).catch(() => {});
+}
+
 function notify(): void {
   for (const listener of listeners) listener();
 }
@@ -127,9 +131,10 @@ export const initLibraryCollections = createInitOnce(loadCollections);
 
 async function persist(): Promise<void> {
   const serialized = JSON.stringify(currentCollections);
-  await writes.enqueue(() =>
-    AsyncStorage.setItem(LIBRARY_COLLECTIONS_STORAGE_KEY, serialized)
-  );
+  await writes.enqueue(async () => {
+    await AsyncStorage.setItem(LIBRARY_COLLECTIONS_STORAGE_KEY, serialized);
+    scheduleCloudBackup();
+  });
 }
 
 export function getLibraryCollectionsSnapshot(): LibraryCollection[] {
