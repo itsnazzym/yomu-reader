@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { IconLock, IconX } from "@tabler/icons-react-native";
 import { useTheme } from "@/lib/ThemeContext";
+import { ButtonLabel } from "@/components/ui/ButtonLabel";
 
 interface PinLockModalProps {
   visible: boolean;
@@ -112,7 +113,7 @@ export function PinLockModal({
             }}
             style={[styles.btn, { backgroundColor: colors.accent }]}
           >
-            <Text style={styles.btnText}>{confirmLabel}</Text>
+            <ButtonLabel style={styles.btnText}>{confirmLabel}</ButtonLabel>
           </Pressable>
         </Pressable>
       </Pressable>

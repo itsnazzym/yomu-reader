@@ -13,7 +13,8 @@ export async function getComments(
 ): Promise<Comment[]> {
   try {
     const res = await nhApi.get<Comment[] | { result: Comment[] }>(
-      `/galleries/${galleryId}/comments`
+      `/galleries/${galleryId}/comments`,
+      { public: true, timeoutMs: 5_000, maxRateLimitRetries: 0 }
     );
     if (Array.isArray(res)) return res;
     if (res && Array.isArray((res as any).result)) return (res as any).result;

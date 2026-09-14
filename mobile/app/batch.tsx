@@ -31,6 +31,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/lib/ThemeContext";
 import { IconBtn } from "@/components/ui/IconBtn";
+import { ButtonLabel } from "@/components/ui/ButtonLabel";
 import SmartImage from "@/components/SmartImage";
 import {
   subscribeDownloadQueue,
@@ -474,7 +475,7 @@ export default function BatchScreen() {
           ]}
         >
           <IconPlus size={16} color="#fff" strokeWidth={2.5} />
-          <Text style={styles.addBatchBtnText}>Nouveau lot</Text>
+          <ButtonLabel style={styles.addBatchBtnText}>Nouveau lot</ButtonLabel>
         </Pressable>
       </View>
 
@@ -681,7 +682,7 @@ export default function BatchScreen() {
                   style={[styles.submitBatchBtn, { backgroundColor: colors.accent }]}
                 >
                   <IconDownload size={18} color="#fff" strokeWidth={2} style={{ marginRight: 8 }} />
-                  <Text style={styles.submitBatchBtnText}>Rechercher et Ajouter</Text>
+                  <ButtonLabel style={styles.submitBatchBtnText}>Rechercher et Ajouter</ButtonLabel>
                 </Pressable>
               </ScrollView>
             ) : (
@@ -709,7 +710,7 @@ export default function BatchScreen() {
                   style={[styles.submitBatchBtn, { backgroundColor: colors.accent }]}
                 >
                   <IconDownload size={18} color="#fff" strokeWidth={2} style={{ marginRight: 8 }} />
-                  <Text style={styles.submitBatchBtnText}>Ajouter les identifiants</Text>
+                  <ButtonLabel style={styles.submitBatchBtnText}>Ajouter les identifiants</ButtonLabel>
                 </Pressable>
               </ScrollView>
             )}
@@ -793,6 +794,7 @@ const styles = StyleSheet.create({
   langPill: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
   langPillText: { fontSize: 12, fontWeight: "700" },
   submitBatchBtn: {
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",

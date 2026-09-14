@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   StyleSheet,
   View,
@@ -8,7 +8,6 @@ import {
   PanResponder,
   ActivityIndicator,
   Alert,
-  Dimensions,
 } from "react-native";
 import { Image } from "expo-image";
 import * as FileSystem from "expo-file-system/legacy";
@@ -22,10 +21,10 @@ import {
   IconZoomOut,
   IconRefresh,
   IconMove,
-  IconSparkles,
 } from "@/components/ui/TablerIcons";
 import { useTheme } from "@/lib/ThemeContext";
 import { lightTap } from "@/lib/haptics";
+import { ButtonLabel } from "@/components/ui/ButtonLabel";
 
 const CROP_SIZE = 260; // Size of the circular crop viewport in px
 
@@ -65,6 +64,8 @@ export function AvatarCropModal({
   const [imageMeta, setImageMeta] = useState<{ width?: number; height?: number; ext?: string }>({});
 
   // Sync initialImageUri when opened
+  // Opening the modal intentionally snapshots the image URI; adding the
+  // picker callback here would reopen the platform picker after each render.
   useEffect(() => {
     if (visible) {
       if (initialImageUri) {
@@ -79,6 +80,8 @@ export function AvatarCropModal({
       setTranslateY(0);
       setRotation(0);
     }
+  // `handlePickImage` intentionally runs only on open.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, initialImageUri]);
 
   const setupImage = (uri: string) => {
@@ -394,7 +397,7 @@ export function AvatarCropModal({
                 accessibilityLabel="Pivoter de 90 degrés"
               >
                 <IconRotateClockwise size={16} color="#f3f4f6" strokeWidth={2} />
-                <Text style={styles.toolBtnLabel}>{rotation}°</Text>
+                <ButtonLabel style={styles.toolBtnLabel}>{rotation}°</ButtonLabel>
               </Pressable>
 
               <Pressable
@@ -403,7 +406,7 @@ export function AvatarCropModal({
                 accessibilityLabel="Réinitialiser le cadrage"
               >
                 <IconRefresh size={15} color="#9ca3af" strokeWidth={2} />
-                <Text style={styles.toolBtnLabel}>Centrer</Text>
+                <ButtonLabel style={styles.toolBtnLabel}>Centrer</ButtonLabel>
               </Pressable>
             </View>
           </View>
@@ -415,7 +418,7 @@ export function AvatarCropModal({
               style={[styles.changeImageBtn, { borderColor: "#2c2c3e", backgroundColor: "#181826" }]}
             >
               <IconPhoto size={16} color="#f3f4f6" strokeWidth={2} />
-              <Text style={styles.changeImageText}>Autre image</Text>
+              <ButtonLabel style={styles.changeImageText}>Autre image</ButtonLabel>
             </Pressable>
 
             <Pressable
@@ -431,7 +434,7 @@ export function AvatarCropModal({
               ) : (
                 <>
                   <IconCheck size={18} color="#fff" strokeWidth={2.5} />
-                  <Text style={styles.saveBtnText}>Valider l'Avatar</Text>
+                  <ButtonLabel style={styles.saveBtnText}>Valider l'Avatar</ButtonLabel>
                 </>
               )}
             </Pressable>
@@ -672,12 +675,17 @@ const styles = StyleSheet.create({
     color: "#d1d5db",
   },
   actionsRow: {
-    flexDirection: "row",
+    // Deux actions côte à côte rognaient « Valider l'Avatar » lorsque la
+    // police Android était agrandie. Les actions pleine largeur restent
+    // lisibles sur les écrans étroits.
+    flexDirection: "column",
     alignItems: "center",
     gap: 10,
     marginTop: 4,
   },
   changeImageBtn: {
+    width: "100%",
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -693,6 +701,8 @@ const styles = StyleSheet.create({
     color: "#f3f4f6",
   },
   saveBtn: {
+    width: "100%",
+    minHeight: 48,
     flex: 1,
     flexDirection: "row",
     alignItems: "center",

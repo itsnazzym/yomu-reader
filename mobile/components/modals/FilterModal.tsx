@@ -20,6 +20,7 @@ import {
   IconRotateClockwise,
 } from "@tabler/icons-react-native";
 import { useTheme } from "@/lib/ThemeContext";
+import { ButtonLabel } from "@/components/ui/ButtonLabel";
 
 export interface FilterOptions {
   sort: "recent" | "popular-today" | "popular-week" | "popular";
@@ -341,7 +342,7 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
                       accessibilityLabel="Réinitialiser les filtres"
                     >
                       <IconRotateClockwise size={16} color={colors.accent} strokeWidth={2} />
-                      <Text style={styles.resetBtnText}>Réinitialiser les filtres</Text>
+                      <ButtonLabel style={styles.resetBtnText}>Réinitialiser les filtres</ButtonLabel>
                     </TouchableOpacity>
                   </View>
                 )}

@@ -646,7 +646,7 @@ function syncDownloadKeepAwake(): void {
 
 /**
  * Notifie le foreground service de la progression globale de la file.
- * Throttle ~1 update/s : les updates notifee sont coûteuses (IPC + notif).
+ * Throttle ~1 update/s : les mises à jour natives sont coûteuses (IPC + notif).
  */
 let lastFgsUpdate = 0;
 async function syncForegroundService(): Promise<void> {

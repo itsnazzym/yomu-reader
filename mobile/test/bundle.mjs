@@ -7,7 +7,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const testEntries = ["engine.test.ts"];
 try {
   const fs = await import("node:fs");
-  for (const extra of ["resumable.test.ts", "sourcesHtml.test.ts", "sources.test.ts"]) {
+  for (const extra of ["resumable.test.ts", "sourcesHtml.test.ts", "sources.test.ts", "cloudSync.test.ts"]) {
     if (fs.existsSync(path.join(here, extra))) {
       testEntries.push(extra);
     }
@@ -38,6 +38,10 @@ for (const entry of testEntries) {
             () => ({ path: path.join(here, "mockSecureStore.ts") })
           );
           b.onResolve(
+            { filter: /^expo-crypto$/ },
+            () => ({ path: path.join(here, "mockExpoCrypto.ts") })
+          );
+          b.onResolve(
             { filter: /^react-native$/ },
             () => ({ path: path.join(here, "mockReactNative.ts") })
           );
@@ -55,6 +59,12 @@ for (const entry of testEntries) {
           b.onResolve(
             { filter: /^@\/lib\/api\/nhentai$/ },
             () => ({ path: path.join(here, "mockNhentai.ts") })
+          );
+          // Les stores notifient le moteur cloud de façon dynamique. Les tests
+          // unitaires des stores n'ont pas besoin de charger son client natif.
+          b.onResolve(
+            { filter: /^\.\/cloudSync$/, namespace: "file" },
+            () => ({ path: path.join(here, "mockCloudSync.ts") })
           );
         },
       },

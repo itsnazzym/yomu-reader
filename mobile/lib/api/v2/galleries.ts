@@ -35,7 +35,7 @@ export interface GalleryListParams {
 export async function getGalleries(
   params: GalleryListParams = {}
 ): Promise<Paginated<GalleryCard>> {
-  return nhApi.get(`/galleries${buildQuery(params)}`);
+  return nhApi.get(`/galleries${buildQuery(params)}`, { public: true });
 }
 
 // ─── Popular ──────────────────────────────────────────────────────────────────
@@ -43,7 +43,7 @@ export async function getGalleries(
 /** Returns top 5 galleries by today's popularity */
 export async function getPopularGalleries(): Promise<GalleryCard[]> {
   try {
-    const res = await nhApi.get<any>("/galleries/popular");
+    const res = await nhApi.get<any>("/galleries/popular", { public: true });
     if (Array.isArray(res)) return res;
     if (res && Array.isArray(res.result)) return res.result;
     return [];
@@ -57,7 +57,9 @@ export async function getPopularGalleries(): Promise<GalleryCard[]> {
 
 /** Returns a random gallery ID */
 export async function getRandomGalleryId(): Promise<number> {
-  const res = await nhApi.get<Record<string, unknown>>("/galleries/random");
+  const res = await nhApi.get<Record<string, unknown>>("/galleries/random", {
+    public: true,
+  });
   return ((res as any)?.id ?? (res as any)?.gallery_id) as number;
 }
 
@@ -73,7 +75,7 @@ export interface GalleryByTagParams {
 export async function getGalleriesByTag(
   params: GalleryByTagParams
 ): Promise<Paginated<GalleryCard>> {
-  return nhApi.get(`/galleries/tagged${buildQuery(params)}`);
+  return nhApi.get(`/galleries/tagged${buildQuery(params)}`, { public: true });
 }
 
 // ─── Detail ───────────────────────────────────────────────────────────────────
@@ -91,7 +93,11 @@ export async function getGallery(
   const include = Array.isArray(params.include)
     ? params.include.join(",")
     : params.include;
-  return nhApi.get(`/galleries/${galleryId}${buildQuery({ include })}`);
+  return nhApi.get(`/galleries/${galleryId}${buildQuery({ include })}`, {
+    public: true,
+    timeoutMs: 7_000,
+    maxRateLimitRetries: 0,
+  });
 }
 
 // ─── Pages ────────────────────────────────────────────────────────────────────
@@ -99,14 +105,22 @@ export async function getGallery(
 export async function getGalleryPages(
   galleryId: number | string
 ): Promise<GalleryPage[]> {
-  return nhApi.get(`/galleries/${galleryId}/pages`);
+  return nhApi.get(`/galleries/${galleryId}/pages`, {
+    public: true,
+    timeoutMs: 7_000,
+    maxRateLimitRetries: 0,
+  });
 }
 
 export async function getGalleryPage(
   galleryId: number | string,
   pageNumber: number
 ): Promise<GalleryPage> {
-  return nhApi.get(`/galleries/${galleryId}/pages/${pageNumber}`);
+  return nhApi.get(`/galleries/${galleryId}/pages/${pageNumber}`, {
+    public: true,
+    timeoutMs: 7_000,
+    maxRateLimitRetries: 0,
+  });
 }
 
 // ─── Related ──────────────────────────────────────────────────────────────────
@@ -122,7 +136,11 @@ function normalizeRelatedList(raw: unknown): GalleryRelated[] {
 export async function getRelatedGalleries(
   galleryId: number | string
 ): Promise<GalleryRelated[]> {
-  const raw = await nhApi.get<unknown>(`/galleries/${galleryId}/related`);
+  const raw = await nhApi.get<unknown>(`/galleries/${galleryId}/related`, {
+    public: true,
+    timeoutMs: 5_000,
+    maxRateLimitRetries: 0,
+  });
   return normalizeRelatedList(raw);
 }
 

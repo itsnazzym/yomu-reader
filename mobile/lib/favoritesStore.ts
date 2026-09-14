@@ -14,6 +14,10 @@ let favoritesInitPromise: Promise<void> | null = null;
 let favoritesWritePromise: Promise<void> = Promise.resolve();
 const listeners = new Set<() => void>();
 
+function scheduleCloudBackup(): void {
+  void import("./cloudSync").then(({ scheduleCloudSync }) => scheduleCloudSync()).catch(() => {});
+}
+
 function notify() {
   for (const l of listeners) l();
 }
@@ -33,7 +37,10 @@ function persistFavorites(): Promise<void> {
   const serialized = JSON.stringify(favoritesList);
   favoritesWritePromise = favoritesWritePromise
     .catch(() => {})
-    .then(() => AsyncStorage.setItem(FAVORITES_STORAGE_KEY, serialized));
+    .then(async () => {
+      await AsyncStorage.setItem(FAVORITES_STORAGE_KEY, serialized);
+      scheduleCloudBackup();
+    });
   return favoritesWritePromise;
 }
 

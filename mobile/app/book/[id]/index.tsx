@@ -37,6 +37,7 @@ import { Gallery, Tag, Comment } from "@/lib/api/types";
 import SmartImage from "@/components/SmartImage";
 import { CardPressable } from "@/components/ui/CardPressable";
 import { IconBtn } from "@/components/ui/IconBtn";
+import { ButtonLabel } from "@/components/ui/ButtonLabel";
 import { useFavorites } from "@/lib/favoritesStore";
 import { useHistory, findHistoryEntry } from "@/lib/historyStore";
 import { useTagFavs } from "@/lib/tagFavoritesStore";
@@ -49,7 +50,7 @@ import { useAccount } from "@/lib/accountStore";
 import { addFavorite, isFavorited, removeFavorite } from "@/lib/api/v2/galleries";
 import { useHomeSearch } from "@/lib/homeSearchStore";
 import { queryContainsTerm } from "@/lib/searchQuery";
-import { getSource } from "@/lib/sources/registry";
+import { loadSourceGallery } from "@/lib/sources/galleryLoader";
 import { sourceGalleryToGallery } from "@/lib/sources/galleryMapper";
 import type { SourceId } from "@/lib/sources/types";
 import { makeGlobalId } from "@/lib/sources/types";
@@ -98,6 +99,7 @@ export default function BookDetailScreen() {
   const [accountFavLoading, setAccountFavLoading] = useState(false);
   const [appendNotice, setAppendNotice] = useState<string | null>(null);
   const [collectionOpen, setCollectionOpen] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   // Fermeture animée avant navigation (même pattern que le panneau des
   // recommandations) : fondu de l'écran, puis navigation au callback de fin.
@@ -115,59 +117,81 @@ export default function BookDetailScreen() {
   const fav = gallery ? isFavorite(gallery.id) : false;
 
   useEffect(() => {
-    if (!id) return;
+    if (!id) {
+      setError("Identifiant de galerie invalide.");
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
     setLoading(true);
     setError(null);
+    setGallery(null);
+    setComments([]);
     setRelated([]);
     setRelatedLoading(true);
     scrollRef.current?.scrollTo({ y: 0, animated: false });
 
     if (isNhentai) {
-      // Flux nhentai existant : API + commentaires + suggestions.
-      Promise.all([
-        getGallery(id),
-        getComments(id).catch(() => []),
-      ])
-        .then(([g, c]) => {
-          setGallery(g);
-          setComments(c);
+      // La galerie est le seul prérequis de cet écran. Les compléments ne
+      // doivent jamais empêcher Lire maintenant d'apparaître.
+      void getGallery(id)
+        .then((g) => {
+          if (!cancelled) setGallery(g);
         })
         .catch((err) => {
-          setError(err?.message || "Impossible de charger la galerie");
+          if (!cancelled) {
+            setError(err?.message || "Impossible de charger la galerie");
+          }
         })
         .finally(() => {
-          setLoading(false);
+          if (!cancelled) setLoading(false);
         });
 
-      getRelatedGalleryCards(id)
-        .then((cards) => {
-          setRelated(cards);
+      void getComments(id)
+        .then((items) => {
+          if (!cancelled) setComments(items);
         })
         .catch(() => {
-          setRelated([]);
+          if (!cancelled) setComments([]);
+        });
+
+      void getRelatedGalleryCards(id)
+        .then((cards) => {
+          if (!cancelled) setRelated(cards);
+        })
+        .catch(() => {
+          if (!cancelled) setRelated([]);
         })
         .finally(() => {
-          setRelatedLoading(false);
+          if (!cancelled) setRelatedLoading(false);
         });
     } else {
       // Sources alternatives : adaptateur dédié, pas de commentaires ni
       // de suggestions (non supportés par ces sites).
       const knownTitle = typeof titleParam === "string" ? titleParam : undefined;
-      getSource(sourceId)
-        .getGallery(id, knownTitle)
+      void loadSourceGallery(sourceId, id, knownTitle)
         .then((sg) => {
           // Map vers Gallery (mapper partagé) pour réutiliser toute l'UI.
-          setGallery({ ...sourceGalleryToGallery(sg, sourceId), origin: "local" });
+          if (!cancelled) {
+            setGallery({ ...sourceGalleryToGallery(sg, sourceId), origin: "local" });
+          }
         })
         .catch((err) => {
-          setError(err?.message || "Impossible de charger la galerie");
+          if (!cancelled) {
+            setError(err?.message || "Impossible de charger la galerie");
+          }
         })
         .finally(() => {
-          setLoading(false);
-          setRelatedLoading(false);
+          if (!cancelled) {
+            setLoading(false);
+            setRelatedLoading(false);
+          }
         });
     }
-  }, [id, sourceId, titleParam]);
+    return () => {
+      cancelled = true;
+    };
+  }, [id, sourceId, titleParam, reloadNonce, isNhentai]);
 
   const handleShare = async () => {
     if (!gallery) return;
@@ -326,10 +350,16 @@ export default function BookDetailScreen() {
           {error || "Galerie introuvable"}
         </Text>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => setReloadNonce((value) => value + 1)}
           style={[styles.backBtn, { backgroundColor: colors.accent }]}
         >
-          <Text style={styles.backBtnText}>Retour</Text>
+          <ButtonLabel style={styles.backBtnText}>Réessayer</ButtonLabel>
+        </Pressable>
+        <Pressable
+          onPress={() => router.back()}
+          style={[styles.backBtn, { backgroundColor: colors.tagBg, marginTop: 10 }]}
+        >
+          <ButtonLabel style={[styles.backBtnText, { color: colors.txt }]}>Retour</ButtonLabel>
         </Pressable>
       </View>
     );
@@ -497,13 +527,11 @@ export default function BookDetailScreen() {
           >
             <View style={styles.btnInner}>
               <IconBook2 size={18} color="#fff" strokeWidth={1.8} style={{ flexShrink: 0 }} />
-              <Text
+              <ButtonLabel
                 style={styles.primaryReadBtnText}
-                numberOfLines={1}
-                ellipsizeMode="tail"
               >
                 {readLabel}
-              </Text>
+              </ButtonLabel>
             </View>
           </CardPressable>
 
@@ -515,13 +543,11 @@ export default function BookDetailScreen() {
             >
               <View style={styles.btnInner}>
                 <IconDownload size={16} color={colors.accent} strokeWidth={2} style={{ flexShrink: 0 }} />
-                <Text
+                <ButtonLabel
                   style={[styles.secondaryBtnText, { color: colors.txt }]}
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
                 >
                   Télécharger
-                </Text>
+                </ButtonLabel>
               </View>
             </CardPressable>
 
@@ -536,13 +562,11 @@ export default function BookDetailScreen() {
             >
               <View style={styles.btnInner}>
                 <IconFolderPlus size={16} color={colors.accent} strokeWidth={2} style={{ flexShrink: 0 }} />
-                <Text
+                <ButtonLabel
                   style={[styles.secondaryBtnText, { color: colors.txt }]}
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
                 >
                   Collection
-                </Text>
+                </ButtonLabel>
               </View>
             </CardPressable>
           </View>
@@ -920,7 +944,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   secondaryActionsRow: {
-    flexDirection: "row",
+    // Ces deux actions étaient côte à côte. À 320 dp ou avec une police
+    // agrandie, « Télécharger » finissait alors coupé. Une action par ligne
+    // conserve à la fois la cible tactile et le libellé complet.
+    flexDirection: "column",
     gap: 10,
   },
   secondaryBtn: {
@@ -930,7 +957,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     minHeight: 46,
-    minWidth: 100,
+    minWidth: 0,
     justifyContent: "center",
   },
   btnInner: {

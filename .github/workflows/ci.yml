@@ -39,7 +39,7 @@ jobs:
       - run: npm run lint
       - run: npm run ui:check
       - run: npx expo-doctor
-        continue-on-error: true
+      - run: npm run lint:android
 
   web:
     name: Web Next.js

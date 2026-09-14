@@ -13,6 +13,7 @@ import {
 } from "@tabler/icons-react-native";
 import { useTheme } from "@/lib/ThemeContext";
 import { CardPressable } from "@/components/ui/CardPressable";
+import { ButtonLabel } from "@/components/ui/ButtonLabel";
 import { openAppSettings } from "@/lib/permissions";
 
 interface PermissionModalProps {
@@ -67,7 +68,7 @@ export function PermissionModal({
               >
                 <View style={styles.btnContent}>
                   <IconSettings size={16} color="#fff" strokeWidth={2} />
-                  <Text style={styles.grantBtnText}>Ouvrir les Paramètres</Text>
+                  <ButtonLabel style={styles.grantBtnText}>Ouvrir les Paramètres</ButtonLabel>
                 </View>
               </CardPressable>
             ) : (
@@ -80,7 +81,7 @@ export function PermissionModal({
               >
                 <View style={styles.btnContent}>
                   <IconCircleCheck size={16} color="#fff" strokeWidth={2.5} />
-                  <Text style={styles.grantBtnText}>Accorder l'autorisation</Text>
+                  <ButtonLabel style={styles.grantBtnText}>Accorder l'autorisation</ButtonLabel>
                 </View>
               </CardPressable>
             )}
@@ -143,6 +144,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   grantBtn: {
+    minHeight: 48,
     paddingVertical: 13,
     alignItems: "center",
     justifyContent: "center",

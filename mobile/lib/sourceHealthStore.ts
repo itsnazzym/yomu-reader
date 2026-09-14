@@ -39,6 +39,10 @@ function snapshot(): HealthMap {
   return healthMap;
 }
 
+function isOfflineError(error?: string): boolean {
+  return Boolean(error && /(network request failed|network down|offline|internet|failed to fetch)/i.test(error));
+}
+
 export function getSourceHealth(): HealthMap {
   return healthMap;
 }
@@ -81,11 +85,10 @@ export async function checkAllSourcesHealth(): Promise<HealthMap> {
       const adapter = getSource(meta.id);
       let result: SourceHealthResult;
       try {
-        if (adapter.healthCheck) {
-          result = await adapter.healthCheck();
-        } else {
-          result = await probeAdapterHealth(adapter);
-        }
+        // A source is healthy only after a real catalogue → detail → image
+        // traversal. Lightweight adapter pings can remain useful for local
+        // diagnostics, but must not decide what the UI exposes.
+        result = await probeAdapterHealth(adapter);
       } catch (err) {
         result = {
           ok: false,
@@ -93,10 +96,16 @@ export async function checkAllSourcesHealth(): Promise<HealthMap> {
           error: err instanceof Error ? err.message : String(err),
         };
       }
+      const previous = healthMap[meta.id] ?? { status: "unknown" as const };
+      // Going offline is a device condition, not evidence that a provider is
+      // down. Preserve the last known visibility and retry on foreground.
+      const status = isOfflineError(result.error)
+        ? previous.status === "checking" ? "unknown" : previous.status
+        : result.ok ? "ok" : "down";
       healthMap = {
         ...healthMap,
         [meta.id]: {
-          status: result.ok ? "ok" : "down",
+          status,
           latencyMs: result.latencyMs,
           error: result.error,
           checkedAt: Date.now(),

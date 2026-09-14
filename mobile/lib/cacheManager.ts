@@ -1,5 +1,7 @@
 import * as FileSystem from "expo-file-system/legacy";
+import { Image } from "expo-image";
 import { libraryRoot } from "./localLibrary";
+import { clearSourceGalleryCache } from "./sources/galleryLoader";
 
 export interface FileInfoWithSize {
   exists: boolean;
@@ -142,8 +144,17 @@ export async function getStorageBreakdown(): Promise<StorageBreakdown> {
 
 export async function clearAppCache(): Promise<boolean> {
   try {
+    // expo-image possède ses propres caches Glide/SDWebImage ; supprimer
+    // seulement cacheDirectory ne les purge pas toujours.
+    const imageResults = await Promise.allSettled([
+      Image.clearMemoryCache(),
+      Image.clearDiskCache(),
+    ]);
+    clearSourceGalleryCache();
     const cacheDir = FileSystem.cacheDirectory;
-    if (!cacheDir) return true;
+    if (!cacheDir) {
+      return imageResults.every((result) => result.status === "fulfilled");
+    }
     const files = await FileSystem.readDirectoryAsync(cacheDir);
     for (const file of files) {
       try {
@@ -152,7 +163,7 @@ export async function clearAppCache(): Promise<boolean> {
         // ignore
       }
     }
-    return true;
+    return imageResults.every((result) => result.status === "fulfilled");
   } catch {
     return false;
   }

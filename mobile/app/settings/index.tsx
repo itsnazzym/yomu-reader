@@ -57,6 +57,7 @@ import { useTheme } from "@/lib/ThemeContext";
 import { CardPressable } from "@/components/ui/CardPressable";
 import { SmoothSlider } from "@/components/ui/SmoothSlider";
 import { IconBtn } from "@/components/ui/IconBtn";
+import { ButtonLabel } from "@/components/ui/ButtonLabel";
 import {
   getDownloadQueueSnapshot,
   setMaxConcurrent,
@@ -80,6 +81,16 @@ import SmartImage from "@/components/SmartImage";
 import { resolveAvatarUrl } from "@/app/profile";
 import { displayAvatarUri } from "@/lib/avatarPersist";
 import { catalogColumnCount } from "@/lib/catalogGrid";
+import {
+  connectWithGoogle,
+  createVault,
+  disconnectCloud,
+  getCloudSyncState,
+  refreshCloudSyncState,
+  subscribeCloudSync,
+  syncNow,
+  unlockVault,
+} from "@/lib/cloudSync";
 
 const PREVIEW_SAMPLE_MANGA = [
   {
@@ -207,6 +218,11 @@ export default function SettingsScreen() {
   const { enabled: otaEnabled, setEnabled: setOtaEnabled } = useOtaSettings();
   const [pinModalOpen, setPinModalOpen] = useState(false);
   const [newTagInput, setNewTagInput] = useState("");
+  const cloud = useSyncExternalStore(subscribeCloudSync, getCloudSyncState, getCloudSyncState);
+  const [recoveryKeyInput, setRecoveryKeyInput] = useState("");
+  const [newRecoveryKey, setNewRecoveryKey] = useState<string | null>(null);
+
+  useEffect(() => { void refreshCloudSyncState(); }, []);
 
   // Interface & Grid preview states
   const [previewDevice, setPreviewDevice] = useState<"phone-p" | "phone-l" | "tab-p" | "tab-l">("phone-p");
@@ -437,18 +453,18 @@ export default function SettingsScreen() {
                   ) : (
                     <IconRefresh size={12} color={colors.accent} strokeWidth={2} />
                   )}
-                  <Text style={[styles.quickActionText, { color: colors.accent }]}>
+                  <ButtonLabel style={[styles.quickActionText, { color: colors.accent }]}>
                     {syncingCloud ? "Synchro..." : "Synchroniser"}
-                  </Text>
+                  </ButtonLabel>
                 </Pressable>
 
                 <Pressable
                   onPress={() => router.push("/profile")}
                   style={[styles.quickActionPill, { backgroundColor: colors.accent }]}
                 >
-                  <Text style={[styles.quickActionText, { color: "#fff", fontWeight: "800" }]}>
+                  <ButtonLabel style={[styles.quickActionText, { color: "#fff", fontWeight: "800" }]}>
                     Voir mon profil →
-                  </Text>
+                  </ButtonLabel>
                 </Pressable>
               </View>
             </CardPressable>
@@ -1374,7 +1390,7 @@ export default function SettingsScreen() {
               style={[styles.btnActionRow, { backgroundColor: colors.accent }]}
             >
               <IconCloudDownload size={16} color="#fff" strokeWidth={2} />
-              <Text style={styles.btnActionText}>Exporter la sauvegarde</Text>
+              <ButtonLabel style={styles.btnActionText}>Exporter la sauvegarde</ButtonLabel>
             </CardPressable>
 
             <View style={styles.divider} />
@@ -1396,7 +1412,7 @@ export default function SettingsScreen() {
               style={[styles.btnActionRow, { backgroundColor: colors.accent }]}
             >
               <IconUpload size={16} color="#fff" strokeWidth={2} />
-              <Text style={styles.btnActionText}>Restaurer depuis un fichier</Text>
+              <ButtonLabel style={styles.btnActionText}>Restaurer depuis un fichier</ButtonLabel>
             </CardPressable>
 
             <CardPressable
@@ -1423,10 +1439,52 @@ export default function SettingsScreen() {
               style={[styles.btnActionRow, { backgroundColor: "#1e1e2c", borderColor: "#2f2f44", borderWidth: 1 }]}
             >
               <IconUpload size={16} color={colors.accent} strokeWidth={2} />
-              <Text style={[styles.btnActionText, { color: colors.txt }]}>
+              <ButtonLabel style={[styles.btnActionText, { color: colors.txt }]}>
                 Restaurer depuis le presse-papier
-              </Text>
+              </ButtonLabel>
             </CardPressable>
+          </View>
+        </View>
+
+        <View style={styles.sectionBlock}>
+          <View style={styles.sectionTitleRow}>
+            <View style={[styles.sectionIconBadge, { backgroundColor: "rgba(96, 165, 250, 0.15)" }]}>
+              <IconCloudDownload size={14} color="#60a5fa" strokeWidth={2} />
+            </View>
+            <Text style={styles.sectionHeaderTitle}>Yomu Cloud</Text>
+          </View>
+          <View style={styles.groupCard}>
+            <Text style={styles.rowToggleSub}>
+              {cloud.status === "unconfigured" ? "La synchronisation cloud n’est pas configurée dans cette build."
+                : cloud.status === "signed_out" ? "Connectez-vous avec Google pour sauvegarder vos données chiffrées."
+                : cloud.status === "locked" ? "Entrez votre clé de récupération pour déverrouiller le coffre chiffré."
+                : `Connecté${cloud.email ? ` : ${cloud.email}` : ""}${cloud.lastSyncedAt ? ` · dernière synchro ${new Date(cloud.lastSyncedAt).toLocaleString()}` : ""}.`}
+            </Text>
+            {newRecoveryKey ? <View style={[styles.cloudKeyBox, { borderColor: colors.accent }]}>
+              <Text style={[styles.cloudKeyTitle, { color: colors.txt }]}>Clé de récupération — conservez-la hors de l’application</Text>
+              <Text selectable style={[styles.cloudKeyValue, { color: colors.accent }]}>{newRecoveryKey}</Text>
+              <CardPressable radius={10} onPress={() => void Clipboard.setStringAsync(newRecoveryKey).then(() => Alert.alert("Clé copiée", "Conservez-la dans un gestionnaire de mots de passe."))} style={[styles.btnActionRow, { backgroundColor: "#1e1e2c", borderColor: "#2f2f44", borderWidth: 1 }]} accessibilityRole="button" accessibilityLabel="Copier la clé de récupération">
+                <IconKey size={16} color={colors.accent} /><ButtonLabel style={[styles.btnActionText, { color: colors.txt }]}>Copier la clé</ButtonLabel>
+              </CardPressable>
+            </View> : null}
+            {cloud.status === "unconfigured" ? null : cloud.status === "signed_out" ? <CardPressable radius={10} onPress={() => void connectWithGoogle().catch((error) => Alert.alert("Yomu Cloud", error instanceof Error ? error.message : "Connexion impossible"))} style={[styles.btnActionRow, { backgroundColor: colors.accent }]} accessibilityRole="button" accessibilityLabel="Continuer avec Google">
+              <IconLogin size={16} color="#fff" /><ButtonLabel style={styles.btnActionText}>Continuer avec Google</ButtonLabel>
+            </CardPressable> : cloud.status === "locked" ? <>
+              <TextInput value={recoveryKeyInput} onChangeText={setRecoveryKeyInput} autoCapitalize="none" autoCorrect={false} placeholder="Clé de récupération" placeholderTextColor={colors.sub} style={[styles.cloudKeyInput, { color: colors.txt, borderColor: colors.tagBg }]} />
+              <CardPressable radius={10} onPress={() => void unlockVault(recoveryKeyInput).catch((error) => Alert.alert("Coffre verrouillé", error instanceof Error ? error.message : "Clé invalide"))} style={[styles.btnActionRow, { backgroundColor: colors.accent }]} accessibilityRole="button" accessibilityLabel="Déverrouiller et restaurer le coffre">
+                <IconLock size={16} color="#fff" /><ButtonLabel style={styles.btnActionText}>Déverrouiller et restaurer</ButtonLabel>
+              </CardPressable>
+              <CardPressable radius={10} onPress={() => void createVault().then(setNewRecoveryKey).catch((error) => Alert.alert("Yomu Cloud", error instanceof Error ? error.message : "Création impossible"))} style={[styles.btnActionRow, { backgroundColor: "#1e1e2c", borderColor: "#2f2f44", borderWidth: 1 }]} accessibilityRole="button" accessibilityLabel="Créer un nouveau coffre chiffré">
+                <IconPlus size={16} color={colors.accent} /><ButtonLabel style={[styles.btnActionText, { color: colors.txt }]}>Créer un nouveau coffre</ButtonLabel>
+              </CardPressable>
+            </> : <>
+              <CardPressable radius={10} onPress={() => void syncNow()} style={[styles.btnActionRow, { backgroundColor: colors.accent }]} accessibilityRole="button" accessibilityLabel="Synchroniser Yomu Cloud maintenant">
+                <IconRefresh size={16} color="#fff" /><ButtonLabel style={styles.btnActionText}>{cloud.status === "syncing" ? "Synchronisation…" : "Synchroniser maintenant"}</ButtonLabel>
+              </CardPressable>
+              <CardPressable radius={10} onPress={() => Alert.alert("Déconnecter Yomu Cloud", "Les données locales seront conservées, mais la clé sera retirée de ce téléphone.", [{ text: "Annuler", style: "cancel" }, { text: "Déconnecter", style: "destructive", onPress: () => void disconnectCloud() }])} style={[styles.btnActionRow, { backgroundColor: "#1e1e2c", borderColor: "#2f2f44", borderWidth: 1 }]} accessibilityRole="button" accessibilityLabel="Déconnecter Yomu Cloud">
+                <IconX size={16} color="#ff4757" /><ButtonLabel style={[styles.btnActionText, { color: colors.txt }]}>Déconnecter Yomu Cloud</ButtonLabel>
+              </CardPressable>
+            </>}
           </View>
         </View>
 
@@ -1642,6 +1700,10 @@ const styles = StyleSheet.create({
     marginTop: 2,
     lineHeight: 15,
   },
+  cloudKeyBox: { borderWidth: 1, borderRadius: 10, padding: 10, gap: 8, marginTop: 10 },
+  cloudKeyTitle: { fontSize: 12, fontWeight: "700" },
+  cloudKeyValue: { fontSize: 12, fontFamily: "monospace", lineHeight: 18 },
+  cloudKeyInput: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, marginTop: 10 },
   accountHeroCard: {
     backgroundColor: "#161622",
     borderWidth: 1,
@@ -1704,11 +1766,15 @@ const styles = StyleSheet.create({
     borderTopColor: "#222232",
   },
   quickActionPill: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: 6,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderRadius: 8,
   },
   quickActionText: {
@@ -2109,6 +2175,7 @@ const styles = StyleSheet.create({
     color: "#6b7280",
   },
   btnActionRow: {
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -2122,5 +2189,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "800",
     color: "#fff",
+    flexShrink: 1,
   },
 });

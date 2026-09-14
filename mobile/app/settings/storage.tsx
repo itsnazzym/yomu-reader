@@ -13,6 +13,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/lib/ThemeContext";
 import { IconBtn } from "@/components/ui/IconBtn";
+import { ButtonLabel } from "@/components/ui/ButtonLabel";
 import {
   clearAppCache,
   formatBytes,
@@ -149,7 +150,7 @@ export default function StorageSettingsScreen() {
             onPress={handleClearCache}
             style={[styles.actionBtn, { backgroundColor: colors.accent }]}
           >
-            <Text style={styles.actionText}>Vider le cache images</Text>
+            <ButtonLabel style={styles.actionText}>Vider le cache images</ButtonLabel>
           </TouchableOpacity>
 
           <Text style={[styles.section, { color: colors.sub }]}>Plus gros dossiers</Text>

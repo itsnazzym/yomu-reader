@@ -32,8 +32,9 @@ const PLAINTEXT_TOKEN_KEYS = [
   LEGACY_KEY_REFRESH,
 ];
 const REQUEST_TIMEOUT_MS = 12_000;
-const MAX_RATE_LIMIT_RETRIES = 3;
+const DEFAULT_MAX_RATE_LIMIT_RETRIES = 1;
 const MAX_RETRY_AFTER_MS = 5 * 60 * 1000;
+const MAX_INTERACTIVE_RETRY_WAIT_MS = 2_000;
 
 let authStorageReadyPromise: Promise<void> | null = null;
 
@@ -154,6 +155,9 @@ export interface RequestOptions {
   headers?: Record<string, string>;
   skipRefresh?: boolean;
   timeoutMs?: number;
+  /** Les longues attentes Retry-After ne doivent jamais bloquer l'interface. */
+  maxRateLimitRetries?: number;
+  maxRateLimitWaitMs?: number;
 }
 
 async function fetchWithTimeout(
@@ -227,13 +231,19 @@ function parseRetryAfterMs(value: string | null): number | undefined {
   return Math.min(MAX_RETRY_AFTER_MS, Math.max(0, timestamp - Date.now()));
 }
 
-function getRateLimitDelayMs(response: Response, attempt: number): number {
+function getRateLimitDelayMs(
+  response: Response,
+  attempt: number,
+  maxWaitMs: number
+): number | null {
   const retryAfterMs = parseRetryAfterMs(response.headers.get("Retry-After"));
   if (retryAfterMs !== undefined) {
-    return Math.max(1_000, retryAfterMs);
+    const delay = Math.max(250, retryAfterMs);
+    return delay <= maxWaitMs ? delay : null;
   }
 
-  return Math.min(30_000, 1_000 * 2 ** Math.max(0, attempt - 1));
+  const delay = Math.min(30_000, 1_000 * 2 ** Math.max(0, attempt - 1));
+  return delay <= maxWaitMs ? delay : null;
 }
 
 async function request<T>(
@@ -254,12 +264,23 @@ async function request<T>(
   const timeoutMs = opts.timeoutMs ?? REQUEST_TIMEOUT_MS;
   let res = await fetchWithTimeout(url, init, timeoutMs);
 
-  // Respect the server's Retry-After header before retrying rate-limited
-  // requests. This matters for the favorites endpoint, whose quota is
-  // measured per minute rather than per connection.
+  // Les lectures peuvent être retentées brièvement. Attendre plusieurs
+  // minutes un Retry-After dans un écran est pire qu'une erreur réessayable.
+  // Les mutations ne sont jamais rejouées implicitement afin d'éviter un
+  // double ajout/suppression si le serveur a déjà appliqué la demande.
   if (res.status === 429) {
-    for (let attempt = 1; attempt <= MAX_RATE_LIMIT_RETRIES; attempt++) {
-      const waitMs = getRateLimitDelayMs(res, attempt);
+    const maxRetries = Math.max(
+      0,
+      opts.maxRateLimitRetries ??
+        (method === "GET" ? DEFAULT_MAX_RATE_LIMIT_RETRIES : 0)
+    );
+    const maxWaitMs = Math.max(
+      0,
+      opts.maxRateLimitWaitMs ?? MAX_INTERACTIVE_RETRY_WAIT_MS
+    );
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const waitMs = getRateLimitDelayMs(res, attempt, maxWaitMs);
+      if (waitMs === null) break;
       await new Promise((r) => setTimeout(r, waitMs));
       res = await fetchWithTimeout(url, init, timeoutMs);
       if (res.status !== 429) break;

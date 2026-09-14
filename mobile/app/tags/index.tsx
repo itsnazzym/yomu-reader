@@ -36,6 +36,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/lib/ThemeContext";
 import { CardPressable } from "@/components/ui/CardPressable";
 import { IconBtn } from "@/components/ui/IconBtn";
+import { ButtonLabel } from "@/components/ui/ButtonLabel";
 import { lightTap } from "@/lib/haptics";
 import { TagLabel } from "@/components/ui/TagLabel";
 import {
@@ -493,7 +494,7 @@ export default function TagsScreen() {
             style={[styles.headerActionBtn, { backgroundColor: colors.accent }]}
           >
             <IconPlus size={15} color="#fff" strokeWidth={2.5} />
-            <Text style={styles.headerActionText}>Créer</Text>
+            <ButtonLabel style={styles.headerActionText}>Créer</ButtonLabel>
           </Pressable>
         )}
       </View>
@@ -743,7 +744,7 @@ export default function TagsScreen() {
                   style={[styles.colSearchBtn, { backgroundColor: col.color }]}
                 >
                   <IconSearch size={14} color="#fff" strokeWidth={2.5} />
-                  <Text style={styles.colSearchBtnText}>Rechercher le pack</Text>
+                  <ButtonLabel style={styles.colSearchBtnText}>Rechercher le pack</ButtonLabel>
                 </Pressable>
               </View>
             ))}
@@ -875,7 +876,7 @@ export default function TagsScreen() {
                 { backgroundColor: newColName.trim() ? newColColor : "#2d2d3e" },
               ]}
             >
-              <Text style={styles.modalSubmitText}>Créer le pack</Text>
+              <ButtonLabel style={styles.modalSubmitText}>Créer le pack</ButtonLabel>
             </Pressable>
           </Pressable>
         </Pressable>

@@ -6,11 +6,12 @@
 
 import type { SourceAdapter, SourceId, GlobalGalleryId } from "./types";
 import type { SourceMeta } from "./types";
-export type { SourceMeta };
 import { NhentaiSource } from "./nhentai";
 import { ThreeHentaiSource } from "./threehentai";
 import { DoujinsSource } from "./doujins";
 import { HitomiSource } from "./hitomi";
+
+export type { SourceMeta };
 
 const FACTORIES: Record<SourceId, () => SourceAdapter> = {
   nhentai: () => new NhentaiSource(),

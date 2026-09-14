@@ -27,6 +27,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { useTheme } from "@/lib/ThemeContext";
 import { mediumImpact, selectionTap } from "@/lib/haptics";
+import { ButtonLabel } from "@/components/ui/ButtonLabel";
 
 export type EmptyStateType =
   | "favorites"
@@ -220,7 +221,7 @@ export function AnimatedEmptyState({
               onPress={handleAction}
               style={[styles.primaryActionBtn, { backgroundColor: colors.accent }]}
             >
-              <Text style={styles.primaryActionText}>{actionLabel}</Text>
+              <ButtonLabel style={styles.primaryActionText}>{actionLabel}</ButtonLabel>
               <IconArrowRight size={16} color="#fff" strokeWidth={2.5} />
             </TouchableOpacity>
           )}
@@ -231,7 +232,7 @@ export function AnimatedEmptyState({
               onPress={handleSecondary}
               style={styles.secondaryActionBtn}
             >
-              <Text style={styles.secondaryActionText}>{secondaryActionLabel}</Text>
+              <ButtonLabel style={styles.secondaryActionText}>{secondaryActionLabel}</ButtonLabel>
             </TouchableOpacity>
           )}
         </View>
@@ -295,6 +296,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   primaryActionBtn: {
+    minHeight: 48,
     width: "100%",
     flexDirection: "row",
     alignItems: "center",
@@ -309,6 +311,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   secondaryActionBtn: {
+    minHeight: 48,
     paddingVertical: 6,
     paddingHorizontal: 12,
   },

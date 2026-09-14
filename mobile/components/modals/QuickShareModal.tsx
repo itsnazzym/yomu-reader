@@ -20,6 +20,7 @@ import {
 import { QRCodeView } from "../ui/QRCodeView";
 import { useTheme } from "../../lib/ThemeContext";
 import { mediumImpact, successFeedback, warningFeedback } from "../../lib/haptics";
+import { ButtonLabel } from "../ui/ButtonLabel";
 
 interface QuickShareModalProps {
   visible: boolean;
@@ -152,11 +153,11 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
           >
             <View style={styles.airdropBtnContent}>
               <IconDevices size={20} color="#ffffff" strokeWidth={2} />
-              <Text style={styles.airdropBtnText}>
+              <ButtonLabel style={styles.airdropBtnText}>
                 {Platform.OS === "ios"
                   ? "Envoyer via AirDrop / Partage iOS"
                   : "Partager via Quick Share / Android"}
-              </Text>
+              </ButtonLabel>
             </View>
           </TouchableOpacity>
 
@@ -177,7 +178,7 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
                 color={activeTab === "qr" ? colors.accent : colors.sub}
                 strokeWidth={2}
               />
-              <Text
+              <ButtonLabel
                 style={[
                   styles.tabBtnText,
                   { color: activeTab === "qr" ? colors.accent : colors.sub },
@@ -185,7 +186,7 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
                 ]}
               >
                 Code QR
-              </Text>
+              </ButtonLabel>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -203,7 +204,7 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
                 color={activeTab === "links" ? colors.accent : colors.sub}
                 strokeWidth={2}
               />
-              <Text
+              <ButtonLabel
                 style={[
                   styles.tabBtnText,
                   { color: activeTab === "links" ? colors.accent : colors.sub },
@@ -211,7 +212,7 @@ export const QuickShareModal: React.FC<QuickShareModalProps> = ({
                 ]}
               >
                 Copier les liens
-              </Text>
+              </ButtonLabel>
             </TouchableOpacity>
           </View>
 
@@ -387,6 +388,7 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   airdropMainButton: {
+    minHeight: 48,
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: "center",
@@ -411,6 +413,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   tabBtn: {
+    minHeight: 48,
     flex: 1,
     flexDirection: "row",
     alignItems: "center",

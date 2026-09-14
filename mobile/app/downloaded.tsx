@@ -25,6 +25,7 @@ import {
 import { removeCompletedByLocalId } from "@/lib/downloadQueueStore";
 import { findHistoryEntry, getHistory, initHistory } from "@/lib/historyStore";
 import { AnimatedEmptyState } from "@/components/ui/AnimatedEmptyState";
+import { ButtonLabel } from "@/components/ui/ButtonLabel";
 import { mediumImpact } from "@/lib/haptics";
 import { CollectionPickerModal } from "@/components/modals/CollectionPickerModal";
 import { makeGlobalId } from "@/lib/sources/types";
@@ -313,7 +314,7 @@ export default function DownloadedScreen() {
             style={[styles.cancelBtn, { backgroundColor: colors.tagBg }]}
           >
             <IconX size={14} color={colors.txt} strokeWidth={2} />
-            <Text style={[styles.cancelBtnText, { color: colors.txt }]}>Annuler</Text>
+            <ButtonLabel style={[styles.cancelBtnText, { color: colors.txt }]}>Annuler</ButtonLabel>
           </TouchableOpacity>
         ) : null}
       </View>

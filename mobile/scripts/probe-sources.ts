@@ -17,9 +17,7 @@ import type { SourceAdapter } from "../lib/sources/types";
 
 async function probe(name: string, src: SourceAdapter): Promise<boolean> {
   console.log(`\n=== ${name} ===`);
-  const result = src.healthCheck
-    ? await src.healthCheck()
-    : await probeAdapterHealth(src);
+  const result = await probeAdapterHealth(src);
   if (result.ok) {
     console.log(`OK en ${result.latencyMs}ms`);
   } else {

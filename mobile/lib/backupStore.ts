@@ -390,6 +390,7 @@ export async function restoreBackupFromJson(jsonString: string): Promise<{
       initLibraryCollections(true),
       initFollowsFeed(true),
     ]);
+    void import("./cloudSync").then(({ scheduleCloudSync }) => scheduleCloudSync()).catch(() => {});
 
     return {
       success: true,

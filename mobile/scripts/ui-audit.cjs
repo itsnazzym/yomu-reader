@@ -31,11 +31,16 @@ const TAG_TEXT_STYLE_RE =
 const UI_TEXT_STYLE_RE =
   /(?:Text|Title|Label|BtnText|Name|Sub|Hint|ChipText|BannerText|MenuText|RowText|ActionText)$/;
 
+/** Un vrai libellé d'action doit passer par ButtonLabel (jamais par Text brut). */
+const ACTION_TEXT_STYLE_RE = /(?:btn|button|submit|save|cancel)/i;
+
 /** En-têtes courts — flexShrink: 0 acceptable */
 const TEXT_STYLE_ALLOW_SHRINK0 =
   /^(sortHeader|sectionTitle|headerTitle|headerSub|categoryBadgeText|countLabel|tagChipCount)$/;
 
-const RAW_TAG_NAME_RE = /\{(?:t|tag|item|f)\.name\}/;
+// `item.name` is used by unrelated list rows (API keys, profile metrics).
+// Restrict this heuristic to the variables conventionally used for tag data.
+const RAW_TAG_NAME_RE = /\{(?:t|tag|f)\.name\}/;
 
 let errors = 0;
 let warnings = 0;
@@ -70,6 +75,19 @@ function scanFile(filePath) {
 
   if (relativePath.includes("test/") || relativePath.endsWith(".test.tsx")) {
     return;
+  }
+
+  // ButtonLabel est l'unique composant qui peut réduire un libellé d'action.
+  // Une ellipse ou un multiplicateur de police bloqué rendrait à nouveau les
+  // boutons inaccessibles sur Android avec une taille de police élevée.
+  if (relativePath === "components/ui/ButtonLabel.tsx") {
+    if (/ellipsizeMode\s*=/.test(content)) {
+      log("error", relativePath, 0, "ButtonLabel ne doit pas utiliser d'ellipse : le libellé d'une action doit rester entier");
+    }
+    const multiplier = content.match(/maxFontSizeMultiplier\s*=\{([0-9.]+)\}/);
+    if (!multiplier || Number(multiplier[1]) < 1.3) {
+      log("error", relativePath, 0, "ButtonLabel doit respecter une police système agrandie (maxFontSizeMultiplier ≥ 1.3)");
+    }
   }
 
   lines.forEach((line, index) => {
@@ -116,10 +134,25 @@ function scanFile(filePath) {
       }
     }
 
-    // numberOfLines={1} sans ellipsizeMode (risque de coupure mid-word)
+    // Les libellés de contrôle sont les seuls textes qui ne peuvent pas être
+    // abrégés : ButtonLabel réduit la taille avant d'afficher une ellipse.
+    // Les titres et métadonnées restent volontairement hors de cette règle.
+    const rawActionText = line.match(/<Text\s+[^>]*style=\{(?:\[)?styles\.([A-Za-z0-9_]+)/);
+    if (rawActionText && ACTION_TEXT_STYLE_RE.test(rawActionText[1])) {
+      log(
+        "error",
+        relativePath,
+        lineNum,
+        `Libellé d'action « ${rawActionText[1]} » via <Text> brut — utiliser <ButtonLabel>`
+      );
+    }
+
+    // numberOfLines={1} sans ellipsizeMode : expliciter le comportement pour
+    // les métadonnées. ButtonLabel est exempté : il réduit sa police pour
+    // conserver un vrai libellé d'action, sans ellipse.
     if (line.includes("numberOfLines={1}") || line.includes("numberOfLines={ 1 }")) {
       const window = lines.slice(index, Math.min(lines.length, index + 4)).join("\n");
-      if (!window.includes("ellipsizeMode")) {
+      if (relativePath !== "components/ui/ButtonLabel.tsx" && !window.includes("ellipsizeMode")) {
         log(
           "warning",
           relativePath,
@@ -130,7 +163,8 @@ function scanFile(filePath) {
     }
 
     if (RAW_TAG_NAME_RE.test(line)) {
-      const window = lines.slice(Math.max(0, index - 3), Math.min(lines.length, index + 3)).join("\n");
+      // JSX props often precede their rendered child by several lines.
+      const window = lines.slice(Math.max(0, index - 3), Math.min(lines.length, index + 14)).join("\n");
       if (window.includes("<Text") && !window.includes("TagLabel") && !window.includes("GalleryTagChip")) {
         log("warning", relativePath, lineNum, "Nom de tag via <Text> brut — préférer <TagLabel>");
       }

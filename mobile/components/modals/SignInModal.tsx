@@ -28,6 +28,7 @@ import {
 } from "@tabler/icons-react-native";
 import { useTheme } from "@/lib/ThemeContext";
 import { CardPressable } from "@/components/ui/CardPressable";
+import { ButtonLabel } from "@/components/ui/ButtonLabel";
 import { useAccount, detectCredentialType } from "@/lib/accountStore";
 import { CaptchaEmbed } from "@/components/auth/CaptchaEmbed";
 import { AuthPowProgressBar } from "@/components/auth/AuthPowProgressBar";
@@ -412,9 +413,9 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
                   ) : (
                     <IconRefresh size={16} color="#fff" strokeWidth={2} />
                   )}
-                  <Text style={styles.syncBtnText}>
+                  <ButtonLabel style={styles.syncBtnText}>
                     {loading ? (syncStatus || "Synchronisation...") : "Synchroniser les favoris maintenant"}
-                  </Text>
+                  </ButtonLabel>
                 </View>
               </CardPressable>
 
@@ -427,7 +428,7 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
                 accessibilityRole="button"
                 accessibilityLabel="Se déconnecter"
               >
-                <Text style={styles.logoutBtnText}>Se déconnecter</Text>
+                <ButtonLabel style={styles.logoutBtnText}>Se déconnecter</ButtonLabel>
               </Pressable>
             </View>
           ) : (
@@ -669,7 +670,7 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
                   ) : (
                     <IconLogin size={18} color="#fff" strokeWidth={2} />
                   )}
-                  <Text style={styles.submitBtnText}>
+                  <ButtonLabel style={styles.submitBtnText}>
                     {loading
                       ? "Traitement en cours..."
                       : mode === "login"
@@ -679,7 +680,7 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
                           : mode === "reset"
                             ? "Réinitialiser"
                             : "Valider la clé"}
-                  </Text>
+                  </ButtonLabel>
                 </View>
               </CardPressable>
 

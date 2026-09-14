@@ -38,6 +38,7 @@ import { useTheme } from "@/lib/ThemeContext";
 import { lightTap } from "@/lib/haptics";
 import { BookCard } from "@/components/BookCard";
 import { CardPressable } from "@/components/ui/CardPressable";
+import { ButtonLabel } from "@/components/ui/ButtonLabel";
 import { TagLabel } from "@/components/ui/TagLabel";
 import { Gallery } from "@/lib/api/types";
 import {
@@ -424,7 +425,7 @@ export default function RecommendationsScreen() {
           ) : (
             <IconRefresh size={15} color="#fff" strokeWidth={2} />
           )}
-          <Text style={styles.emptyActionText}>{isColdStart ? "Explorer les mangas" : "Chercher d'autres idées"}</Text>
+          <ButtonLabel style={styles.emptyActionText}>{isColdStart ? "Explorer les mangas" : "Chercher d'autres idées"}</ButtonLabel>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -443,7 +444,7 @@ export default function RecommendationsScreen() {
         style={[styles.retryButton, { backgroundColor: colors.accent }]}
       >
         <IconRefresh size={15} color="#fff" strokeWidth={2} />
-        <Text style={styles.retryButtonText}>Réessayer</Text>
+        <ButtonLabel style={styles.retryButtonText}>Réessayer</ButtonLabel>
       </TouchableOpacity>
     </View>
   );

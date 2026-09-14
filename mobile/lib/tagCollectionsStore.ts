@@ -20,11 +20,13 @@ export interface TagCollection {
   updatedAt: number;
 }
 
-const DEFAULT_COLLECTIONS: TagCollection[] = [];
-
 let currentCollections: TagCollection[] = [];
 const listeners = new Set<() => void>();
 const writes = createWriteQueue();
+
+function scheduleCloudBackup(): void {
+  void import("./cloudSync").then(({ scheduleCloudSync }) => scheduleCloudSync()).catch(() => {});
+}
 
 function notify() {
   for (const l of listeners) l();
@@ -52,7 +54,10 @@ export const initTagCollections = createInitOnce(loadCollections);
 
 async function saveCollections(): Promise<void> {
   const serialized = JSON.stringify(currentCollections);
-  return writes.enqueue(() => AsyncStorage.setItem(TAG_COLLECTIONS_STORAGE_KEY, serialized));
+  return writes.enqueue(async () => {
+    await AsyncStorage.setItem(TAG_COLLECTIONS_STORAGE_KEY, serialized);
+    scheduleCloudBackup();
+  });
 }
 
 export async function createTagCollection(

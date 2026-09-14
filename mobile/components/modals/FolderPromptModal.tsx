@@ -5,6 +5,7 @@ import { useTheme } from "@/lib/ThemeContext";
 import { getSandboxLibraryPath, useDownloadSettings } from "@/lib/downloadSettingsStore";
 import { requestDownloadDirectory } from "@/lib/safCopy";
 import { useOnboarding } from "@/lib/useOnboarding";
+import { ButtonLabel } from "@/components/ui/ButtonLabel";
 
 export function FolderPromptModal() {
   const { colors } = useTheme();
@@ -54,7 +55,7 @@ export function FolderPromptModal() {
             }}
             style={[styles.primary, { backgroundColor: colors.accent }]}
           >
-            <Text style={styles.primaryText}>Choisir un dossier</Text>
+            <ButtonLabel style={styles.primaryText}>Choisir un dossier</ButtonLabel>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -62,7 +63,7 @@ export function FolderPromptModal() {
             onPress={() => void finish(settings.rememberFolder)}
             style={styles.cancel}
           >
-            <Text style={[styles.cancelText, { color: colors.sub }]}>Garder l'emplacement par défaut</Text>
+            <ButtonLabel style={[styles.cancelText, { color: colors.sub }]}>Garder l'emplacement par défaut</ButtonLabel>
           </TouchableOpacity>
 
           <View style={styles.rememberRow}>

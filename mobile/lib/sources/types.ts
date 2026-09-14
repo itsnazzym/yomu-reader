@@ -56,6 +56,39 @@ export interface SourceSearchOptions {
   language?: string;
 }
 
+export interface SourceCapabilities {
+  search: boolean;
+  pagination: boolean;
+  tags: boolean;
+  random: boolean;
+}
+
+export type SourceErrorCode =
+  | "offline"
+  | "timeout"
+  | "http"
+  | "rate_limited"
+  | "parse"
+  | "paywalled"
+  | "not_found"
+  | "unsupported";
+
+export class SourceError extends Error {
+  constructor(
+    public readonly code: SourceErrorCode,
+    message: string,
+    public readonly status?: number
+  ) {
+    super(message);
+    this.name = "SourceError";
+  }
+}
+
+/** Cancellation travels from a screen change to adapters that support fetch signals. */
+export interface SourceRequestOptions {
+  signal?: AbortSignal;
+}
+
 export interface SourceTag {
   name: string;
   /** Type libre selon la source ("artist", "tag", "language"...). */
@@ -72,6 +105,7 @@ export interface SourceGalleryCard {
   numPages?: number;
   uploadDate?: number;
   tags?: SourceTag[];
+  access?: "public" | "subscriber" | "unknown";
 }
 
 /** Galerie complète, prête pour le lecteur. */
@@ -97,18 +131,19 @@ export interface SourceGallery {
  */
 export interface SourceAdapter {
   meta: SourceMeta;
-  search(opts: SourceSearchOptions): Promise<{
+  capabilities: SourceCapabilities;
+  search(opts: SourceSearchOptions, request?: SourceRequestOptions): Promise<{
     cards: SourceGalleryCard[];
     hasMore: boolean;
   }>;
-  getGallery(nativeId: string, knownTitle?: string): Promise<SourceGallery>;
-  getRandomNativeId?(): Promise<string>;
+  getGallery(nativeId: string, knownTitle?: string, request?: SourceRequestOptions): Promise<SourceGallery>;
+  getRandomNativeId?(request?: SourceRequestOptions): Promise<string>;
   /**
    * Liste réelle des tags du site (périmètre : tags uniquement). Absente si
    * la source n'expose pas de taxonomie exploitable ; l'appelant retombe
    * alors sur la DB statique nhentai.
    */
-  getTags?(): Promise<SourceTaxonomyItem[]>;
+  getTags?(request?: SourceRequestOptions): Promise<SourceTaxonomyItem[]>;
   /**
    * Ping léger (search → getGallery → HEAD). Absent = sonde générique
    * via probeAdapterHealth.
