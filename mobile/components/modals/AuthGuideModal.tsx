@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   StyleSheet,
   View,
@@ -8,10 +8,13 @@ import {
   TouchableOpacity,
   Image,
   useWindowDimensions,
+
 } from "react-native";
-import { IconX, IconBook, IconExternalLink } from "@tabler/icons-react-native";
+import { IconX } from "@tabler/icons-react-native";
+import { Image as ExpoImage } from "expo-image";
 import { useTheme } from "@/lib/ThemeContext";
 import { ButtonLabel } from "@/components/ui/ButtonLabel";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { lightTap } from "@/lib/haptics";
 
 export type GuideType = "ehentai_cookies" | "ehentai_forum" | "rule34_api" | "nhentai_session";
@@ -49,7 +52,7 @@ const GUIDES: Record<GuideType, GuideConfig> = {
     badgeColor: "#e63946",
     image: require("@/assets/images/guides/ehentai_cookies_guide.png"),
     steps: [
-      "1. Sur votre PC ou navigateur mobile, connectez-vous sur e-hentai.org ou forums.e-hentai.org.",
+      "1. Sur un ordinateur, connectez-vous sur e-hentai.org ou forums.e-hentai.org.",
       "2. Ouvrez les Outils de développement (touche F12 ou clic droit > Inspecter).",
       "3. Allez dans l'onglet 'Application' (Chrome/Edge) ou 'Stockage' (Firefox).",
       "4. Déroulez 'Cookies' > 'https://e-hentai.org'.",
@@ -98,22 +101,28 @@ export interface AuthGuideModalProps {
 
 export function AuthGuideModal({ visible, guideType, onClose }: AuthGuideModalProps) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
+  const imageWidth = Math.max(1, Math.min(width - 32, 520) - 56);
+  const [imageFailed, setImageFailed] = useState(false);
+  useEffect(() => setImageFailed(false), [guideType]);
 
   if (!guideType || !GUIDES[guideType]) return null;
   const guide = GUIDES[guideType];
+  const imageSource = guide.image ? Image.resolveAssetSource(guide.image) : null;
+  const imageAvailable = Boolean(imageSource?.uri) && !imageFailed;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <View style={[styles.card, { backgroundColor: "#12121a", borderColor: "#28283c" }]}>
+      <View style={[styles.backdrop, { paddingTop: Math.max(insets.top, 16), paddingBottom: Math.max(insets.bottom, 16) }]}>
+        <View style={[styles.card, { backgroundColor: colors.page, borderColor: colors.tagBg }]}>
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerTitleWrap}>
-              <View style={[styles.badge, { backgroundColor: guide.badgeColor + "28" }]}>
-                <Text style={[styles.badgeText, { color: guide.badgeColor }]}>{guide.sourceLabel}</Text>
+              <View style={[styles.badge, { backgroundColor: colors.tagBg }]}>
+                <Text style={[styles.badgeText, { color: colors.metaText }]}>{guide.sourceLabel}</Text>
               </View>
-              <Text style={[styles.headerTitle, { color: colors.txt }]} numberOfLines={2}>
+              <Text style={[styles.headerTitle, { color: colors.txt }]}>
                 {guide.title}
               </Text>
             </View>
@@ -136,18 +145,24 @@ export function AuthGuideModal({ visible, guideType, onClose }: AuthGuideModalPr
             showsVerticalScrollIndicator={false}
           >
             {/* Capture d'écran exacte si disponible */}
-            {guide.image && (
+            {guide.image && imageAvailable && imageSource && (
               <View style={styles.imageContainer}>
-                <Image
+                <ExpoImage
                   source={guide.image}
-                  style={[styles.guideImage, { width: Math.min(width - 64, 460) }]}
-                  resizeMode="contain"
+                  style={[styles.guideImage, {
+                    width: imageWidth,
+                    height: imageWidth * imageSource.height / imageSource.width,
+                  }]}
+                  accessible accessibilityLabel={`Illustration du guide ${guide.sourceLabel}`}
+                  contentFit="contain"
+                  onError={() => setImageFailed(true)}
                 />
                 <Text style={styles.imageCaption}>
-                  Capture d'écran exacte &bull; Éléments à repérer et valeurs à copier
+                  Illustration des éléments à repérer · Les pages peuvent évoluer
                 </Text>
               </View>
             )}
+            {guide.image && !imageAvailable && <Text style={styles.imageCaption}>Illustration indisponible. Les étapes ci-dessous restent accessibles.</Text>}
 
             {/* Étapes numérotées */}
             <View style={styles.section}>
@@ -162,7 +177,7 @@ export function AuthGuideModal({ visible, guideType, onClose }: AuthGuideModalPr
             {/* Conseils & astuces */}
             {guide.tips.length > 0 && (
               <View style={styles.tipsBox}>
-                <Text style={styles.tipsTitle}>💡 Astuce pratique :</Text>
+                <Text style={styles.tipsTitle}>À savoir</Text>
                 {guide.tips.map((tp, i) => (
                   <Text key={i} style={styles.tipText}>
                     &bull; {tp}
@@ -177,7 +192,7 @@ export function AuthGuideModal({ visible, guideType, onClose }: AuthGuideModalPr
                 lightTap();
                 onClose();
               }}
-              style={[styles.gotItBtn, { backgroundColor: colors.accent }]}
+              style={[styles.gotItBtn, { backgroundColor: colors.tagBg }]}
               activeOpacity={0.85}
             >
               <ButtonLabel style={styles.gotItText}>J'ai compris, revenir à la connexion</ButtonLabel>
@@ -200,7 +215,7 @@ const styles = StyleSheet.create({
   card: {
     width: "100%",
     maxWidth: 520,
-    maxHeight: "88%",
+    height: "92%",
     borderRadius: 18,
     borderWidth: 1,
     overflow: "hidden",
@@ -236,11 +251,14 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   closeBtn: {
-    padding: 6,
+    minWidth: 48,
+    minHeight: 48,
+    justifyContent: "center",
+    alignItems: "center",
     borderRadius: 8,
   },
   scroll: {
-    flexGrow: 0,
+    flex: 1,
   },
   scrollContent: {
     padding: 18,
@@ -255,7 +273,6 @@ const styles = StyleSheet.create({
     borderColor: "#242436",
   },
   guideImage: {
-    height: 220,
     borderRadius: 8,
   },
   imageCaption: {
@@ -282,9 +299,7 @@ const styles = StyleSheet.create({
     lineHeight: 19,
   },
   tipsBox: {
-    backgroundColor: "rgba(59, 130, 246, 0.12)",
-    borderLeftWidth: 3,
-    borderLeftColor: "#38bdf8",
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
     padding: 12,
     borderRadius: 8,
     marginBottom: 20,
@@ -292,7 +307,7 @@ const styles = StyleSheet.create({
   tipsTitle: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#38bdf8",
+    color: "#cbd5e1",
     marginBottom: 4,
   },
   tipText: {
@@ -302,6 +317,8 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   gotItBtn: {
+    minHeight: 48,
+    paddingHorizontal: 12,
     paddingVertical: 12,
     borderRadius: 12,
     alignItems: "center",

@@ -6,6 +6,8 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useState } from "react";
+import { createSecureSessionStorage } from "../secureSessionStorage";
+import { readRule34Response } from "./credentialInput";
 import type { SourceId } from "./types";
 
 const AUTH_STORAGE_PREFIX = "@source_auth_v1_";
@@ -33,6 +35,15 @@ export interface SourceAuthState {
   credentials?: Record<string, string>;
   isExHentaiEnabled?: boolean;
   updatedAt?: number;
+}
+
+const secureAuth = createSecureSessionStorage("yomu.sources.v1");
+const pendingAuth = new Map<SourceId, Promise<unknown>>();
+function enqueueAuth<T>(source: SourceId, task: () => Promise<T>): Promise<T> {
+  const work = (pendingAuth.get(source) || Promise.resolve()).catch(() => {}).then(task);
+  pendingAuth.set(source, work);
+  void work.finally(() => { if (pendingAuth.get(source) === work) pendingAuth.delete(source); }).catch(() => {});
+  return work;
 }
 
 const memoryState = new Map<SourceId, SourceAuthState>();
@@ -82,12 +93,24 @@ export function formatCookieHeader(cookies?: Record<string, string>): string {
 }
 
 /** Récupère l'état d'authentification pour une source spécifique. */
-export async function getSourceAuth(sourceId: SourceId): Promise<SourceAuthState> {
+export function getSourceAuth(sourceId: SourceId): Promise<SourceAuthState> {
+  return enqueueAuth(sourceId, () => readSourceAuth(sourceId));
+}
+
+async function readSourceAuth(sourceId: SourceId): Promise<SourceAuthState> {
   const inMemory = memoryState.get(sourceId);
   if (inMemory) return inMemory;
 
   try {
-    const raw = await AsyncStorage.getItem(storageKey(sourceId));
+    let raw = await secureAuth.getItem(sourceId);
+    if (!raw) {
+      raw = await AsyncStorage.getItem(storageKey(sourceId));
+      if (raw) {
+        // Delete the legacy copy only after its secure write succeeds.
+        await secureAuth.setItem(sourceId, raw);
+        await AsyncStorage.removeItem(storageKey(sourceId));
+      }
+    }
     if (raw) {
       const parsed = JSON.parse(raw) as SourceAuthState;
       const valid: SourceAuthState = {
@@ -102,7 +125,9 @@ export async function getSourceAuth(sourceId: SourceId): Promise<SourceAuthState
       memoryState.set(sourceId, valid);
       return valid;
     }
-  } catch {}
+  } catch {
+    throw new Error("Impossible de lire la session sécurisée. Réessayez la connexion.");
+  }
 
   const defaultState: SourceAuthState = {
     sourceId,
@@ -117,37 +142,37 @@ export async function saveSourceAuth(
   sourceId: SourceId,
   patch: Partial<SourceAuthState>
 ): Promise<SourceAuthState> {
-  const current = await getSourceAuth(sourceId);
-  const next: SourceAuthState = {
-    ...current,
-    ...patch,
-    sourceId,
-    updatedAt: Date.now(),
-  };
+  return enqueueAuth(sourceId, async () => {
+    const current = await readSourceAuth(sourceId);
+    const next: SourceAuthState = {
+      ...current,
+      ...patch,
+      sourceId,
+      updatedAt: Date.now(),
+    };
 
-  memoryState.set(sourceId, next);
-  try {
-    await AsyncStorage.setItem(storageKey(sourceId), JSON.stringify(next));
-  } catch {}
-
-  notify(sourceId);
-  return next;
+    await secureAuth.setItem(sourceId, JSON.stringify(next));
+    await AsyncStorage.removeItem(storageKey(sourceId));
+    memoryState.set(sourceId, next);
+    notify(sourceId);
+    return next;
+  });
 }
 
 /** Supprime l'authentification d'une source spécifique de manière isolée. */
 export async function clearSourceAuth(sourceId: SourceId): Promise<void> {
-  const cleanState: SourceAuthState = {
-    sourceId,
-    isLoggedIn: false,
-    updatedAt: Date.now(),
-  };
+  return enqueueAuth(sourceId, async () => {
+    const cleanState: SourceAuthState = {
+      sourceId,
+      isLoggedIn: false,
+      updatedAt: Date.now(),
+    };
 
-  memoryState.set(sourceId, cleanState);
-  try {
+    await secureAuth.removeItem(sourceId);
     await AsyncStorage.removeItem(storageKey(sourceId));
-  } catch {}
-
-  notify(sourceId);
+    memoryState.set(sourceId, cleanState);
+    notify(sourceId);
+  });
 }
 
 /** Abonnement aux changements d'authentification d'une source. */
@@ -157,7 +182,7 @@ export function subscribeSourceAuth(
 ): () => void {
   const wrapper = (updatedSourceId: SourceId) => {
     if (updatedSourceId === sourceId) {
-      void getSourceAuth(sourceId).then(listener);
+      void getSourceAuth(sourceId).then(listener).catch(() => {});
     }
   };
   listeners.add(wrapper);
@@ -176,7 +201,7 @@ export function useSourceAuth(sourceId: SourceId): SourceAuthState {
     let active = true;
     void getSourceAuth(sourceId).then((initial) => {
       if (active) setAuth(initial);
-    });
+    }).catch(() => {});
 
     const unsubscribe = subscribeSourceAuth(sourceId, (updated) => {
       if (active) setAuth(updated);
@@ -344,22 +369,25 @@ export async function loginRule34(userId: string, apiKey: string): Promise<Sourc
     cleanId
   )}&api_key=${encodeURIComponent(cleanKey)}`;
 
-  const response = await fetch(probeUrl, {
-    headers: {
-      "User-Agent": "YomuReader/2.0.2 (Rule34 Client)",
-    },
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const response = await fetch(probeUrl, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "YomuReader/2.0.2 (Rule34 Client)",
+      },
+    });
 
-  if (!response.ok) {
-    throw new Error(`Rule34 a répondu avec le statut HTTP ${response.status}`);
-  }
+    await readRule34Response(response);
 
-  return await saveSourceAuth("rule34", {
-    isLoggedIn: true,
-    username: `User #${cleanId}`,
-    credentials: {
-      userId: cleanId,
-      apiKey: cleanKey,
-    },
-  });
+    return await saveSourceAuth("rule34", {
+      isLoggedIn: true,
+      username: `User #${cleanId}`,
+      credentials: {
+        userId: cleanId,
+        apiKey: cleanKey,
+      },
+    });
+  } finally { clearTimeout(timer); }
 }

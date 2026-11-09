@@ -1,7 +1,10 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
+import { parseRule34CredentialInput, readRule34Response } from "../lib/sources/credentialInput";
 import { parseEhentaiNativeId, parseEhentaiListingCards } from "../lib/sources/ehentai";
 import { getEhentaiCategoryInfo, calculateCategoryBitmask } from "../lib/sources/ehentaiCategories";
 import { buildRule34Title, parseRule34Tags } from "../lib/sources/rule34";
-import { parseCookieString, formatCookieHeader } from "../lib/sources/authStore";
+import { getSourceAuth, saveSourceAuth, clearSourceAuth, loginRule34, parseCookieString, formatCookieHeader } from "../lib/sources/authStore";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -283,4 +286,69 @@ test("authStore: parse et formate les cookies de session isolés", () => {
     ipb_pass_hash: "abcdef",
   });
   assert.equal(formatted, "ipb_member_id=12345; ipb_pass_hash=abcdef");
+});
+
+
+test("E-Hentai ignore les icônes avant la couverture et accepte les espaces CSS", () => {
+  for (const icon of ["td.png", "t.png", "blank.gif"]) {
+    const html = `<tr><td><div class="gldown"><img src="https://ehgt.org/${icon}"></div>
+      <div class="glthumb"><img src="https://ehgt.org/blank.gif" data-src="https://ehgt.org/cover.webp"></div>
+      <a href="https://e-hentai.org/g/4317087/abcdef1234/"><div class="glink">Fixture gallery</div></a>
+      <div style="background-position: -48px -21px"></div></td></tr>`;
+    const [card] = parseEhentaiListingCards(html);
+    assert.equal(card.coverUrl, "https://ehgt.org/cover.webp");
+    assert.equal(card.rating, 1.5);
+    assert.equal(card.globalId, "ehentai:4317087_abcdef1234");
+  }
+});
+
+test("Rule34 répartit la ligne copiée dans les deux champs sans confondre les paramètres", () => {
+  assert.deepEqual(parseRule34CredentialInput("&api_key=fixture-key&user_id=42"), { apiKey: "fixture-key", userId: "42" });
+  assert.deepEqual(parseRule34CredentialInput("user_id=42&api_key=fixture-key"), { userId: "42", apiKey: "fixture-key" });
+  assert.deepEqual(parseRule34CredentialInput("https://example.test/?api_key=fixture-key&user_id=42"), { apiKey: "fixture-key", userId: "42" });
+  assert.deepEqual(parseRule34CredentialInput("not_api_key=wrong&user_id=42"), { userId: "42" });
+  assert.deepEqual(parseRule34CredentialInput("42"), {});
+});
+
+
+test("Rule34 distingue clé refusée, panne de réponse et vraie liste vide", async () => {
+  for (const status of [401, 403]) {
+    await assert.rejects(readRule34Response(new Response("Denied", { status })), (error: any) => error.code === "paywalled");
+  }
+  for (const text of ["Missing authentication", "Invalid API key", "Access denied"]) {
+    await assert.rejects(readRule34Response(new Response(text)), (error: any) => error.code === "paywalled");
+  }
+  for (const text of ["<html>maintenance</html>", '{"error":"unavailable"}', "[null]", '[{"id":1,"tags":{}}]']) {
+    await assert.rejects(readRule34Response(new Response(text)), (error: any) => error.code === "parse");
+  }
+  assert.deepEqual(await readRule34Response(new Response("[]")), []);
+  assert.equal((await readRule34Response(new Response('[{"id":1,"tags":"invalid api_key"}]'))).length, 1);
+});
+
+test("les sources migrent vers le coffre et une déconnexion ne ressuscite pas la session", async () => {
+  const legacyKey = "@source_auth_v1_ehentai";
+  await AsyncStorage.setItem(legacyKey, JSON.stringify({ isLoggedIn: true, cookies: { ipb_member_id: "42", ipb_pass_hash: "fixture" } }));
+  assert.equal((await getSourceAuth("ehentai")).cookies?.ipb_member_id, "42");
+  assert.equal(await AsyncStorage.getItem(legacyKey), null);
+  assert.ok(await SecureStore.getItemAsync("yomu.sources.v1.ehentai"));
+  await saveSourceAuth("rule34", { isLoggedIn: true, credentials: { userId: "42", apiKey: "fixture" } });
+  const save = saveSourceAuth("ehentai", { isLoggedIn: true });
+  const clear = clearSourceAuth("ehentai");
+  await Promise.all([save, clear]);
+  assert.equal((await getSourceAuth("ehentai")).isLoggedIn, false);
+  assert.equal(await SecureStore.getItemAsync("yomu.sources.v1.ehentai"), null);
+  assert.equal((await getSourceAuth("rule34")).isLoggedIn, true);
+  assert.equal(await AsyncStorage.getItem("@source_auth_v1_rule34"), null);
+  await clearSourceAuth("rule34");
+});
+
+test("Rule34 ne mémorise jamais une connexion refusée avec HTTP 200", async () => {
+  const previous = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => new Response("Missing authentication");
+    await assert.rejects(loginRule34("42", "fixture"));
+    assert.equal((await getSourceAuth("rule34")).isLoggedIn, false);
+    globalThis.fetch = async () => new Response("[]");
+    assert.equal((await loginRule34("42", "fixture")).isLoggedIn, true);
+  } finally { globalThis.fetch = previous; await clearSourceAuth("rule34"); }
 });

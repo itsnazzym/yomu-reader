@@ -135,31 +135,13 @@ export function parseEhentaiListingCards(html: string): SourceGalleryCard[] {
       category = getEhentaiCategoryInfo(rawCat).name;
     }
 
-    // Vignette de couverture : cibler spécifiquement le conteneur glthumb
-    let coverUrl = "";
-    const thumbAreaMatch = rowHtml.match(/<div class="glthumb"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/i);
-    const searchArea = thumbAreaMatch ? thumbAreaMatch[1] : rowHtml;
-
-    // data-src en priorité pour les images lazy-loadées
-    const dataSrcMatch = searchArea.match(/data-src="([^"]+)"/i);
-    if (dataSrcMatch && !dataSrcMatch[1].startsWith("data:")) {
-      coverUrl = dataSrcMatch[1];
-    } else {
-      const srcMatches = [...searchArea.matchAll(/src="([^"]+)"/gi)];
-      for (const sm of srcMatches) {
-        const u = sm[1];
-        if (
-          u &&
-          !u.startsWith("data:") &&
-          !u.includes("/g/td.png") &&
-          !u.includes("blank.gif") &&
-          !u.includes("/g/t.png")
-        ) {
-          coverUrl = u;
-          break;
-        }
-      }
-    }
+    // Prefer the thumbnail container; older listing modes may only expose an image.
+    const thumbArea = rowHtml.match(/<div\b[^>]*class="[^"]*\bglthumb\b[^"]*"[^>]*>([\s\S]*?)<\/div>/i)?.[1] || rowHtml;
+    const candidates = [...thumbArea.matchAll(/\bdata-src="([^"]+)"/gi), ...thumbArea.matchAll(/(?:^|\s)src="([^"]+)"/gi)];
+    const coverUrl = candidates.map(match => decodeEntities(match[1])).find(url => {
+      if (!/^https?:\/\//i.test(url)) return false;
+      return !/\/(?:td\.png|t\.png|blank\.gif)(?:[?#]|$)/i.test(url);
+    }) || "";
 
     // Nombre de pages
     let numPages: number | undefined;
@@ -170,7 +152,7 @@ export function parseEhentaiListingCards(html: string): SourceGalleryCard[] {
 
     // Note moyenne (sprite d'étoiles)
     let rating: number | undefined;
-    const spriteMatch = rowHtml.match(/background-position:(-?\d+)px\s*(-?\d+)px/i);
+    const spriteMatch = rowHtml.match(/background-position:\s*(-?\d+)px\s+(-?\d+)px/i);
     if (spriteMatch) {
       rating = parseRatingFromSprite(spriteMatch[1], spriteMatch[2]);
     }

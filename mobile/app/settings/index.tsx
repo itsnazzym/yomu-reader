@@ -566,7 +566,7 @@ export default function SettingsScreen() {
                     ]}
                   >
                     <Text style={styles.activePillText}>
-                      {rule34Auth.isLoggedIn ? "Lié" : "Anonyme"}
+                      {rule34Auth.isLoggedIn ? "Lié" : "Non lié"}
                     </Text>
                   </View>
                 </View>

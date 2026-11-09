@@ -1,49 +1,24 @@
 import React, { useState, useEffect } from "react";
-import {
-  StyleSheet,
-  View,
-  Text,
-  Modal,
-  TextInput,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-  ActivityIndicator,
-  Alert,
-  Switch,
-  TouchableOpacity,
-  Linking,
-} from "react-native";
-import {
-  IconX,
-  IconShieldLock,
-  IconKey,
-  IconUser,
-  IconLock,
-  IconCheck,
-  IconTrash,
-  IconLogin,
-  IconWorld,
-  IconSparkles,
-} from "@tabler/icons-react-native";
+import { StyleSheet, View, Text, TextInput, ActivityIndicator, Alert, Switch, TouchableOpacity, Linking, Keyboard, type TextInputProps } from "react-native";
+import { IconBook, IconExternalLink } from "@tabler/icons-react-native";
 import { useTheme } from "@/lib/ThemeContext";
 import { CardPressable } from "@/components/ui/CardPressable";
 import { ButtonLabel } from "@/components/ui/ButtonLabel";
+import { AuthModalShell } from "@/components/auth/AuthModalShell";
 import { lightTap } from "@/lib/haptics";
-import {
-  getSourceAuth,
-  saveSourceAuth,
-  clearSourceAuth,
-  loginEhentaiWithCookies,
-  loginEhentaiWithCredentials,
-  loginRule34,
-  parseCookieString,
-  useSourceAuth,
-  type SourceAuthState,
-} from "@/lib/sources/authStore";
+import { clearSourceAuth, loginEhentaiWithCookies, loginEhentaiWithCredentials, loginRule34, parseCookieString, useSourceAuth } from "@/lib/sources/authStore";
+import { parseRule34CredentialInput } from "@/lib/sources/credentialInput";
 import type { SourceId } from "@/lib/sources/types";
 import { AuthGuideModal, type GuideType } from "./AuthGuideModal";
-import { IconBook } from "@tabler/icons-react-native";
+
+function AuthField({ label, ...props }: TextInputProps & { label: string }) {
+  const { colors } = useTheme();
+  return <View style={styles.field}>
+    <Text style={[styles.fieldLabel, { color: colors.txt }]}>{label}</Text>
+    <TextInput {...props} accessibilityLabel={label} autoCapitalize="none" autoCorrect={false}
+      placeholderTextColor={colors.sub} style={[styles.input, { color: colors.txt, backgroundColor: colors.bg, borderColor: colors.tagBg }]} />
+  </View>;
+}
 
 export interface SourceAuthModalProps {
   visible: boolean;
@@ -85,22 +60,23 @@ export function SourceAuthModal({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (visible) {
-      setActiveTab(initialSource === "nhentai" ? "ehentai" : initialSource);
-      setErrorMessage(null);
-      setSuccessMessage(null);
-      if (ehentaiAuth.cookies) {
-        setIpbMemberId(ehentaiAuth.cookies.ipb_member_id || "");
-        setIpbPassHash(ehentaiAuth.cookies.ipb_pass_hash || "");
-        setIgneousCookie(ehentaiAuth.cookies.igneous || "");
-        setExhentaiToggle(Boolean(ehentaiAuth.isExHentaiEnabled));
-      }
-      if (rule34Auth.credentials) {
-        setRule34UserId(rule34Auth.credentials.userId || "");
-        setRule34ApiKey(rule34Auth.credentials.apiKey || "");
-      }
-    }
-  }, [visible, initialSource, ehentaiAuth, rule34Auth]);
+    if (!visible) setGuideModalType(null);
+    setActiveTab(initialSource === "rule34" ? "rule34" : "ehentai");
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setRawCookieString("");
+    setEhentaiPassword("");
+  }, [visible, initialSource]);
+
+  useEffect(() => {
+    if (!visible) return;
+    setIpbMemberId(ehentaiAuth.cookies?.ipb_member_id || "");
+    setIpbPassHash(ehentaiAuth.cookies?.ipb_pass_hash || "");
+    setIgneousCookie(ehentaiAuth.cookies?.igneous || "");
+    setExhentaiToggle(Boolean(ehentaiAuth.isExHentaiEnabled));
+    setRule34UserId(rule34Auth.credentials?.userId || "");
+    setRule34ApiKey(rule34Auth.credentials?.apiKey || "");
+  }, [visible, ehentaiAuth, rule34Auth]);
 
   // Détection automatique lors du collage d'une chaîne complète de cookies
   const handleRawCookiePaste = (text: string) => {
@@ -115,6 +91,7 @@ export function SourceAuthModal({
   };
 
   const handleEhentaiLogin = async () => {
+    Keyboard.dismiss();
     setLoading(true);
     setErrorMessage(null);
     setSuccessMessage(null);
@@ -152,13 +129,15 @@ export function SourceAuthModal({
           text: "Déconnecter",
           style: "destructive",
           onPress: async () => {
-            await clearSourceAuth("ehentai");
-            setIpbMemberId("");
-            setIpbPassHash("");
-            setIgneousCookie("");
-            setRawCookieString("");
-            setSuccessMessage("Session E-Hentai déconnectée.");
-            lightTap();
+            try {
+              await clearSourceAuth("ehentai");
+              setIpbMemberId("");
+              setIpbPassHash("");
+              setIgneousCookie("");
+              setRawCookieString("");
+              setSuccessMessage("Session E-Hentai déconnectée.");
+              lightTap();
+            } catch { setErrorMessage("Impossible d’effacer la session sécurisée. Réessayez."); }
           },
         },
       ]
@@ -166,26 +145,13 @@ export function SourceAuthModal({
   };
 
   const handleRule34Login = async () => {
+    Keyboard.dismiss();
     setLoading(true);
     setErrorMessage(null);
     setSuccessMessage(null);
     try {
-      let cleanUid = rule34UserId.trim();
-      let cleanKey = rule34ApiKey.trim();
-      if (cleanUid.includes("user_id=") || cleanUid.includes("api_key=")) {
-        const uMatch = cleanUid.match(/user_id=([^&\s]+)/);
-        const kMatch = cleanUid.match(/api_key=([^&\s]+)/);
-        if (uMatch) cleanUid = uMatch[1];
-        if (kMatch && !cleanKey) cleanKey = kMatch[1];
-      }
-      if (cleanKey.includes("user_id=") || cleanKey.includes("api_key=")) {
-        const uMatch = cleanKey.match(/user_id=([^&\s]+)/);
-        const kMatch = cleanKey.match(/api_key=([^&\s]+)/);
-        if (kMatch) cleanKey = kMatch[1];
-        if (uMatch && !cleanUid) cleanUid = uMatch[1];
-      }
-      setRule34UserId(cleanUid);
-      setRule34ApiKey(cleanKey);
+      const cleanUid = rule34UserId.trim();
+      const cleanKey = rule34ApiKey.trim();
       await loginRule34(cleanUid, cleanKey);
       lightTap();
       setSuccessMessage("Compte Rule34 lié avec succès !");
@@ -206,660 +172,124 @@ export function SourceAuthModal({
           text: "Déconnecter",
           style: "destructive",
           onPress: async () => {
-            await clearSourceAuth("rule34");
-            setRule34UserId("");
-            setRule34ApiKey("");
-            setSuccessMessage("Identifiants Rule34 retirés.");
-            lightTap();
+            try {
+              await clearSourceAuth("rule34");
+              setRule34UserId("");
+              setRule34ApiKey("");
+              setSuccessMessage("Identifiants Rule34 retirés.");
+              lightTap();
+            } catch { setErrorMessage("Impossible d’effacer la session sécurisée. Réessayez."); }
           },
         },
       ]
     );
   };
 
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={styles.keyboardWrap}
-        >
-          <View style={[styles.modalCard, { backgroundColor: "#12121a", borderColor: "#222232" }]}>
-            {/* Header */}
-            <View style={styles.header}>
-              <View style={styles.headerTitleRow}>
-                <IconShieldLock size={20} color={colors.accent} strokeWidth={2} />
-                <Text style={[styles.title, { color: colors.txt }]}>Comptes & Sources Isolés</Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => {
-                  lightTap();
-                  onClose();
-                }}
-                style={styles.closeBtn}
-              >
-                <IconX size={20} color={colors.sub} />
-              </TouchableOpacity>
-            </View>
-
-            {/* Source Tabs */}
-            <View style={styles.tabsRow}>
-              <TouchableOpacity
-                onPress={() => {
-                  lightTap();
-                  setActiveTab("ehentai");
-                  setErrorMessage(null);
-                  setSuccessMessage(null);
-                }}
-                style={[
-                  styles.tabChip,
-                  activeTab === "ehentai" && { backgroundColor: "#e63946" },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.tabChipText,
-                    activeTab === "ehentai" ? { color: "#fff", fontWeight: "700" } : { color: colors.sub },
-                  ]}
-                >
-                  E-Hentai {ehentaiAuth.isLoggedIn ? "✓" : ""}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => {
-                  lightTap();
-                  setActiveTab("rule34");
-                  setErrorMessage(null);
-                  setSuccessMessage(null);
-                }}
-                style={[
-                  styles.tabChip,
-                  activeTab === "rule34" && { backgroundColor: "#7ebd78" },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.tabChipText,
-                    activeTab === "rule34" ? { color: "#101018", fontWeight: "700" } : { color: colors.sub },
-                  ]}
-                >
-                  Rule34 {rule34Auth.isLoggedIn ? "✓" : ""}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => {
-                  lightTap();
-                  onClose();
-                  onOpenNhentaiAuth?.();
-                }}
-                style={[styles.tabChip, { backgroundColor: "#1e1e2c" }]}
-              >
-                <Text style={[styles.tabChipText, { color: colors.txt }]}>nHentai ↗</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => {
-                  lightTap();
-                  setGuideModalType("nhentai_session");
-                }}
-                style={[styles.blueGuideBadge, { marginVertical: 0, paddingVertical: 6 }]}
-                activeOpacity={0.7}
-              >
-                <IconBook size={13} color="#38bdf8" />
-                <Text style={[styles.blueGuideText, { fontSize: 11 }]}>Guide nHentai</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Status Messages */}
-            {errorMessage ? (
-              <View style={styles.errorBox}>
-                <Text style={styles.errorText}>{errorMessage}</Text>
-              </View>
-            ) : null}
-
-            {successMessage ? (
-              <View style={styles.successBox}>
-                <Text style={styles.successText}>{successMessage}</Text>
-              </View>
-            ) : null}
-
-            <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-              {/* ────────────────── Onglet E-Hentai ────────────────── */}
-              {activeTab === "ehentai" && (
-                <View style={styles.sectionWrap}>
-                  {/* Status Banner */}
-                  <View
-                    style={[
-                      styles.statusBanner,
-                      {
-                        backgroundColor: ehentaiAuth.isLoggedIn ? "rgba(46, 213, 115, 0.12)" : "rgba(255, 255, 255, 0.05)",
-                        borderColor: ehentaiAuth.isLoggedIn ? "rgba(46, 213, 115, 0.3)" : "#262638",
-                      },
-                    ]}
-                  >
-                    <View style={styles.statusRow}>
-                      <View
-                        style={[
-                          styles.statusDot,
-                          { backgroundColor: ehentaiAuth.isLoggedIn ? "#2ed573" : "#747d8c" },
-                        ]}
-                      />
-                      <Text style={[styles.statusTitle, { color: colors.txt }]}>
-                        {ehentaiAuth.isLoggedIn
-                          ? `Connecté : ${ehentaiAuth.username || "Compte E-Hentai"}`
-                          : "Non connecté (Mode Invité E-Hentai)"}
-                      </Text>
-                    </View>
-                    {ehentaiAuth.isExHentaiEnabled && (
-                      <Text style={styles.pandaBadge}>🐼 Mode ExHentai (Panda) Actif</Text>
-                    )}
-                  </View>
-
-                  {/* Mode switcher (Cookies vs Forum) */}
-                  <View style={styles.subModeRow}>
-                    <TouchableOpacity
-                      onPress={() => setEhentaiLoginMode("cookies")}
-                      style={[
-                        styles.subModeBtn,
-                        ehentaiLoginMode === "cookies" && { backgroundColor: "#252538", borderColor: "#e63946" },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.subModeText,
-                          ehentaiLoginMode === "cookies" ? { color: "#fff", fontWeight: "700" } : { color: colors.sub },
-                        ]}
-                      >
-                        Import de Cookies (JHenTai)
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      onPress={() => setEhentaiLoginMode("forum")}
-                      style={[
-                        styles.subModeBtn,
-                        ehentaiLoginMode === "forum" && { backgroundColor: "#252538", borderColor: "#e63946" },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.subModeText,
-                          ehentaiLoginMode === "forum" ? { color: "#fff", fontWeight: "700" } : { color: colors.sub },
-                        ]}
-                      >
-                        Identifiants Forum
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {ehentaiLoginMode === "cookies" ? (
-                    <View style={styles.inputsBlock}>
-                      <Text style={[styles.fieldHint, { color: colors.sub }]}>
-                        Collez la chaîne complète de cookies ou saisissez les champs obligatoires (ipb_member_id et ipb_pass_hash) :
-                      </Text>
-                      <TouchableOpacity
-                        onPress={() => {
-                          lightTap();
-                          setGuideModalType("ehentai_cookies");
-                        }}
-                        style={styles.blueGuideBadge}
-                        activeOpacity={0.7}
-                      >
-                        <IconBook size={14} color="#38bdf8" />
-                        <Text style={styles.blueGuideText}>
-                          Guide illustré : trouver ses cookies (F12)
-                        </Text>
-                      </TouchableOpacity>
-
-                      <TextInput
-                        value={rawCookieString}
-                        onChangeText={handleRawCookiePaste}
-                        placeholder="Coller cookie complet (ipb_member_id=...; ipb_pass_hash=...)"
-                        placeholderTextColor="#666"
-                        style={[styles.input, { color: colors.txt, borderColor: "#2e2e42" }]}
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                      />
-
-                      <TextInput
-                        value={ipbMemberId}
-                        onChangeText={setIpbMemberId}
-                        placeholder="ipb_member_id (ex: 1234567)"
-                        placeholderTextColor="#666"
-                        keyboardType="numeric"
-                        style={[styles.input, { color: colors.txt, borderColor: "#2e2e42" }]}
-                      />
-
-                      <TextInput
-                        value={ipbPassHash}
-                        onChangeText={setIpbPassHash}
-                        placeholder="ipb_pass_hash (32 caractères hexadécimaux)"
-                        placeholderTextColor="#666"
-                        secureTextEntry
-                        style={[styles.input, { color: colors.txt, borderColor: "#2e2e42" }]}
-                      />
-
-                      <TextInput
-                        value={igneousCookie}
-                        onChangeText={setIgneousCookie}
-                        placeholder="igneous (requis pour ExHentai / Panda 🐼)"
-                        placeholderTextColor="#666"
-                        style={[styles.input, { color: colors.txt, borderColor: "#2e2e42" }]}
-                      />
-
-                      <View style={styles.switchRow}>
-                        <Text style={[styles.switchLabel, { color: colors.txt }]}>
-                          Activer le routage ExHentai (Panda)
-                        </Text>
-                        <Switch
-                          value={exhentaiToggle}
-                          onValueChange={setExhentaiToggle}
-                          trackColor={{ false: "#333", true: "#e63946" }}
-                        />
-                      </View>
-                    </View>
-                  ) : (
-                    <View style={styles.inputsBlock}>
-                      <Text style={[styles.fieldHint, { color: colors.sub }]}>
-                        Connexion directe aux forums IP.Board E-Hentai :
-                      </Text>
-                      <TouchableOpacity
-                        onPress={() => {
-                          lightTap();
-                          setGuideModalType("ehentai_forum");
-                        }}
-                        style={styles.blueGuideBadge}
-                        activeOpacity={0.7}
-                      >
-                        <IconBook size={14} color="#38bdf8" />
-                        <Text style={styles.blueGuideText}>
-                          Guide illustré : identifiants forum
-                        </Text>
-                      </TouchableOpacity>
-
-                      <TextInput
-                        value={ehentaiUsername}
-                        onChangeText={setEhentaiUsername}
-                        placeholder="Nom d'utilisateur forum"
-                        placeholderTextColor="#666"
-                        style={[styles.input, { color: colors.txt, borderColor: "#2e2e42" }]}
-                        autoCapitalize="none"
-                      />
-
-                      <TextInput
-                        value={ehentaiPassword}
-                        onChangeText={setEhentaiPassword}
-                        placeholder="Mot de passe forum"
-                        placeholderTextColor="#666"
-                        secureTextEntry
-                        style={[styles.input, { color: colors.txt, borderColor: "#2e2e42" }]}
-                      />
-                    </View>
-                  )}
-
-                  {/* Boutons d'action */}
-                  <View style={styles.actionBtnsRow}>
-                    <CardPressable
-                      onPress={handleEhentaiLogin}
-                      radius={12}
-                      style={[styles.primaryBtn, { backgroundColor: "#e63946" }]}
-                    >
-                      <View style={styles.btnInner}>
-                        {loading ? (
-                          <ActivityIndicator size="small" color="#fff" />
-                        ) : (
-                          <>
-                            <IconCheck size={18} color="#fff" strokeWidth={2.2} />
-                            <ButtonLabel style={styles.btnText}>Enregistrer E-Hentai</ButtonLabel>
-                          </>
-                        )}
-                      </View>
-                    </CardPressable>
-
-                    {ehentaiAuth.isLoggedIn && (
-                      <CardPressable
-                        onPress={handleEhentaiLogout}
-                        radius={12}
-                        style={[styles.logoutBtn, { borderColor: "#44222a", backgroundColor: "#221217" }]}
-                      >
-                        <View style={styles.btnInner}>
-                          <IconTrash size={16} color="#ff4757" />
-                          <ButtonLabel style={[styles.btnText, { color: "#ff4757" }]}>Déconnecter</ButtonLabel>
-                        </View>
-                      </CardPressable>
-                    )}
-                  </View>
-                </View>
-              )}
-
-              {/* ────────────────── Onglet Rule34 ────────────────── */}
-              {activeTab === "rule34" && (
-                <View style={styles.sectionWrap}>
-                  <View
-                    style={[
-                      styles.statusBanner,
-                      {
-                        backgroundColor: rule34Auth.isLoggedIn ? "rgba(126, 189, 120, 0.15)" : "rgba(255, 255, 255, 0.05)",
-                        borderColor: rule34Auth.isLoggedIn ? "rgba(126, 189, 120, 0.3)" : "#262638",
-                      },
-                    ]}
-                  >
-                    <View style={styles.statusRow}>
-                      <View
-                        style={[
-                          styles.statusDot,
-                          { backgroundColor: rule34Auth.isLoggedIn ? "#7ebd78" : "#747d8c" },
-                        ]}
-                      />
-                      <Text style={[styles.statusTitle, { color: colors.txt }]}>
-                        {rule34Auth.isLoggedIn
-                          ? `Lié : ${rule34Auth.username || "Compte Rule34"}`
-                          : "Non lié (Navigation publique anonyme)"}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <Text style={[styles.fieldHint, { color: colors.sub }]}>
-                    Renseignez votre User ID et votre clé API (obtenue sur votre compte rule34.xxx) pour accéder aux galeries et posts :
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => Linking.openURL("https://rule34.xxx/index.php?page=account&s=options")}
-                    style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12 }}
-                    activeOpacity={0.7}
-                  >
-                    <IconWorld size={14} color="#7ebd78" />
-                    <Text style={{ color: "#7ebd78", fontSize: 13, textDecorationLine: "underline" }}>
-                      Obtenir ma clé API gratuite sur rule34.xxx
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => {
-                      lightTap();
-                      setGuideModalType("rule34_api");
-                    }}
-                    style={styles.blueGuideBadge}
-                    activeOpacity={0.7}
-                  >
-                    <IconBook size={14} color="#38bdf8" />
-                    <Text style={styles.blueGuideText}>
-                      Guide illustré : obtenir la clé avec screenshots exacts
-                    </Text>
-                  </TouchableOpacity>
-
-                  <View style={styles.inputsBlock}>
-                    <TextInput
-                      value={rule34UserId}
-                      onChangeText={setRule34UserId}
-                      placeholder="User ID Rule34 (numérique)"
-                      placeholderTextColor="#666"
-                      keyboardType="numeric"
-                      style={[styles.input, { color: colors.txt, borderColor: "#2e2e42" }]}
-                    />
-
-                    <TextInput
-                      value={rule34ApiKey}
-                      onChangeText={setRule34ApiKey}
-                      placeholder="Clé API Rule34"
-                      placeholderTextColor="#666"
-                      secureTextEntry
-                      style={[styles.input, { color: colors.txt, borderColor: "#2e2e42" }]}
-                      autoCapitalize="none"
-                    />
-                  </View>
-
-                  <View style={styles.actionBtnsRow}>
-                    <CardPressable
-                      onPress={handleRule34Login}
-                      radius={12}
-                      style={[styles.primaryBtn, { backgroundColor: "#7ebd78" }]}
-                    >
-                      <View style={styles.btnInner}>
-                        {loading ? (
-                          <ActivityIndicator size="small" color="#101018" />
-                        ) : (
-                          <>
-                            <IconCheck size={18} color="#101018" strokeWidth={2.4} />
-                            <ButtonLabel style={[styles.btnText, { color: "#101018" }]}>Lier Rule34</ButtonLabel>
-                          </>
-                        )}
-                      </View>
-                    </CardPressable>
-
-                    {rule34Auth.isLoggedIn && (
-                      <CardPressable
-                        onPress={handleRule34Logout}
-                        radius={12}
-                        style={[styles.logoutBtn, { borderColor: "#44222a", backgroundColor: "#221217" }]}
-                      >
-                        <View style={styles.btnInner}>
-                          <IconTrash size={16} color="#ff4757" />
-                          <ButtonLabel style={[styles.btnText, { color: "#ff4757" }]}>Retirer</ButtonLabel>
-                        </View>
-                      </CardPressable>
-                    )}
-                  </View>
-                </View>
-              )}
-            </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
-      </View>
-      <AuthGuideModal
-        visible={guideModalType !== null}
-        guideType={guideModalType}
-        onClose={() => setGuideModalType(null)}
-      />
-    </Modal>
+  const updateRule34Field = (field: "userId" | "apiKey", text: string) => {
+    const parsed = parseRule34CredentialInput(text);
+    if (parsed.userId || parsed.apiKey) {
+      if (parsed.userId) setRule34UserId(parsed.userId);
+      if (parsed.apiKey) setRule34ApiKey(parsed.apiKey);
+    } else if (field === "userId") setRule34UserId(text);
+    else setRule34ApiKey(text);
+  };
+  const switchSource = (source: SourceId) => {
+    setActiveTab(source);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+  };
+  const openGuide = (type: GuideType) => { Keyboard.dismiss(); setGuideModalType(type); };
+  const guideLink = (type: GuideType) => (
+    <TouchableOpacity onPress={() => openGuide(type)} style={styles.help} accessibilityRole="button">
+      <IconBook size={18} color={colors.metaText} />
+      <ButtonLabel style={[styles.helpText, { color: colors.metaText }]}>Guide illustré avec captures d’écran</ButtonLabel>
+    </TouchableOpacity>
   );
+  const auth = activeTab === "rule34" ? rule34Auth : ehentaiAuth;
+  return <>
+    <AuthModalShell visible={visible && guideModalType === null} onClose={onClose} title="Comptes et sources">
+      <Text style={[styles.description, { color: colors.sub }]}>Chaque source utilise ses propres identifiants.</Text>
+      <View style={styles.tabs}>
+        {(["ehentai", "rule34"] as const).map(source => <TouchableOpacity key={source}
+          disabled={loading} onPress={() => switchSource(source)} accessibilityRole="tab"
+          accessibilityState={{ selected: activeTab === source, disabled: loading }}
+          style={[styles.tab, { backgroundColor: activeTab === source ? colors.tagBg : colors.bg }]}>
+          <ButtonLabel style={[styles.tabText, { color: activeTab === source ? colors.txt : colors.sub }]}>{source === "ehentai" ? "E-Hentai" : "Rule34"}</ButtonLabel>
+        </TouchableOpacity>)}
+      </View>
+      <Text accessibilityLiveRegion="polite" style={[styles.description, { color: colors.sub }]}>
+        {auth.isLoggedIn ? `Connecté · ${auth.username || (activeTab === "rule34" ? "Rule34" : "E-Hentai")}` : activeTab === "rule34" ? "Une clé API est nécessaire pour consulter cette source." : "Mode invité · Connectez-vous pour accéder à votre compte."}
+      </Text>
+      {activeTab === "ehentai" ? <>
+        <View style={styles.tabs}>
+          {(["cookies", "forum"] as const).map(mode => <TouchableOpacity key={mode} disabled={loading}
+            onPress={() => { setEhentaiLoginMode(mode); setErrorMessage(null); setSuccessMessage(null); }}
+            accessibilityRole="tab" accessibilityState={{ selected: ehentaiLoginMode === mode, disabled: loading }}
+            style={[styles.tab, { backgroundColor: ehentaiLoginMode === mode ? colors.tagBg : colors.bg }]}>
+            <ButtonLabel style={[styles.tabText, { color: colors.txt }]}>{mode === "cookies" ? "Cookies" : "Compte forum"}</ButtonLabel>
+          </TouchableOpacity>)}
+        </View>
+        {guideLink(ehentaiLoginMode === "cookies" ? "ehentai_cookies" : "ehentai_forum")}
+        {ehentaiLoginMode === "cookies" ? <>
+          <AuthField label="Importer les cookies" value={rawCookieString} onChangeText={handleRawCookiePaste} secureTextEntry editable={!loading} placeholder="Collez la chaîne complète" />
+          <Text style={[styles.description, { color: colors.sub }]}>Ou renseignez les valeurs séparément :</Text>
+          <AuthField label="Identifiant membre · ipb_member_id" value={ipbMemberId} onChangeText={setIpbMemberId} keyboardType="number-pad" editable={!loading} />
+          <AuthField label="Cookie de connexion · ipb_pass_hash" value={ipbPassHash} onChangeText={setIpbPassHash} secureTextEntry editable={!loading} />
+          <AuthField label="Cookie ExHentai · igneous (facultatif)" value={igneousCookie} onChangeText={setIgneousCookie} secureTextEntry editable={!loading} />
+          <View style={styles.switchRow}>
+            <Text style={[styles.switchLabel, { color: colors.txt }]}>Utiliser ExHentai</Text>
+            <Switch value={exhentaiToggle} onValueChange={setExhentaiToggle} disabled={loading} accessibilityLabel="Utiliser ExHentai" />
+          </View>
+        </> : <>
+          <AuthField label="Nom d’utilisateur du forum" value={ehentaiUsername} onChangeText={setEhentaiUsername} textContentType="username" editable={!loading} />
+          <AuthField label="Mot de passe du forum" value={ehentaiPassword} onChangeText={setEhentaiPassword} secureTextEntry textContentType="password" editable={!loading} />
+        </>}
+      </> : <>
+        <Text style={[styles.description, { color: colors.sub }]}>Collez votre User ID et votre clé API, ou la ligne complète dans l’un des champs.</Text>
+        <TouchableOpacity accessibilityRole="link" style={styles.help}
+          onPress={() => { void Linking.openURL("https://rule34.xxx/index.php?page=account&s=options").catch(() => setErrorMessage("Impossible d’ouvrir le navigateur. Réessayez.")); }}>
+          <IconExternalLink size={18} color={colors.metaText} />
+          <ButtonLabel style={[styles.helpText, { color: colors.metaText }]}>Ouvrir les options de mon compte Rule34</ButtonLabel>
+        </TouchableOpacity>
+        {guideLink("rule34_api")}
+        <AuthField label="User ID Rule34" value={rule34UserId} onChangeText={text => updateRule34Field("userId", text)} editable={!loading} placeholder="Identifiant ou ligne complète" />
+        <AuthField label="Clé API Rule34" value={rule34ApiKey} onChangeText={text => updateRule34Field("apiKey", text)} secureTextEntry editable={!loading} />
+      </>}
+      {errorMessage && <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={styles.errorText}>{errorMessage}</Text>}
+      {successMessage && <Text accessibilityLiveRegion="polite" style={styles.successText}>{successMessage}</Text>}
+      <CardPressable onPress={activeTab === "rule34" ? handleRule34Login : handleEhentaiLogin} disabled={loading}
+        accessibilityRole="button" accessibilityState={{ busy: loading, disabled: loading }} style={styles.primaryBtn}>
+        {loading && <ActivityIndicator color="#20252b" />}
+        <ButtonLabel style={styles.primaryText}>{loading ? "Connexion en cours…" : activeTab === "rule34" ? "Enregistrer la clé Rule34" : "Se connecter à E-Hentai"}</ButtonLabel>
+      </CardPressable>
+      {auth.isLoggedIn && <TouchableOpacity disabled={loading} accessibilityRole="button" style={styles.help}
+        onPress={activeTab === "rule34" ? handleRule34Logout : handleEhentaiLogout}>
+        <ButtonLabel style={styles.errorText}>Déconnecter ce compte</ButtonLabel>
+      </TouchableOpacity>}
+      {onOpenNhentaiAuth && <TouchableOpacity disabled={loading} accessibilityRole="button" style={styles.help}
+        onPress={() => { onClose(); onOpenNhentaiAuth(); }}>
+        <ButtonLabel style={[styles.helpText, { color: colors.txt }]}>Gérer mon compte nHentai</ButtonLabel>
+      </TouchableOpacity>}
+      {guideLink("nhentai_session")}
+    </AuthModalShell>
+    <AuthGuideModal visible={visible && guideModalType !== null} guideType={guideModalType} onClose={() => setGuideModalType(null)} />
+  </>;
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.78)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 18,
-  },
-  keyboardWrap: {
-    width: "100%",
-    maxWidth: 520,
-  },
-  modalCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    overflow: "hidden",
-    maxHeight: "90%",
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: "#1c1c28",
-  },
-  headerTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  title: {
-    fontSize: 17,
-    fontWeight: "700",
-  },
-  closeBtn: {
-    padding: 6,
-  },
-  tabsRow: {
-    flexDirection: "row",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#1a1a26",
-  },
-  tabChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: "#181824",
-  },
-  tabChipText: {
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  scrollContent: {
-    padding: 20,
-  },
-  sectionWrap: {
-    gap: 16,
-  },
-  blueGuideBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    alignSelf: "flex-start",
-    backgroundColor: "rgba(56, 189, 248, 0.18)",
-    borderWidth: 1,
-    borderColor: "rgba(56, 189, 248, 0.45)",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    marginBottom: 12,
-  },
-  blueGuideText: {
-    color: "#38bdf8",
-    fontSize: 13,
-    fontWeight: "700",
-    textDecorationLine: "underline",
-    textDecorationColor: "#38bdf8",
-  },
-  statusBanner: {
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 6,
-  },
-  statusRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  statusDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-  },
-  statusTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  pandaBadge: {
-    fontSize: 12,
-    color: "#ff9f43",
-    fontWeight: "600",
-    marginLeft: 19,
-  },
-  subModeRow: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  subModeBtn: {
-    flex: 1,
-    paddingVertical: 9,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    backgroundColor: "#171722",
-    borderWidth: 1,
-    borderColor: "#242436",
-    alignItems: "center",
-  },
-  subModeText: {
-    fontSize: 12,
-  },
-  inputsBlock: {
-    gap: 10,
-  },
-  fieldHint: {
-    fontSize: 12.5,
-    lineHeight: 18,
-    marginBottom: 4,
-  },
-  input: {
-    height: 44,
-    borderRadius: 10,
-    borderWidth: 1,
-    backgroundColor: "#151520",
-    paddingHorizontal: 14,
-    fontSize: 13,
-  },
-  switchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 6,
-    paddingVertical: 6,
-  },
-  switchLabel: {
-    fontSize: 13,
-    fontWeight: "500",
-  },
-  actionBtnsRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 10,
-  },
-  primaryBtn: {
-    flex: 1,
-    height: 46,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  logoutBtn: {
-    height: 46,
-    paddingHorizontal: 16,
-    borderWidth: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  btnInner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  btnText: {
-    fontSize: 13.5,
-    fontWeight: "700",
-    color: "#fff",
-  },
-  errorBox: {
-    marginHorizontal: 20,
-    marginTop: 12,
-    padding: 12,
-    borderRadius: 10,
-    backgroundColor: "rgba(235, 77, 75, 0.15)",
-    borderWidth: 1,
-    borderColor: "rgba(235, 77, 75, 0.3)",
-  },
-  errorText: {
-    fontSize: 12.5,
-    color: "#ff4757",
-  },
-  successBox: {
-    marginHorizontal: 20,
-    marginTop: 12,
-    padding: 12,
-    borderRadius: 10,
-    backgroundColor: "rgba(46, 213, 115, 0.15)",
-    borderWidth: 1,
-    borderColor: "rgba(46, 213, 115, 0.3)",
-  },
-  successText: {
-    fontSize: 12.5,
-    color: "#2ed573",
-  },
+  description: { fontSize: 14, lineHeight: 21 },
+  tabs: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  tab: { flexGrow: 1, flexBasis: "42%", minWidth: 0, minHeight: 48, padding: 12, borderRadius: 12, justifyContent: "center", alignItems: "center" },
+  tabText: { fontSize: 14, fontWeight: "600" },
+  field: { gap: 8 },
+  fieldLabel: { fontSize: 14, fontWeight: "500" },
+  input: { minHeight: 52, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 },
+  help: { minHeight: 48, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", paddingVertical: 10 },
+  helpText: { fontSize: 14, textDecorationLine: "underline" },
+  switchRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  switchLabel: { flex: 1, minWidth: 0, fontSize: 14 },
+  primaryBtn: { minHeight: 52, padding: 14, borderRadius: 12, flexDirection: "row", gap: 10, justifyContent: "center", alignItems: "center", backgroundColor: "#d9dfe7" },
+  primaryText: { fontSize: 15, fontWeight: "700", color: "#20252b" },
+  errorText: { color: "#ffb4ab", fontSize: 14, lineHeight: 21 },
+  successText: { color: "#adcdb8", fontSize: 14, lineHeight: 21 },
 });

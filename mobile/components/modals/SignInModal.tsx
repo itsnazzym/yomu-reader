@@ -3,19 +3,13 @@ import {
   StyleSheet,
   View,
   Text,
-  Modal,
   TextInput,
   Pressable,
   ActivityIndicator,
   Alert,
   Linking,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
 } from "react-native";
 import {
-  IconCloud,
-  IconX,
   IconUser,
   IconRefresh,
   IconKey,
@@ -28,6 +22,7 @@ import {
 } from "@tabler/icons-react-native";
 import { useTheme } from "@/lib/ThemeContext";
 import { CardPressable } from "@/components/ui/CardPressable";
+import { AuthModalShell } from "@/components/auth/AuthModalShell";
 import { ButtonLabel } from "@/components/ui/ButtonLabel";
 import { useAccount, detectCredentialType } from "@/lib/accountStore";
 import { CaptchaEmbed } from "@/components/auth/CaptchaEmbed";
@@ -357,28 +352,7 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.backdrop}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
-        <View style={[styles.card, { backgroundColor: colors.page, borderColor: colors.tagBg }]}>
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={styles.headerLeft}>
-              <IconCloud size={20} color={colors.accent} strokeWidth={1.8} />
-              <Text style={styles.headerTitle}>Compte nHentai</Text>
-            </View>
-            <Pressable
-              onPress={onClose}
-              style={[styles.closeBtn, { backgroundColor: colors.tagBg }]}
-              accessibilityRole="button"
-              accessibilityLabel="Fermer le compte"
-            >
-              <IconX size={20} color={colors.sub} strokeWidth={2} />
-            </Pressable>
-          </View>
-
+    <AuthModalShell visible={visible} onClose={onClose} title="Compte nHentai">
           {/* If already logged in */}
           {session.isLoggedIn ? (
             <View style={styles.loggedInBox}>
@@ -451,11 +425,7 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
               </Pressable>
             </View>
           ) : (
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ gap: 10, paddingBottom: 6 }}
-            >
+            <View style={{ gap: 16 }}>
               {/* Navigation tabs */}
               <View style={[styles.tabContainer, { backgroundColor: colors.bg }]}>
                 {(["login", "register", "reset", "apikey"] as AuthMode[]).map((m) => (
@@ -468,7 +438,7 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
                     accessibilityLabel={m === "login" ? "Connexion" : m === "register" ? "Inscription" : m === "reset" ? "Mot de passe oublié" : "Clé API"}
                     style={[
                       styles.tabBtn,
-                      mode === m && { backgroundColor: colors.accent + "26", borderColor: colors.accent },
+                      mode === m && { backgroundColor: colors.tagBg, borderColor: colors.sub },
                     ]}
                   >
                     <Text
@@ -505,10 +475,11 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
                   <View style={[styles.inputWrapper, { backgroundColor: colors.bg, borderColor: colors.tagBg }]}>
                     <IconUser size={16} color="#9ca3af" strokeWidth={1.8} />
                     <TextInput
+                      accessibilityLabel="Identifiant"
                       value={usernameInput}
                       onChangeText={setUsernameInput}
                       placeholder="Nom d'utilisateur"
-                      placeholderTextColor="#6b7280"
+                      placeholderTextColor={colors.sub}
                       autoCapitalize="none"
                       autoCorrect={false}
                       editable={!loading}
@@ -524,10 +495,11 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
                   <View style={[styles.inputWrapper, { backgroundColor: colors.bg, borderColor: colors.tagBg }]}>
                     <IconMail size={16} color="#9ca3af" strokeWidth={1.8} />
                     <TextInput
+                      accessibilityLabel="Adresse email"
                       value={emailInput}
                       onChangeText={setEmailInput}
                       placeholder="votre.email@domaine.com"
-                      placeholderTextColor="#6b7280"
+                      placeholderTextColor={colors.sub}
                       keyboardType="email-address"
                       autoCapitalize="none"
                       autoCorrect={false}
@@ -544,10 +516,11 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
                   <View style={[styles.inputWrapper, { backgroundColor: colors.bg, borderColor: colors.tagBg }]}>
                     <IconLock size={16} color="#9ca3af" strokeWidth={1.8} />
                     <TextInput
+                      accessibilityLabel="Mot de passe"
                       value={passwordInput}
                       onChangeText={setPasswordInput}
                       placeholder="••••••••"
-                      placeholderTextColor="#6b7280"
+                      placeholderTextColor={colors.sub}
                       secureTextEntry={!showPassword}
                       autoCapitalize="none"
                       autoCorrect={false}
@@ -576,10 +549,11 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
                   <View style={[styles.inputWrapper, { backgroundColor: colors.bg, borderColor: colors.tagBg }]}>
                     <IconLock size={16} color="#9ca3af" strokeWidth={1.8} />
                     <TextInput
+                      accessibilityLabel="Confirmer le mot de passe"
                       value={passwordConfirmInput}
                       onChangeText={setPasswordConfirmInput}
                       placeholder="••••••••"
-                      placeholderTextColor="#6b7280"
+                      placeholderTextColor={colors.sub}
                       secureTextEntry={!showPassword}
                       autoCapitalize="none"
                       autoCorrect={false}
@@ -596,13 +570,13 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
                   <View style={[styles.inputWrapper, { backgroundColor: colors.bg, borderColor: colors.tagBg }]}>
                     <IconKey size={16} color="#9ca3af" strokeWidth={1.8} />
                     <TextInput
+                      accessibilityLabel="Clé API nHentai"
                       value={apiKeyInput}
                       onChangeText={setApiKeyInput}
                       secureTextEntry
                       autoComplete="off"
-                      accessibilityLabel="Clé API"
                       placeholder="nhk_xxxxxxxxxxxxxxxxxxxx"
-                      placeholderTextColor="#6b7280"
+                      placeholderTextColor={colors.sub}
                       autoCapitalize="none"
                       autoCorrect={false}
                       editable={!loading}
@@ -663,7 +637,7 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
 
               {errorMessage && (
                 <View style={styles.errorBox}>
-                  <Text style={styles.errorText}>{errorMessage}</Text>
+                  <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={styles.errorText}>{errorMessage}</Text>
                 </View>
               )}
 
@@ -677,15 +651,17 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
                   else if (mode === "apikey") handleApiKeyLogin();
                 }}
                 disabled={loading}
-                style={[styles.submitBtn, { backgroundColor: colors.accent }]}
+                accessibilityRole="button"
+                accessibilityState={{ busy: loading, disabled: loading }}
+                style={[styles.submitBtn, { backgroundColor: "#d9dfe7" }]}
               >
                 <View style={styles.submitBtnInner}>
                   {loading ? (
-                    <ActivityIndicator size="small" color="#fff" />
+                    <ActivityIndicator size="small" color="#20252b" />
                   ) : (
-                    <IconLogin size={18} color="#fff" strokeWidth={2} />
+                    <IconLogin size={18} color="#20252b" strokeWidth={2} />
                   )}
-                  <ButtonLabel style={styles.submitBtnText}>
+                  <ButtonLabel style={[styles.submitBtnText, { color: "#20252b" }]}>
                     {loading
                       ? "Traitement en cours..."
                       : mode === "login"
@@ -702,58 +678,13 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
               <Text style={styles.officialFootnote}>
                 nHentai · API v2 Officielle · Authentification sécurisée
               </Text>
-            </ScrollView>
+            </View>
           )}
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+    </AuthModalShell>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.72)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 16,
-  },
-  card: {
-    width: "100%",
-    maxWidth: 420,
-    maxHeight: "92%",
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 18,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 12,
-  },
-  headerLeft: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  headerTitle: {
-    flexShrink: 1,
-    fontSize: 17,
-    fontWeight: "800",
-    color: "#f3f4f6",
-  },
-  closeBtn: {
-    padding: 6,
-    borderRadius: 8,
-  },
   tabContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -767,7 +698,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     flexBasis: "45%",
     minWidth: 0,
-    minHeight: 44,
+    minHeight: 48,
     paddingVertical: 8,
     paddingHorizontal: 6,
     alignItems: "center",
@@ -806,11 +737,15 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     color: "#f3f4f6",
-    fontSize: 14,
-    paddingVertical: 0,
+    fontSize: 16,
+    paddingVertical: 8,
+    minWidth: 0,
   },
   eyeBtn: {
-    padding: 6,
+    minWidth: 48,
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
   },
   captchaSection: {
     marginTop: 4,
@@ -932,7 +867,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   syncBtn: {
-    minHeight: 44,
+    minHeight: 48,
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 12,
@@ -955,7 +890,7 @@ const styles = StyleSheet.create({
     paddingRight: 4,
   },
   logoutBtn: {
-    minHeight: 44,
+    minHeight: 48,
     paddingVertical: 10,
     borderRadius: 10,
     alignItems: "center",

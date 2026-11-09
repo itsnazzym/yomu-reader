@@ -9,6 +9,7 @@
  * - Extraction et typage des tags et médias haute résolution.
  */
 
+import { readRule34Response } from "./credentialInput";
 import { Platform } from "react-native";
 import {
   makeGlobalId,
@@ -131,28 +132,7 @@ export class Rule34Source implements SourceAdapter {
 
     try {
       const res = await fetch(url, { headers: HEADERS, signal: controller.signal });
-      if (!res.ok) {
-        throw new SourceError("http", `Rule34 HTTP ${res.status}`, res.status);
-      }
-
-      const text = await res.text();
-      if (text.includes("Missing authentication")) {
-        throw new SourceError(
-          "paywalled",
-          "Clé API Rule34 invalide ou expirée. Rendez-vous sur rule34.xxx/index.php?page=account&s=options pour générer votre clé."
-        );
-      }
-
-      let json: unknown;
-      try {
-        json = JSON.parse(text);
-      } catch {
-        return { cards: [], hasMore: false };
-      }
-
-      if (!Array.isArray(json)) {
-        return { cards: [], hasMore: false };
-      }
+      const json = await readRule34Response(res) as Rule34PostItem[];
 
       const cards: SourceGalleryCard[] = json.map((p: Rule34PostItem) => {
         const idStr = String(p.id);
@@ -198,17 +178,8 @@ export class Rule34Source implements SourceAdapter {
 
     try {
       const res = await fetch(url, { headers: HEADERS, signal: controller.signal });
-      if (!res.ok) {
-        throw new SourceError("http", `Rule34 HTTP ${res.status}`, res.status);
-      }
-
-      const text = await res.text();
-      if (text.includes("Missing authentication")) {
-        throw new SourceError("paywalled", "Clé API Rule34 invalide.");
-      }
-
-      const json = JSON.parse(text);
-      const post: Rule34PostItem | undefined = Array.isArray(json) ? json[0] : json;
+      const json = await readRule34Response(res) as Rule34PostItem[];
+      const post = json[0];
 
       if (!post || !post.id) {
         throw new SourceError("not_found", `Post Rule34 #${cleanId} introuvable.`);
