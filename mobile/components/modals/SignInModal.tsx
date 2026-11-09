@@ -82,6 +82,16 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
 
   useEffect(() => {
     if (visible) setMode(initialMode);
+    else {
+      setUsernameInput("");
+      setEmailInput("");
+      setPasswordInput("");
+      setPasswordConfirmInput("");
+      setApiKeyInput("");
+      setShowPassword(false);
+      setCaptchaToken(null);
+      setErrorMessage(null);
+    }
   }, [visible, initialMode]);
 
   // Load captcha on open or mode switch
@@ -121,6 +131,7 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
     setPasswordInput("");
     setPasswordConfirmInput("");
     setApiKeyInput("");
+    setShowPassword(false);
     setCaptchaToken(null);
     setCaptchaKey((k) => k + 1);
     setErrorMessage(null);
@@ -420,9 +431,17 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
               </CardPressable>
 
               <Pressable
-                onPress={() => {
-                  logout();
-                  Alert.alert("Déconnexion", "Compte déconnecté.");
+                disabled={loading}
+                accessibilityState={{ disabled: loading, busy: loading }}
+                onPress={async () => {
+                  setLoading(true);
+                  try {
+                    await logout();
+                    resetForm();
+                    Alert.alert("Déconnexion", "Compte déconnecté.");
+                  } catch {
+                    Alert.alert("Déconnexion incomplète", "Impossible de terminer la déconnexion. Réessayez.");
+                  } finally { setLoading(false); }
                 }}
                 style={[styles.logoutBtn, { backgroundColor: colors.tagBg }]}
                 accessibilityRole="button"
@@ -579,6 +598,9 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
                     <TextInput
                       value={apiKeyInput}
                       onChangeText={setApiKeyInput}
+                      secureTextEntry
+                      autoComplete="off"
+                      accessibilityLabel="Clé API"
                       placeholder="nhk_xxxxxxxxxxxxxxxxxxxx"
                       placeholderTextColor="#6b7280"
                       autoCapitalize="none"

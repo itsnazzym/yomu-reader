@@ -171,3 +171,5 @@ scratch_*
 *~
 backupdepackagejson.txt
 
+
+BACKUP_FILE_MANIFEST_*.json

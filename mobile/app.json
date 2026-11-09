@@ -2,9 +2,9 @@
   "expo": {
     "name": "Yomu Reader",
     "slug": "nhentaidownlo-mobile",
-    "version": "2.0.1",
+    "version": "2.0.2",
     "orientation": "default",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/yomu-reader-icon.png",
     "scheme": [
       "nhentaidownlo",
       "yomureader"
@@ -12,7 +12,7 @@
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/splash-icon.png",
+      "image": "./assets/images/yomu-reader-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#101018"
     },
@@ -21,11 +21,11 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "foregroundImage": "./assets/images/yomu-reader-adaptive.png",
         "backgroundColor": "#101018"
       },
       "package": "com.nhentaidownlo.mobile",
-      "versionCode": 3,
+      "versionCode": 4,
       "permissions": [
         "INTERNET",
         "ACCESS_NETWORK_STATE",
@@ -80,14 +80,14 @@
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/yomu-reader-icon.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/yomu-reader-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#101018"
@@ -98,6 +98,12 @@
         "expo-web-browser",
         {
           "experimentalLauncherActivity": false
+        }
+      ],
+      [
+        "react-native-nitro-google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.611382581263-lgg7sl79qhdc1hu8o21furvdv61rj948"
         }
       ],
       "expo-sqlite",

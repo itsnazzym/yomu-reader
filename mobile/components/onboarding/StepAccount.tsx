@@ -1,16 +1,25 @@
-import React, { useState } from "react";
-import { StyleSheet, View, Text, Pressable } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Alert, StyleSheet, View, Text, Pressable } from "react-native";
 import {
   IconCircleCheck,
   IconUserCheck,
   IconUser,
   IconCheck,
   IconLogin,
+  IconCloud,
 } from "@tabler/icons-react-native";
 import { useTheme } from "@/lib/ThemeContext";
 import { useAccount } from "@/lib/accountStore";
 import { SignInModal } from "@/components/modals/SignInModal";
 import { ButtonLabel } from "@/components/ui/ButtonLabel";
+import {
+  connectWithGoogle,
+  connectWithGoogleBrowser,
+  getCloudSyncState,
+  isCloudSyncConfigured,
+  refreshCloudSyncState,
+  subscribeCloudSync,
+} from "@/lib/cloudSync";
 
 interface StepAccountProps {
   onFinish: () => void;
@@ -20,6 +29,35 @@ export function StepAccount({ onFinish }: StepAccountProps) {
   const { colors } = useTheme();
   const { isLoggedIn, session } = useAccount();
   const [isSignInOpen, setIsSignInOpen] = useState(false);
+  const [cloudState, setCloudState] = useState(getCloudSyncState());
+  const [cloudBusy, setCloudBusy] = useState(false);
+
+  useEffect(() => {
+    void refreshCloudSyncState();
+    return subscribeCloudSync(() => setCloudState(getCloudSyncState()));
+  }, []);
+
+  const connectCloud = async () => {
+    setCloudBusy(true);
+    try {
+      await connectWithGoogle();
+    } catch (error) {
+      Alert.alert("Yomu Cloud", error instanceof Error ? error.message : "Connexion Google impossible.");
+    } finally {
+      setCloudBusy(false);
+    }
+  };
+
+  const connectCloudInBrowser = async () => {
+    setCloudBusy(true);
+    try {
+      await connectWithGoogleBrowser();
+    } catch (error) {
+      Alert.alert("Yomu Cloud", error instanceof Error ? error.message : "Connexion Google impossible.");
+    } finally {
+      setCloudBusy(false);
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -70,6 +108,45 @@ export function StepAccount({ onFinish }: StepAccountProps) {
         )}
 
         <View style={[styles.divider, { backgroundColor: colors.tagBg }]} />
+
+        {isCloudSyncConfigured() && (
+          <>
+            <Pressable
+              onPress={() => void connectCloud()}
+              disabled={cloudBusy || cloudState.status === "idle" || cloudState.status === "locked"}
+              style={({ pressed }) => [
+                styles.cloudBtn,
+                { borderColor: colors.tagBg, opacity: pressed || cloudBusy ? 0.75 : 1 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Connecter Yomu Cloud avec Google"
+            >
+              <IconCloud size={16} color={colors.txt} strokeWidth={2} />
+              <ButtonLabel style={[styles.cloudBtnText, { color: colors.txt }]}>
+                {cloudBusy
+                  ? "Connexion Google…"
+                  : cloudState.status === "idle" || cloudState.status === "locked"
+                  ? `Yomu Cloud · ${cloudState.email || "connecté"}`
+                  : "Configurer Yomu Cloud avec Google"}
+              </ButtonLabel>
+            </Pressable>
+            <Text style={[styles.cloudHint, { color: colors.sub }]}>
+              Facultatif — passkey et verrouillage de l'appareil pris en charge par Google.
+            </Text>
+            {cloudState.status !== "idle" && cloudState.status !== "locked" ? (
+              <Pressable
+                onPress={() => void connectCloudInBrowser()}
+                disabled={cloudBusy}
+                style={({ pressed }) => [styles.cloudBrowserBtn, { opacity: pressed || cloudBusy ? 0.7 : 1 }]}
+                accessibilityRole="button"
+                accessibilityLabel="Se connecter à Yomu Cloud avec Google dans le navigateur"
+              >
+                <ButtonLabel style={[styles.cloudBrowserBtnText, { color: colors.sub }]}>Utiliser le navigateur</ButtonLabel>
+              </Pressable>
+            ) : null}
+            <View style={[styles.divider, { backgroundColor: colors.tagBg }]} />
+          </>
+        )}
 
         <Pressable
           onPress={onFinish}
@@ -164,6 +241,20 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
     fontWeight: "800",
   },
+  cloudBtn: {
+    minHeight: 46,
+    borderWidth: 1,
+    borderRadius: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 10,
+  },
+  cloudBtnText: { fontSize: 12.5, fontWeight: "800" },
+  cloudHint: { fontSize: 11, textAlign: "center", lineHeight: 15 },
+  cloudBrowserBtn: { minHeight: 28, alignItems: "center", justifyContent: "center" },
+  cloudBrowserBtnText: { fontSize: 11.5, fontWeight: "700", textDecorationLine: "underline" },
   divider: {
     height: 1,
   },

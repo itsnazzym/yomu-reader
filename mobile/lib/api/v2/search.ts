@@ -36,7 +36,7 @@ export async function searchGalleries(
         page,
         ...(per_page != null ? { per_page } : {}),
       })}`,
-      { public: true }
+      { public: true, timeoutMs: 7_000, maxRateLimitRetries: 0 }
     );
   }
 
@@ -47,6 +47,6 @@ export async function searchGalleries(
       page,
       ...(per_page != null ? { per_page } : {}),
     })}`,
-    { public: true }
+    { public: true, timeoutMs: 7_000, maxRateLimitRetries: 0 }
   );
 }

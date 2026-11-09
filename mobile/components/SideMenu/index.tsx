@@ -144,7 +144,7 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
             ]}
           >
             <Image
-              source={require("../../assets/images/icon.jpg")}
+              source={require("../../assets/images/yomu-reader-icon.png")}
               style={{ width: 20, height: 20, borderRadius: 5 }}
               contentFit="cover"
             />

@@ -1,6 +1,7 @@
 import React from "react";
 import { Text, StyleProp, TextStyle } from "react-native";
 import { TAG_LABEL_VARIANTS, type TagLabelVariant } from "@/lib/tagDisplay";
+import { useTheme } from "@/lib/ThemeContext";
 
 export interface TagLabelProps {
   name: string;
@@ -22,12 +23,13 @@ export function TagLabel({
   style,
   prefix,
 }: TagLabelProps) {
+  const { colors } = useTheme();
   const preset = TAG_LABEL_VARIANTS[variant];
   const label = prefix ? `${prefix}${name}` : name;
 
   return (
     <Text
-      style={[preset.base, color ? { color } : null, style]}
+      style={[preset.base, { color: color || colors.tagText }, style]}
       numberOfLines={preset.numberOfLines}
       ellipsizeMode={preset.numberOfLines ? "tail" : undefined}
     >

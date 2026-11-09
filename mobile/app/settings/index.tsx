@@ -83,6 +83,7 @@ import { displayAvatarUri } from "@/lib/avatarPersist";
 import { catalogColumnCount } from "@/lib/catalogGrid";
 import {
   connectWithGoogle,
+  connectWithGoogleBrowser,
   createVault,
   disconnectCloud,
   getCloudSyncState,
@@ -1467,9 +1468,14 @@ export default function SettingsScreen() {
                 <IconKey size={16} color={colors.accent} /><ButtonLabel style={[styles.btnActionText, { color: colors.txt }]}>Copier la clé</ButtonLabel>
               </CardPressable>
             </View> : null}
-            {cloud.status === "unconfigured" ? null : cloud.status === "signed_out" ? <CardPressable radius={10} onPress={() => void connectWithGoogle().catch((error) => Alert.alert("Yomu Cloud", error instanceof Error ? error.message : "Connexion impossible"))} style={[styles.btnActionRow, { backgroundColor: colors.accent }]} accessibilityRole="button" accessibilityLabel="Continuer avec Google">
-              <IconLogin size={16} color="#fff" /><ButtonLabel style={styles.btnActionText}>Continuer avec Google</ButtonLabel>
-            </CardPressable> : cloud.status === "locked" ? <>
+            {cloud.status === "unconfigured" ? null : cloud.status === "signed_out" ? <>
+              <CardPressable radius={10} onPress={() => void connectWithGoogle().catch((error) => Alert.alert("Yomu Cloud", error instanceof Error ? error.message : "Connexion impossible"))} style={[styles.btnActionRow, { backgroundColor: colors.accent }]} accessibilityRole="button" accessibilityLabel="Continuer avec Google">
+                <IconLogin size={16} color="#fff" /><ButtonLabel style={styles.btnActionText}>Continuer avec Google</ButtonLabel>
+              </CardPressable>
+              <CardPressable radius={10} onPress={() => void connectWithGoogleBrowser().catch((error) => Alert.alert("Yomu Cloud", error instanceof Error ? error.message : "Connexion impossible"))} style={[styles.btnActionRow, { backgroundColor: "#1e1e2c", borderColor: "#2f2f44", borderWidth: 1 }]} accessibilityRole="button" accessibilityLabel="Utiliser le navigateur pour se connecter à Google">
+                <IconWorld size={16} color={colors.accent} /><ButtonLabel style={[styles.btnActionText, { color: colors.txt }]}>Utiliser le navigateur</ButtonLabel>
+              </CardPressable>
+            </> : cloud.status === "locked" ? <>
               <TextInput value={recoveryKeyInput} onChangeText={setRecoveryKeyInput} autoCapitalize="none" autoCorrect={false} placeholder="Clé de récupération" placeholderTextColor={colors.sub} style={[styles.cloudKeyInput, { color: colors.txt, borderColor: colors.tagBg }]} />
               <CardPressable radius={10} onPress={() => void unlockVault(recoveryKeyInput).catch((error) => Alert.alert("Coffre verrouillé", error instanceof Error ? error.message : "Clé invalide"))} style={[styles.btnActionRow, { backgroundColor: colors.accent }]} accessibilityRole="button" accessibilityLabel="Déverrouiller et restaurer le coffre">
                 <IconLock size={16} color="#fff" /><ButtonLabel style={styles.btnActionText}>Déverrouiller et restaurer</ButtonLabel>
@@ -1481,7 +1487,7 @@ export default function SettingsScreen() {
               <CardPressable radius={10} onPress={() => void syncNow()} style={[styles.btnActionRow, { backgroundColor: colors.accent }]} accessibilityRole="button" accessibilityLabel="Synchroniser Yomu Cloud maintenant">
                 <IconRefresh size={16} color="#fff" /><ButtonLabel style={styles.btnActionText}>{cloud.status === "syncing" ? "Synchronisation…" : "Synchroniser maintenant"}</ButtonLabel>
               </CardPressable>
-              <CardPressable radius={10} onPress={() => Alert.alert("Déconnecter Yomu Cloud", "Les données locales seront conservées, mais la clé sera retirée de ce téléphone.", [{ text: "Annuler", style: "cancel" }, { text: "Déconnecter", style: "destructive", onPress: () => void disconnectCloud() }])} style={[styles.btnActionRow, { backgroundColor: "#1e1e2c", borderColor: "#2f2f44", borderWidth: 1 }]} accessibilityRole="button" accessibilityLabel="Déconnecter Yomu Cloud">
+              <CardPressable radius={10} onPress={() => Alert.alert("Déconnecter Yomu Cloud", "Les données locales seront conservées, mais la clé sera retirée de ce téléphone.", [{ text: "Annuler", style: "cancel" }, { text: "Déconnecter", style: "destructive", onPress: () => { void disconnectCloud().catch(() => Alert.alert("Déconnexion incomplète", "Réessayez pour terminer l’effacement des sessions sur ce téléphone.")); } }])} style={[styles.btnActionRow, { backgroundColor: "#1e1e2c", borderColor: "#2f2f44", borderWidth: 1 }]} accessibilityRole="button" accessibilityLabel="Déconnecter Yomu Cloud">
                 <IconX size={16} color="#ff4757" /><ButtonLabel style={[styles.btnActionText, { color: colors.txt }]}>Déconnecter Yomu Cloud</ButtonLabel>
               </CardPressable>
             </>}

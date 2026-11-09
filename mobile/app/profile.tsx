@@ -270,9 +270,13 @@ export default function ProfileScreen() {
       {
         text: "Déconnexion",
         style: "destructive",
-        onPress: () => {
-          logout();
-          router.replace("/");
+        onPress: async () => {
+          try {
+            await logout();
+            router.replace("/");
+          } catch {
+            Alert.alert("Déconnexion incomplète", "Impossible de terminer la déconnexion. Réessayez.");
+          }
         },
       },
     ]);

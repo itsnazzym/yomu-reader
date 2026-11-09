@@ -463,6 +463,7 @@ test("appendSearchTerm, removeSearchTerm et toggleSearchTerm gèrent les tags pr
     toggleSearchTerm,
     queryContainsTerm,
     formatSearchTerm,
+    setExclusiveSearchTerm,
   } = await import("@/lib/searchQuery");
 
   const first = appendSearchTerm("artist:A tag:B", "tag", "C");
@@ -501,6 +502,18 @@ test("appendSearchTerm, removeSearchTerm et toggleSearchTerm gèrent les tags pr
   assert.equal(toggledOn.added, true);
   assert.equal(toggledOn.removed, false);
   assert.equal(toggledOn.query, "artist:shindol tag:maid");
+
+  const switchedLanguage = setExclusiveSearchTerm(
+    'tag:vanilla artist:"Example Artist" language:english',
+    "language",
+    "french"
+  );
+  assert.equal(switchedLanguage.query, 'tag:vanilla artist:"Example Artist" language:french');
+  assert.equal(switchedLanguage.active, true);
+
+  const removedLanguage = setExclusiveSearchTerm(switchedLanguage.query, "language", "french");
+  assert.equal(removedLanguage.query, 'tag:vanilla artist:"Example Artist"');
+  assert.equal(removedLanguage.active, false);
 });
 
 test("buildReaderSpreads garde couverture et planches larges en simple", async () => {

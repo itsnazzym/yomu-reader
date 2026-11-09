@@ -127,6 +127,42 @@ export function toggleSearchTerm(
   }
 }
 
+/**
+ * Active un unique terme positif d'un type donné, sans toucher aux autres
+ * filtres. Une seconde pression sur le même terme le retire. C'est notamment
+ * utilisé par les raccourcis de langue de l'accueil : un tag déjà choisi ne
+ * doit jamais être remplacé par `language:french`.
+ */
+export function setExclusiveSearchTerm(
+  query: string,
+  type: string,
+  name: string
+): { query: string; active: boolean; term: string } {
+  const normalizedType = normalizeTagType(type);
+  const term = formatSearchTerm(normalizedType, name);
+  const tokens = tokenizeSearchQuery(query);
+
+  if (!term) return { query: tokens.join(" "), active: false, term: "" };
+
+  const isAlreadyActive = tokens.some((token) =>
+    matchTokenToTag(token, normalizedType, name)
+  );
+  const withoutPositiveType = tokens.filter((token) => {
+    if (token.startsWith("-")) return true;
+    const colonIndex = token.indexOf(":");
+    if (colonIndex < 0) return true;
+    return normalizeTagType(token.slice(0, colonIndex)) !== normalizedType;
+  });
+
+  return {
+    query: isAlreadyActive
+      ? withoutPositiveType.join(" ")
+      : [...withoutPositiveType, term].join(" "),
+    active: !isAlreadyActive,
+    term,
+  };
+}
+
 export function replaceSearchQuery(type: string, name: string): string {
   return formatSearchTerm(type, name);
 }

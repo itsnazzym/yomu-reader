@@ -73,3 +73,36 @@ test("galleryLoader déduplique fiche → lecteur pendant la session", async () 
     clearSourceGalleryCache();
   }
 });
+
+test("galleryLoader forceRefresh ne réutilise pas une requête bloquée", async () => {
+  clearSourceGalleryCache();
+  const source = getSource("doujins");
+  const originalGetGallery = source.getGallery;
+  let calls = 0;
+  let releaseFirst: (() => void) | undefined;
+  source.getGallery = async (nativeId: string) => {
+    calls += 1;
+    if (calls === 1) await new Promise<void>((resolve) => { releaseFirst = resolve; });
+    return {
+      globalId: `doujins:${nativeId}`,
+      nativeId,
+      title: `Essai ${calls}`,
+      coverUrl: "https://example.test/cover.jpg",
+      numPages: 1,
+      tags: [],
+      pageUrls: [{ url: "https://example.test/1.jpg" }],
+    };
+  };
+
+  try {
+    const stalled = loadSourceGallery("doujins", "43");
+    const refreshed = await loadSourceGallery("doujins", "43", undefined, { forceRefresh: true });
+    assert.equal(calls, 2);
+    assert.equal(refreshed.title, "Essai 2");
+    releaseFirst?.();
+    await stalled;
+  } finally {
+    source.getGallery = originalGetGallery;
+    clearSourceGalleryCache();
+  }
+});

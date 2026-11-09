@@ -35,7 +35,11 @@ export interface GalleryListParams {
 export async function getGalleries(
   params: GalleryListParams = {}
 ): Promise<Paginated<GalleryCard>> {
-  return nhApi.get(`/galleries${buildQuery(params)}`, { public: true });
+  return nhApi.get(`/galleries${buildQuery(params)}`, {
+    public: true,
+    timeoutMs: 7_000,
+    maxRateLimitRetries: 0,
+  });
 }
 
 // ─── Popular ──────────────────────────────────────────────────────────────────

@@ -62,10 +62,6 @@ async function fetchHtml(url: string): Promise<string> {
 const CARD_RE =
   /<a href="https?:\/\/(?:fr\.)?3hentai\.net\/d\/(\d+)"[^>]*class="cover"[^>]*>\s*<img[^>]*data-src="([^"]+)"[\s\S]*?<div class="title[^"]*">\s*([\s\S]*?)\s*<\/div>/g;
 
-/** Bloc tag de la page galerie : libellé de section + liens. */
-const TAG_BLOCK_RE =
-  /tag-container field-name">\s*([A-Za-zÀ-ÿéèêàçûôî]+s? :)\s*<span class="filter-elem">([\s\S]*?)<\/span><\/div>/g;
-
 /**
  * Item de la liste /tags?letter=<x> : nom + compteur réel (data-qty).
  * Les href sont absolus sur ce site, d'où le domaine dans le motif.
@@ -73,7 +69,9 @@ const TAG_BLOCK_RE =
 const TAXONOMY_ITEM_RE =
   /<span class="filter-elem">\s*<a class="name" href="https?:\/\/(?:fr\.)?3hentai\.net\/tags\/([a-z0-9-]+)"[^>]*data-qty="(\d+)"[^>]*>([\s\S]*?)<\/a>\s*<\/span>/g;
 
-const TAG_LINK_RE = /<a class="name"([^>]*)>([\s\S]*?)<\/a>/g;
+const DETAIL_TAG_CONTAINER_RE =
+  /<div\b[^>]*class="[^"]*\btag-container\b[^"]*\bfield-name\b[^"]*"[^>]*>/gi;
+const DETAIL_TAG_LINK_RE = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
 
 function parseCards(html: string): SourceGalleryCard[] {
   return extractMatches(html, CARD_RE).map((m) => ({
@@ -96,23 +94,44 @@ function sectionToType(label: string): string {
   return "tag";
 }
 
-function parseTags(
+function parseHumanCount(raw: string | undefined): number | undefined {
+  if (!raw) return undefined;
+  const match = raw.trim().toLowerCase().match(/^(\d+(?:[.,]\d+)?)\s*([km])?$/);
+  if (!match) return undefined;
+  const value = Number(match[1].replace(",", "."));
+  if (!Number.isFinite(value) || value <= 0) return undefined;
+  const multiplier = match[2] === "m" ? 1_000_000 : match[2] === "k" ? 1_000 : 1;
+  return Math.round(value * multiplier);
+}
+
+/**
+ * Lit le balisage actuel d'une fiche 3Hentai. Les sections contiennent
+ * désormais un libellé en gras puis plusieurs `.filter-elem`, alors que
+ * l'ancien parseur attendait une seule structure très stricte.
+ */
+export function parseThreeHentaiDetailTags(
   galleryHtml: string
 ): { name: string; type?: string; count?: number }[] {
   const out: { name: string; type?: string; count?: number }[] = [];
-  for (const block of extractMatches(galleryHtml, TAG_BLOCK_RE)) {
-    const type = sectionToType(stripTags(block[1]));
-    for (const tagMatch of extractMatches(block[2], TAG_LINK_RE)) {
+  const starts = [...galleryHtml.matchAll(DETAIL_TAG_CONTAINER_RE)];
+
+  for (let index = 0; index < starts.length; index += 1) {
+    const start = starts[index];
+    const startOffset = start.index ?? 0;
+    const endOffset = starts[index + 1]?.index ?? galleryHtml.length;
+    const block = galleryHtml.slice(startOffset, endOffset);
+    const label = block.match(
+      /<span\b[^>]*class="[^"]*\bfont-weight-bold\b[^"]*"[^>]*>([\s\S]*?)<\/span>/i
+    );
+    const type = sectionToType(stripTags(label?.[1] || ""));
+
+    for (const tagMatch of extractMatches(block, DETAIL_TAG_LINK_RE)) {
       const attrs = tagMatch[1] || "";
+      if (!/\bclass=["'][^"']*\bname\b[^"']*["']/i.test(attrs)) continue;
       const name = decodeEntities(tagMatch[2] || "").trim();
-      if (!name || out.some((t) => t.name === name)) continue;
-      const qtyM = attrs.match(/data-qty="(\d+)"/);
-      const count = qtyM ? parseInt(qtyM[1], 10) : NaN;
-      out.push({
-        name,
-        type,
-        count: Number.isFinite(count) && count > 0 ? count : undefined,
-      });
+      if (!name || out.some((tag) => tag.type === type && tag.name.toLowerCase() === name.toLowerCase())) continue;
+      const qty = attrs.match(/\bdata-qty=["']([^"']+)["']/i)?.[1];
+      out.push({ name, type, count: parseHumanCount(qty) });
     }
   }
   return out;
@@ -223,7 +242,7 @@ export class ThreeHentaiSource implements SourceAdapter {
       coverUrl: `https://${cdn}/${mediaDir}/cover.jpg`,
       numPages,
       uploadDate,
-      tags: parseTags(html),
+      tags: parseThreeHentaiDetailTags(html),
       pageUrls,
     };
   }

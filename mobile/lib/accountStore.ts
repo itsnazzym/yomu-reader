@@ -189,7 +189,10 @@ export async function saveAccountSession(data: Partial<AccountSession>) {
 export async function logoutAccount() {
   try {
     await v2Logout();
-  } catch {}
+  } catch {
+    // Never claim a successful logout while credentials remain on the device.
+    await clearTokens();
+  }
   const keptLocalAvatar = sessionState.localAvatarUri;
   sessionState = {
     isLoggedIn: false,

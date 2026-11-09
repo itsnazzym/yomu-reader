@@ -10,7 +10,7 @@ import {
   sanitizeMediaUrl,
 } from "../lib/sources/html";
 import { parseDoujinsListCards, parseDoujinsTagsPage } from "../lib/sources/doujins";
-import { parseThreeHentaiTagsPage } from "../lib/sources/threehentai";
+import { parseThreeHentaiDetailTags, parseThreeHentaiTagsPage } from "../lib/sources/threehentai";
 import { dedupeTags } from "../lib/sources/tagUtils";
 import { parseNozomiIds, thumbUrl } from "../lib/sources/hitomi";
 
@@ -173,6 +173,30 @@ test("parseThreeHentaiTagsPage: nom + compteur data-qty depuis /tags?letter=", (
   assert.deepEqual(tags[0], { name: "abortion (female)", count: 24 });
   assert.deepEqual(tags[1], { name: "absorption (female)", count: 413 });
   assert.deepEqual(tags[2], { name: "afro (male)", count: 7 });
+});
+
+test("parseThreeHentaiDetailTags: lit les sections actuelles de la fiche", () => {
+  const html = `
+    <div class="tag-container field-name">
+      <span class="font-weight-bold">Catégories :</span>
+      <span class="filter-elem tag-category"><a class="name" data-qty="213k">doujinshi</a></span>
+    </div>
+    <div class="tag-container field-name">
+      <span class="font-weight-bold">Tags :</span>
+      <span class="filter-elem"><a class="name" data-qty="1.2k">vanilla</a></span>
+      <span class="filter-elem"><a class="name" data-qty="24">romance</a></span>
+    </div>
+    <div class="tag-container field-name">
+      <span class="font-weight-bold">Artistes :</span>
+      <span class="filter-elem"><a class="name">Example Artist</a></span>
+    </div>
+  `;
+  assert.deepEqual(parseThreeHentaiDetailTags(html), [
+    { name: "doujinshi", type: "category", count: 213000 },
+    { name: "vanilla", type: "tag", count: 1200 },
+    { name: "romance", type: "tag", count: 24 },
+    { name: "Example Artist", type: "artist", count: undefined },
+  ]);
 });
 
 test("parseNozomiIds: lit les IDs uint32 big-endian Hitomi", () => {

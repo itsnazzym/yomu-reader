@@ -164,6 +164,7 @@ function AppShell() {
             <Stack.Screen name="tags/index" />
             <Stack.Screen name="settings/index" />
             <Stack.Screen name="settings/storage" />
+            <Stack.Screen name="cloud-auth" options={{ animation: "fade" }} />
             <Stack.Screen name="api-keys/index" />
             <Stack.Screen name="book/[id]/index" />
             <Stack.Screen name="book/[id]/comments" />

@@ -20,14 +20,22 @@ const API_V1_URL = `${BASE_URL}/api`;
  * Passerelle miroir locale optionnelle (proxy/nhentai-mirror.mjs à la racine du repo) :
  * Utilisée en fallback ultime si l'API directe est inaccessible.
  */
-const FALLBACK_API_BASE =
+const LOCAL_FALLBACK_API_BASE =
   Platform.OS === "android" ? "http://10.0.2.2:8787" : "http://localhost:8787";
+const CONFIGURED_MIRROR_BASE = (process.env.EXPO_PUBLIC_NHENTAI_MIRROR_URL || "").replace(/\/$/, "");
+const FALLBACK_API_BASE = CONFIGURED_MIRROR_BASE || LOCAL_FALLBACK_API_BASE;
+
+function canUseMirror(): boolean {
+  // localhost/10.0.2.2 sont inaccessibles depuis un APK physique : il faut
+  // expliciter une URL LAN ou publique pour activer le miroir.
+  return Boolean(CONFIGURED_MIRROR_BASE);
+}
 
 export function getMirrorBase(): string {
   return FALLBACK_API_BASE;
 }
 
-const REQUEST_TIMEOUT_MS = 8000;
+const REQUEST_TIMEOUT_MS = 7_000;
 
 const EXT_MAP: Record<string, string> = {
   j: "jpg",
@@ -460,42 +468,33 @@ export async function searchGalleries(
   const trimmed = query.trim();
   console.log(`[🔍 SEARCH] "${trimmed || '*'}" (Page ${page}, Tri: ${sort})`);
 
-  // 1. Priorité absolue : API v2 officielle authentifiée
-  try {
-    let sortOrder = "date";
-    if (sort === "popular") sortOrder = "popular";
-    else if (sort === "popular-today") sortOrder = "popular-today";
-    else if (sort === "popular-week") sortOrder = "popular-week";
-    else if (sort === "popular-month") sortOrder = "popular-month";
+  let sortOrder = "date";
+  if (sort === "popular") sortOrder = "popular";
+  else if (sort === "popular-today") sortOrder = "popular-today";
+  else if (sort === "popular-week") sortOrder = "popular-week";
+  else if (sort === "popular-month") sortOrder = "popular-month";
 
-    const v2Res = await v2Search({
+  const v2Attempt = v2Search({
       query: trimmed,
       sort: sortOrder as any,
       page,
-    });
-
+    }).then((v2Res) => {
     const rawList = v2Res?.result || [];
     const resultList: Gallery[] = rawList.map(v2CardToGallery);
     const numPages = Math.max(1, v2Res?.num_pages || Math.ceil((v2Res?.total || 25) / (v2Res?.per_page || 25)));
-
-    console.log(`[✅ V2 SEARCH] ${resultList.length} mangas trouvés (${numPages} pages)`);
     return {
       result: resultList,
       num_pages: numPages,
       per_page: v2Res?.per_page || 25,
     };
-  } catch (v2Err: any) {
-    console.warn(`[API V2 SEARCH ERROR] ${v2Err?.message}. Tentative fallback...`);
-  }
+  });
 
   const q = trimmed ? encodeURIComponent(trimmed) : "";
   const endpointV1 = trimmed
     ? `${API_V1_URL}/galleries/search?query=${q}&page=${page}&sort=${sort}`
     : `${API_V1_URL}/galleries/all?page=${page}&sort=${sort}`;
 
-  // 2. API v1 officielle, utile lorsque v2 est temporairement indisponible.
-  try {
-    const data = await nativeFetchJson<any>(endpointV1);
+  const v1Attempt = nativeFetchJson<any>(endpointV1, REQUEST_TIMEOUT_MS).then((data) => {
     const rawList = data?.result || data?.galleries || data?.data || [];
     const resultList: Gallery[] = rawList.map(enrichGalleryImages);
     const numPages =
@@ -507,30 +506,24 @@ export async function searchGalleries(
       num_pages: numPages,
       per_page: data?.per_page || 25,
     };
-  } catch (v1Err: any) {
-    console.warn(`[API V1 SEARCH ERROR] ${v1Err?.message}. Tentative miroir...`);
-  }
+  });
 
-  // 3. Fallback miroir proxy local
-  const endpointMirror = trimmed
-    ? `${FALLBACK_API_BASE}/api/galleries/search?query=${q}&page=${page}&sort=${sort}`
-    : `${FALLBACK_API_BASE}/api/galleries/all?page=${page}&sort=${sort}`;
-
-  try {
-    const data = await nativeFetchJson<any>(endpointMirror);
-    const rawList = data?.result || data?.galleries || data?.data || [];
-    const resultList: Gallery[] = rawList.map(enrichGalleryImages);
-    const numPages = data?.num_pages || data?.total_pages || (data?.total ? Math.ceil(data.total / 25) : 1);
-    return {
-      result: resultList,
-      num_pages: numPages,
+  const attempts: Promise<SearchResult>[] = [v2Attempt, v1Attempt];
+  if (canUseMirror()) {
+    const endpointMirror = trimmed
+      ? `${FALLBACK_API_BASE}/api/galleries/search?query=${q}&page=${page}&sort=${sort}`
+      : `${FALLBACK_API_BASE}/api/galleries/all?page=${page}&sort=${sort}`;
+    attempts.push(nativeFetchJson<any>(endpointMirror, REQUEST_TIMEOUT_MS).then((data) => ({
+      result: (data?.result || data?.galleries || data?.data || []).map(enrichGalleryImages),
+      num_pages: data?.num_pages || data?.total_pages || (data?.total ? Math.ceil(data.total / 25) : 1),
       per_page: data?.per_page || 25,
-    };
-  } catch (mirrorErr: any) {
-    console.warn(`[MIRROR SEARCH ERROR] ${mirrorErr?.message}`);
+    })));
   }
-
-  throw new Error("Impossible de charger les galeries. Veuillez vérifier votre connexion ou réessayer.");
+  try {
+    return await Promise.any(attempts);
+  } catch {
+    throw new Error("Impossible de charger les galeries. Vérifiez votre connexion puis réessayez.");
+  }
 }
 
 export async function getGallery(id: number | string): Promise<Gallery> {
@@ -544,42 +537,25 @@ export async function getGallery(id: number | string): Promise<Gallery> {
     }
   }
 
-  // 1. API v2 officielle
+  // Les endpoints indépendants partent ensemble : une fiche utilisable est
+  // affichée dès la première réponse valide, au lieu d'additionner les délais.
+  const attempts: Promise<Gallery>[] = [
+    v2GetGallery(id).then((detail) => {
+      if (!detail?.id) throw new Error(`Galerie #${id} introuvable.`);
+      return v2GalleryToAppGallery(detail);
+    }),
+    nativeFetchJson<any>(`${API_V1_URL}/gallery/${id}`, 7_000).then(enrichGalleryImages),
+  ];
+  if (canUseMirror()) {
+    attempts.push(
+      nativeFetchJson<any>(`${FALLBACK_API_BASE}/api/gallery/${id}`, 5_000).then(enrichGalleryImages)
+    );
+  }
   try {
-    // Les compléments (commentaires, suggestions) sont asynchrones dans la
-    // fiche : ils ne doivent pas alourdir l'appel indispensable au lecteur.
-    const v2Detail = await v2GetGallery(id);
-    if (v2Detail && v2Detail.id) {
-      const appGallery = v2GalleryToAppGallery(v2Detail);
-      return appGallery;
-    }
-  } catch (v2Err: any) {
-    console.warn(`[v2 getGallery error] ${v2Err?.message}`);
-    if (v2Err instanceof ApiError && v2Err.status === 404) {
-      throw v2Err;
-    }
+    return await Promise.any(attempts);
+  } catch {
+    throw new Error(`Galerie #${id} indisponible. Vérifiez votre connexion puis réessayez.`);
   }
-
-  // Les deux fallbacks sont indépendants. Les lancer en parallèle borne le
-  // temps total au plus lent (5 s), au lieu de les additionner.
-  const fallbackResults = await Promise.allSettled([
-    nativeFetchJson<any>(`${API_V1_URL}/gallery/${id}`, 5_000),
-    nativeFetchJson<any>(`${FALLBACK_API_BASE}/api/gallery/${id}`, 1_500),
-  ]);
-  for (const result of fallbackResults) {
-    if (result.status === "fulfilled" && result.value) {
-      return enrichGalleryImages(result.value);
-    }
-  }
-  for (const [index, result] of fallbackResults.entries()) {
-    if (result.status === "rejected") {
-      const label = index === 0 ? "v1" : "mirror";
-      const message = result.reason instanceof Error ? result.reason.message : String(result.reason);
-      console.warn(`[${label} getGallery error] ${message}`);
-    }
-  }
-
-  throw new Error(`Galerie #${id} indisponible.`);
 }
 
 export async function getRandomGallery(): Promise<Gallery> {

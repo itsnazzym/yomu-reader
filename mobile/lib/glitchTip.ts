@@ -5,6 +5,7 @@
 
 import * as Sentry from "@sentry/react-native";
 import Constants from "expo-constants";
+import { redactSecrets } from "./redactSecrets";
 
 function readDsn(): string | undefined {
   const fromEnv =
@@ -16,40 +17,6 @@ function readDsn(): string | undefined {
     | undefined;
   const dsn = (fromEnv || extra?.glitchtipDsn || "").trim();
   return dsn || undefined;
-}
-
-const SENSITIVE_KEYS = new Set([
-  "cookie",
-  "authorization",
-  "password",
-  "token",
-  "csrf",
-  "session",
-]);
-
-function scrubValue(key: string, value: unknown): unknown {
-  const lower = key.toLowerCase();
-  if (SENSITIVE_KEYS.has(lower) || lower.includes("cookie") || lower.includes("token")) {
-    return "[Filtered]";
-  }
-  if (typeof value === "string") {
-    // Titres / IDs galerie dans les messages
-    return value
-      .replace(/\b(?:nhentai|3hentai|doujins|hitomi):\d+\b/gi, "[gallery]")
-      .replace(/\/g\/\d+/gi, "/g/[id]")
-      .replace(/gallery[_-]?\d{4,}/gi, "gallery_[id]");
-  }
-  if (Array.isArray(value)) {
-    return value.map((item, idx) => scrubValue(String(idx), item));
-  }
-  if (value && typeof value === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = scrubValue(k, v);
-    }
-    return out;
-  }
-  return value;
 }
 
 let initialized = false;
@@ -70,42 +37,20 @@ export function initGlitchTip(): void {
       sendDefaultPii: false,
       beforeSend(event) {
         try {
-          if (event.message) {
-            event.message = String(scrubValue("message", event.message));
+          const clean = redactSecrets(event) as typeof event;
+          clean.user = undefined;
+          if (clean.request) {
+            clean.request.cookies = undefined;
+            clean.request.data = undefined;
           }
-          if (event.exception?.values) {
-            event.exception.values = event.exception.values.map((item) => ({
-              ...item,
-              value: item.value
-                ? String(scrubValue("value", item.value))
-                : item.value,
-            }));
-          }
-          if (event.request) {
-            event.request = scrubValue("request", event.request) as typeof event.request;
-            if (event.request?.cookies) {
-              event.request.cookies = undefined;
-            }
-            if (event.request?.headers) {
-              const headers = { ...event.request.headers };
-              for (const key of Object.keys(headers)) {
-                if (SENSITIVE_KEYS.has(key.toLowerCase())) {
-                  headers[key] = "[Filtered]";
-                }
-              }
-              event.request.headers = headers;
-            }
-          }
-          if (event.extra) {
-            event.extra = scrubValue("extra", event.extra) as typeof event.extra;
-          }
-          if (event.tags) {
-            event.tags = scrubValue("tags", event.tags) as typeof event.tags;
-          }
+          return clean;
         } catch {
-          // Ne jamais bloquer l'envoi pour une erreur de scrub.
+          return null;
         }
-        return event;
+      },
+      beforeBreadcrumb(breadcrumb) {
+        try { return redactSecrets(breadcrumb) as typeof breadcrumb; }
+        catch { return null; }
       },
     });
     initialized = true;

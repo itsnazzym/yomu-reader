@@ -71,7 +71,7 @@ import {
   replaceHomeSearchTerm,
   setHomeSearchQuery,
 } from "@/lib/homeSearchStore";
-import { firstRouteParam } from "@/lib/searchQuery";
+import { firstRouteParam, queryContainsTerm, setExclusiveSearchTerm } from "@/lib/searchQuery";
 import { translateQueryForSource } from "@/lib/sources/html";
 import { catalogColumnCount } from "@/lib/catalogGrid";
 
@@ -364,10 +364,37 @@ export default function HomeScreen() {
             }
           });
 
-          const response = await nhentaiPromise;
+          let response: Awaited<typeof nhentaiPromise> | null = null;
+          let primaryError: unknown = null;
+          try {
+            response = await nhentaiPromise;
+          } catch (error) {
+            primaryError = error;
+          }
           if (requestId !== latestRequestRef.current) return;
           const dedupKey = (g: Gallery) =>
             ((g as any).globalId as string) || `${g.id}`;
+          if (!response) {
+            // nHentai peut être indisponible sans que les autres catalogues le
+            // soient. On affiche les résultats réellement disponibles au lieu
+            // de masquer toute la page derrière une erreur globale.
+            const settled = await Promise.allSettled(altPromises);
+            if (requestId !== latestRequestRef.current) return;
+            const additions = settled.flatMap((result) =>
+              result.status === "fulfilled" ? result.value : []
+            );
+            if (additions.length === 0) throw primaryError;
+            if (isPagination) {
+              setGalleries((prev) => {
+                const existingIds = new Set(prev.map(dedupKey));
+                return [...prev, ...additions.filter((g) => !existingIds.has(dedupKey(g)))];
+              });
+            } else {
+              setGalleries(additions);
+            }
+            setTotalPages(1);
+            return;
+          }
           if (isPagination) {
             setGalleries((prev) => {
               const existingIds = new Set(prev.map(dedupKey));
@@ -966,25 +993,23 @@ export default function HomeScreen() {
             <TouchableOpacity
               activeOpacity={0.7}
               onPress={() => {
-                const q = "language:french";
-                setSearchQuery(q);
-                setActiveQuery(q);
-                setPage(1);
+                const next = setExclusiveSearchTerm(searchQuery, "language", "french");
+                applySearchQuery(next.query);
               }}
               style={[
                 styles.quickChip,
                 { backgroundColor: colors.page, borderColor: colors.tagBg },
-                searchQuery.includes("french") && {
+                queryContainsTerm(searchQuery, "language", "french") && {
                   backgroundColor: colors.accent + "33",
                   borderColor: colors.accent,
                 },
               ]}
               accessibilityRole="button"
-              accessibilityState={{ selected: searchQuery.includes("french") }}
+              accessibilityState={{ selected: queryContainsTerm(searchQuery, "language", "french") }}
               accessibilityLabel="Filtrer les galeries françaises"
             >
-              <IconWorld size={14} color={searchQuery.includes("french") ? "#ffffff" : colors.accent} strokeWidth={2} />
-              <Text style={[styles.quickChipText, searchQuery.includes("french") && styles.quickChipTextActive]}>
+              <IconWorld size={14} color={queryContainsTerm(searchQuery, "language", "french") ? "#ffffff" : colors.accent} strokeWidth={2} />
+              <Text style={[styles.quickChipText, queryContainsTerm(searchQuery, "language", "french") && styles.quickChipTextActive]}>
                 Français
               </Text>
             </TouchableOpacity>
@@ -992,25 +1017,23 @@ export default function HomeScreen() {
             <TouchableOpacity
               activeOpacity={0.7}
               onPress={() => {
-                const q = "language:english";
-                setSearchQuery(q);
-                setActiveQuery(q);
-                setPage(1);
+                const next = setExclusiveSearchTerm(searchQuery, "language", "english");
+                applySearchQuery(next.query);
               }}
               style={[
                 styles.quickChip,
                 { backgroundColor: colors.page, borderColor: colors.tagBg },
-                searchQuery.includes("english") && {
+                queryContainsTerm(searchQuery, "language", "english") && {
                   backgroundColor: colors.accent + "33",
                   borderColor: colors.accent,
                 },
               ]}
               accessibilityRole="button"
-              accessibilityState={{ selected: searchQuery.includes("english") }}
+              accessibilityState={{ selected: queryContainsTerm(searchQuery, "language", "english") }}
               accessibilityLabel="Filtrer les galeries anglaises"
             >
-              <IconWorld size={14} color={searchQuery.includes("english") ? "#ffffff" : colors.accent} strokeWidth={2} />
-              <Text style={[styles.quickChipText, searchQuery.includes("english") && styles.quickChipTextActive]}>
+              <IconWorld size={14} color={queryContainsTerm(searchQuery, "language", "english") ? "#ffffff" : colors.accent} strokeWidth={2} />
+              <Text style={[styles.quickChipText, queryContainsTerm(searchQuery, "language", "english") && styles.quickChipTextActive]}>
                 Anglais
               </Text>
             </TouchableOpacity>
@@ -1163,7 +1186,7 @@ export default function HomeScreen() {
             paddingTop: 8,
             paddingBottom: insets.bottom + (readerSettings.infiniteScroll ? 25 : 65),
           }}
-          keyExtractor={(item) => String(item.id)}
+          keyExtractor={(item) => item.globalId || `nhentai:${item.id}`}
         />
       )}
 

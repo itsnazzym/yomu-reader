@@ -4,7 +4,7 @@ import path from "node:path";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-const testEntries = ["engine.test.ts"];
+const testEntries = ["engine.test.ts", "sessionSecurity.test.ts"];
 try {
   const fs = await import("node:fs");
   for (const extra of ["resumable.test.ts", "sourcesHtml.test.ts", "sources.test.ts", "cloudSync.test.ts", "stabilization.test.ts", "uiUx.test.tsx"]) {
@@ -28,6 +28,12 @@ for (const entry of testEntries) {
       {
         name: "mock-rn-and-nhentai",
         setup(b) {
+          if (entry === "sessionSecurity.test.ts") {
+            b.onResolve({ filter: /^(?:@supabase\/supabase-js|expo-web-browser|\.\/googleNative|\.\.\/backupStore)$/ },
+              () => ({ path: path.join(here, "mockCloudRuntime.ts") }));
+            b.onResolve({ filter: /^react-native-url-polyfill\/auto$/ },
+              () => ({ path: path.join(here, "mockReactNative.ts") }));
+          }
           // Les `--alias` CLI ne suffisent pas pour les imports `@/` (les `paths`
           // du tsconfig sont appliqués en premier), donc on intercepte ici.
           b.onResolve(

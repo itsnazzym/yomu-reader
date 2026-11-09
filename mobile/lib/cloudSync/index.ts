@@ -1,12 +1,18 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
-import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
 import "react-native-url-polyfill/auto";
 import { createBackupPayload, restoreBackupFromJson, type BackupData } from "../backupStore";
 import { decryptVault, encryptVault, generateRecoveryKey, vaultRecordKey } from "./crypto";
+import {
+  getNativeGoogleIdToken,
+  GoogleNativeUnavailableError,
+  signOutNativeGoogle,
+} from "./googleNative";
 import type { CloudSyncState } from "./types";
+import { createSecureSessionStorage } from "../secureSessionStorage";
+import { cleanupSession } from "../sessionCleanup";
 import { mergeBackups as mergeBackup, createSyncBaseline, backupsEqual, type SyncBaseline } from "./merge";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -23,11 +29,14 @@ class VaultConflictError extends Error {}
 let syncGeneration = 0;
 let applyingRemote = false;
 let creation: Promise<string> | null = null;
-const authStorageKeys = new Set<string>();
+let disconnecting: Promise<void> | null = null;
+const pendingDisconnectCleanup = new Map<string, () => Promise<unknown>>();
 
 let client: SupabaseClient | null = null;
 let syncTimer: ReturnType<typeof setTimeout> | null = null;
 let inFlight: Promise<void> | null = null;
+const completedCallbackUrls = new Set<string>();
+const callbackInFlight = new Map<string, Promise<void>>();
 let state: CloudSyncState = { status: "unconfigured" };
 const listeners = new Set<() => void>();
 
@@ -49,17 +58,29 @@ export function isCloudSyncConfigured(): boolean {
   return Boolean(process.env.EXPO_PUBLIC_SUPABASE_URL && process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
 }
 
-const authStorage = {
-  getItem: (key: string) => { authStorageKeys.add(key); return SecureStore.getItemAsync(`yomu.supabase.${key}`); },
-  setItem: (key: string, value: string) => { authStorageKeys.add(key); return SecureStore.setItemAsync(`yomu.supabase.${key}`, value); },
-  removeItem: (key: string) => SecureStore.deleteItemAsync(`yomu.supabase.${key}`),
-};
+const authStorage = createSecureSessionStorage("yomu.supabase");
 
 function getClient(): SupabaseClient {
+  if (disconnecting) throw new Error("Déconnexion en cours. Patientez avant de vous reconnecter.");
   if (!isCloudSyncConfigured()) throw new Error("Yomu Cloud n'est pas configuré dans cette build.");
   if (!client) {
+    const generation = syncGeneration;
     client = createClient(process.env.EXPO_PUBLIC_SUPABASE_URL!, process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, {
-      auth: { storage: authStorage, autoRefreshToken: true, persistSession: true, detectSessionInUrl: false },
+      auth: {
+        storage: {
+          getItem: authStorage.getItem,
+          setItem: (key, value) => generation === syncGeneration
+            ? authStorage.setItem(key, value)
+            : Promise.reject(new Error("Cette session a été déconnectée.")),
+          removeItem: (key) => generation === syncGeneration
+            ? authStorage.removeItem(key)
+            : Promise.resolve(),
+        },
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: false,
+        flowType: "pkce",
+      },
     });
   }
   return client;
@@ -165,24 +186,80 @@ export async function refreshCloudSyncState(): Promise<void> {
   }
 }
 
-export async function connectWithGoogle(): Promise<void> {
+export async function connectWithGoogleBrowser(): Promise<void> {
   const supabase = getClient();
-  // Le projet garde deux schémas pour les anciens liens de galerie. OAuth
-  // doit toutefois n'en utiliser qu'un, sinon l'URL à autoriser varie selon
-  // la plateforme et Google/Supabase refusent le retour.
-  const redirectTo = Linking.createURL("cloud-auth", { scheme: "yomureader" });
-  const { data, error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo, skipBrowserRedirect: true } });
+  // Callback dédié, déclaré dans Expo Router. Cette forme à trois slash est
+  // celle à enregistrer dans Supabase et évite la page +not-found au retour.
+  const redirectTo = "yomureader:///cloud-auth";
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo, skipBrowserRedirect: true },
+  });
   if (error || !data.url) throw error || new Error("Impossible de démarrer Google.");
   const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
   if (result.type !== "success" || !result.url) throw new Error("Connexion Google annulée.");
-  const fragment = result.url.includes("#") ? result.url.slice(result.url.indexOf("#") + 1) : result.url.split("?")[1] || "";
-  const params = new URLSearchParams(fragment);
-  const accessToken = params.get("access_token");
-  const refreshToken = params.get("refresh_token");
-  if (!accessToken || !refreshToken) throw new Error(params.get("error_description") || "Google n'a pas renvoyé de session.");
-  const { error: sessionError } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
-  if (sessionError) throw sessionError;
-  await refreshCloudSyncState();
+  await completeCloudAuthCallback(result.url);
+}
+
+/**
+ * Ouvre le sélecteur de compte Android (Credential Manager). Google y propose
+ * automatiquement les passkeys et le verrouillage d'écran lorsqu'ils existent.
+ */
+export async function connectWithGoogle(): Promise<void> {
+  try {
+    const { idToken, nonce } = await getNativeGoogleIdToken();
+    const { error } = await getClient().auth.signInWithIdToken({
+      provider: "google",
+      token: idToken,
+      nonce,
+    });
+    if (error) throw error;
+    await refreshCloudSyncState();
+  } catch (error) {
+    if (error instanceof GoogleNativeUnavailableError) {
+      await connectWithGoogleBrowser();
+      return;
+    }
+    throw error;
+  }
+}
+
+/** Finalise le retour OAuth, y compris lorsqu'Android relance l'app sur la route. */
+export async function completeCloudAuthCallback(url: string): Promise<void> {
+  if (completedCallbackUrls.has(url)) return;
+  const pending = callbackInFlight.get(url);
+  if (pending) return pending;
+
+  const work = (async () => {
+    const query = url.includes("#") ? url.slice(url.indexOf("#") + 1) : url.split("?")[1] || "";
+    const params = new URLSearchParams(query);
+    const callbackError = params.get("error_description") || params.get("error");
+    if (callbackError) throw new Error(callbackError);
+
+    const supabase = getClient();
+    const code = params.get("code");
+    if (code) {
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
+      if (error) throw error;
+    } else {
+      // Compatibilité avec les retours implicites encore en cache chez un
+      // fournisseur OAuth déjà configuré avant la migration PKCE.
+      const accessToken = params.get("access_token");
+      const refreshToken = params.get("refresh_token");
+      if (!accessToken || !refreshToken) {
+        throw new Error("Google n'a pas renvoyé de session.");
+      }
+      const { error } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      });
+      if (error) throw error;
+    }
+    completedCallbackUrls.add(url);
+    await refreshCloudSyncState();
+  })().finally(() => callbackInFlight.delete(url));
+  callbackInFlight.set(url, work);
+  return work;
 }
 
 export function createVault(): Promise<string> {
@@ -287,25 +364,64 @@ export function scheduleCloudSync(): void {
 }
 
 export async function disconnectCloud(): Promise<void> {
+  if (disconnecting) return disconnecting;
+  const work = performCloudDisconnect();
+  disconnecting = work;
+  try { await work; }
+  finally { if (disconnecting === work) disconnecting = null; }
+}
+
+async function performCloudDisconnect(): Promise<void> {
   syncGeneration++;
   if (syncTimer) clearTimeout(syncTimer);
   syncTimer = null;
-  const session = isCloudSyncConfigured() ? await currentSession() : null;
-  const userId = session?.user.id;
-  const key = userId ? await SecureStore.getItemAsync(recoveryStorageKey(userId)) : null;
+  let userId: string | undefined;
+  let key: string | null = null;
+  let metadataReadFailed = false;
   try {
-    if (client) {
-      client.auth.stopAutoRefresh();
-      await client.auth.signOut({ scope: "local" });
-    }
-  } finally {
-    await Promise.all([...authStorageKeys].map((name) => authStorage.removeItem(name)));
-    client = null;
-    if (userId) await Promise.all([
-      SecureStore.deleteItemAsync(recoveryStorageKey(userId)),
-      SecureStore.deleteItemAsync(pendingStorageKey(userId)),
-      ...(key ? [AsyncStorage.removeItem(metaStorageKey(userId, key))] : []),
-    ]);
-    emit({ status: "signed_out" });
+    const session = isCloudSyncConfigured() ? await currentSession() : null;
+    userId = session?.user.id;
+    key = userId ? await SecureStore.getItemAsync(recoveryStorageKey(userId)) : null;
+  } catch {
+    metadataReadFailed = true;
   }
+  const previousClient = client;
+  if (userId) {
+    const recovery = recoveryStorageKey(userId);
+    const pending = pendingStorageKey(userId);
+    pendingDisconnectCleanup.set(recovery, () => SecureStore.deleteItemAsync(recovery));
+    pendingDisconnectCleanup.set(pending, () => SecureStore.deleteItemAsync(pending));
+    if (key) {
+      const meta = metaStorageKey(userId, key);
+      pendingDisconnectCleanup.set(meta, () => AsyncStorage.removeItem(meta));
+    }
+  }
+  const providersClean = await cleanupSession([
+    async () => { if (previousClient) await previousClient.auth.stopAutoRefresh(); },
+    async () => {
+      if (previousClient) {
+        const { error } = await previousClient.auth.signOut({ scope: "local" });
+        if (error) throw error;
+      }
+    },
+    signOutNativeGoogle,
+  ]);
+  // Always clear this service's local secrets, even if Google or Supabase failed.
+  const localClean = await cleanupSession([
+    () => authStorage.clear(),
+    ...[...pendingDisconnectCleanup].map(([name, remove]) => async () => {
+      await remove();
+      pendingDisconnectCleanup.delete(name);
+    }),
+  ]);
+  // Also revoke a client created while reading the account to disconnect.
+  syncGeneration++;
+  client = null;
+  completedCallbackUrls.clear();
+  if (!providersClean || !localClean || metadataReadFailed) {
+    const message = "La déconnexion est incomplète. Réessayez pour terminer l’effacement des sessions sur ce téléphone.";
+    emit({ status: "error", message });
+    throw new Error(message);
+  }
+  emit({ status: "signed_out" });
 }

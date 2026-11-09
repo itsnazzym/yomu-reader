@@ -82,7 +82,7 @@ export default function BookDetailScreen() {
   const { query: homeQuery, toggleTerm, replaceTerm } = useHomeSearch();
   const bookmarkScale = useRef(new Animated.Value(1)).current;
   const heartScale = useRef(new Animated.Value(1)).current;
-  const appendLockRef = useRef(false);
+  const appendNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [gallery, setGallery] = useState<Gallery | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -111,6 +111,7 @@ export default function BookDetailScreen() {
   useEffect(() => {
     return () => {
       fadeOut.stopAnimation();
+      if (appendNoticeTimerRef.current) clearTimeout(appendNoticeTimerRef.current);
     };
   }, [fadeOut]);
 
@@ -169,7 +170,10 @@ export default function BookDetailScreen() {
       // Sources alternatives : adaptateur dédié, pas de commentaires ni
       // de suggestions (non supportés par ces sites).
       const knownTitle = typeof titleParam === "string" ? titleParam : undefined;
-      void loadSourceGallery(sourceId, id, knownTitle)
+      void loadSourceGallery(sourceId, id, knownTitle, {
+        forceRefresh: reloadNonce > 0,
+        timeoutMs: 10_000,
+      })
         .then((sg) => {
           // Map vers Gallery (mapper partagé) pour réutiliser toute l'UI.
           if (!cancelled) {
@@ -298,15 +302,11 @@ export default function BookDetailScreen() {
   };
 
   const toggleTagSearch = (name: string, type = "tag") => {
-    if (appendLockRef.current) return;
-    appendLockRef.current = true;
     lightTap();
     const result = toggleTerm(type, name);
     setAppendNotice(`${name} ${result.added ? "ajouté à" : "retiré de"} la recherche`);
-    setTimeout(() => {
-      appendLockRef.current = false;
-      setAppendNotice(null);
-    }, 1400);
+    if (appendNoticeTimerRef.current) clearTimeout(appendNoticeTimerRef.current);
+    appendNoticeTimerRef.current = setTimeout(() => setAppendNotice(null), 800);
   };
 
   const groupTagsByType = (tags: Tag[] = []) => {
