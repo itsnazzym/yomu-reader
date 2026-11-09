@@ -17,6 +17,8 @@ import java.util.concurrent.RejectedExecutionException
 import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.dnsoverhttps.DnsOverHttps
 import okhttp3.HttpUrl.Companion.toHttpUrl
 
@@ -109,8 +111,20 @@ object YomuNetworking : Dns {
       result.putString("host", host)
       val started = System.nanoTime()
       try {
-        client.newCall(Request.Builder().url("https://$host/").build()).execute().use {
-          result.putString("result", "HTTP ${it.code}")
+        val isApi = host == "api.e-hentai.org"
+        val request = if (isApi) {
+          // The API has no root page. Exercise the same endpoint and method
+          // as gallery metadata, with a synthetic gallery key (no account data).
+          val body = """{"method":"gdata","gidlist":[[1,""]],"namespace":1}"""
+            .toRequestBody("application/json".toMediaType())
+          Request.Builder().url("https://api.e-hentai.org/api.php").post(body).build()
+        } else Request.Builder().url("https://$host/").build()
+        client.newCall(request).execute().use {
+          val status = if (isApi && it.isSuccessful) {
+            val valid = runCatching { org.json.JSONObject(it.body?.string() ?: "").has("gmetadata") }.getOrDefault(false)
+            if (valid) "API accessible (HTTP ${it.code})" else "Réponse API inattendue (HTTP ${it.code})"
+          } else "HTTP ${it.code}"
+          result.putString("result", status)
         }
       } catch (error: Exception) {
         val cause = generateSequence<Throwable>(error) { it.cause }.take(8).toList()
