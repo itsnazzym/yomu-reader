@@ -10,6 +10,9 @@ import {
   useWindowDimensions,
 
 } from "react-native";
+import Animated, { FadeInDown } from "react-native-reanimated";
+import { useModalMotion } from "@/components/motion/useModalMotion";
+import { useReduceMotion } from "@/lib/reduceMotion";
 import { IconX } from "@tabler/icons-react-native";
 import { Image as ExpoImage } from "expo-image";
 import { useTheme } from "@/lib/ThemeContext";
@@ -101,21 +104,27 @@ export interface AuthGuideModalProps {
 
 export function AuthGuideModal({ visible, guideType, onClose }: AuthGuideModalProps) {
   const { colors } = useTheme();
+  const { presented, backdropStyle, cardStyle } = useModalMotion(visible);
+  const reduced = useReduceMotion();
+  const [lastGuideType, setLastGuideType] = useState(guideType);
+  useEffect(() => { if (guideType) setLastGuideType(guideType); }, [guideType]);
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const imageWidth = Math.max(1, Math.min(width - 32, 520) - 56);
   const [imageFailed, setImageFailed] = useState(false);
   useEffect(() => setImageFailed(false), [guideType]);
 
-  if (!guideType || !GUIDES[guideType]) return null;
-  const guide = GUIDES[guideType];
+  const renderedType = guideType || lastGuideType;
+  if (!renderedType || !GUIDES[renderedType]) return null;
+  const guide = GUIDES[renderedType];
   const imageSource = guide.image ? Image.resolveAssetSource(guide.image) : null;
   const imageAvailable = Boolean(imageSource?.uri) && !imageFailed;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={presented} transparent animationType="none" onRequestClose={onClose}>
+      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: "rgba(0,0,0,0.75)" }, backdropStyle]} />
       <View style={[styles.backdrop, { paddingTop: Math.max(insets.top, 16), paddingBottom: Math.max(insets.bottom, 16) }]}>
-        <View style={[styles.card, { backgroundColor: colors.page, borderColor: colors.tagBg }]}>
+        <Animated.View style={[styles.card, { backgroundColor: colors.page, borderColor: colors.tagBg }, cardStyle]}>
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerTitleWrap}>
@@ -168,9 +177,10 @@ export function AuthGuideModal({ visible, guideType, onClose }: AuthGuideModalPr
             <View style={styles.section}>
               <Text style={[styles.sectionTitle, { color: colors.txt }]}>Instructions détaillées :</Text>
               {guide.steps.map((st, i) => (
-                <View key={i} style={styles.stepRow}>
+                <Animated.View key={`${renderedType}:${i}`} style={styles.stepRow}
+                  entering={reduced ? undefined : FadeInDown.duration(280).delay(Math.min(i * 45, 180))}>
                   <Text style={[styles.stepText, { color: "#d1d5db" }]}>{st}</Text>
-                </View>
+                </Animated.View>
               ))}
             </View>
 
@@ -198,7 +208,7 @@ export function AuthGuideModal({ visible, guideType, onClose }: AuthGuideModalPr
               <ButtonLabel style={styles.gotItText}>J'ai compris, revenir à la connexion</ButtonLabel>
             </TouchableOpacity>
           </ScrollView>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -207,7 +217,6 @@ export function AuthGuideModal({ visible, guideType, onClose }: AuthGuideModalPr
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.82)",
     justifyContent: "center",
     alignItems: "center",
     padding: 16,

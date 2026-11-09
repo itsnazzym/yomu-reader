@@ -1,13 +1,13 @@
-import React, { useRef, useCallback } from "react";
+import React, { useEffect, useCallback } from "react";
 import {
   TouchableOpacity,
   StyleProp,
   ViewStyle,
-  Animated,
   StyleSheet,
   type GestureResponderEvent,
   type TouchableOpacityProps,
 } from "react-native";
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming, cancelAnimation, ReduceMotion } from "react-native-reanimated";
 import { useReduceMotion } from "@/lib/reduceMotion";
 
 const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
@@ -16,7 +16,7 @@ const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpaci
  * Échelle au press pour les petites puces cliquables (chips, tags, lignes).
  * Centralisée ici pour que les appels n'aient pas à répéter le réglage.
  */
-export const CHIP_PRESSED_SCALE = 0.93;
+export const CHIP_PRESSED_SCALE = 0.91;
 
 export interface CardPressableProps
   extends Omit<TouchableOpacityProps, "style" | "children" | "onPress"> {
@@ -24,7 +24,7 @@ export interface CardPressableProps
   style?: StyleProp<ViewStyle>;
   radius?: number;
   activeOpacity?: number;
-  /** "card" (défaut) : échelle douce ; "chip" : échelle 0.93 (puce/tag). */
+  /** Rebond tactile plus compact pour les puces que pour les cartes. */
   variant?: "card" | "chip";
   pressedScale?: number;
   onPress?: (e?: GestureResponderEvent) => void;
@@ -37,37 +37,39 @@ export function CardPressable({
   radius = 12,
   activeOpacity = 0.85,
   variant = "card",
-  pressedScale = variant === "chip" ? CHIP_PRESSED_SCALE : 0.97,
+  pressedScale = variant === "chip" ? CHIP_PRESSED_SCALE : 0.94,
   onPress,
   disabled,
+  onPressIn: suppliedPressIn,
+  onPressOut: suppliedPressOut,
   ...rest
 }: CardPressableProps) {
-  const scale = useRef(new Animated.Value(1)).current;
+  const scale = useSharedValue(1);
   const reduceMotion = useReduceMotion();
   const transform = StyleSheet.flatten(style)?.transform;
 
-  const onPressIn = useCallback(() => {
-    if (reduceMotion) return;
-    Animated.spring(scale, {
-      toValue: pressedScale,
-      useNativeDriver: true,
-      speed: 50,
-      bounciness: 2,
-    }).start();
-  }, [scale, pressedScale, reduceMotion]);
+  useEffect(() => {
+    if (reduceMotion || disabled) { cancelAnimation(scale); scale.value = 1; }
+    return () => cancelAnimation(scale);
+  }, [reduceMotion, disabled, scale]);
 
-  const onPressOut = useCallback(() => {
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: typeof transform === "string" ? transform : [...(transform || []), { scale: scale.value }],
+  }));
+
+  const onPressIn = useCallback((event: GestureResponderEvent) => {
+    if (disabled) return;
+    if (!reduceMotion) scale.value = withTiming(pressedScale, { duration: 100, reduceMotion: ReduceMotion.System });
+    suppliedPressIn?.(event);
+  }, [disabled, scale, pressedScale, reduceMotion, suppliedPressIn]);
+
+  const onPressOut = useCallback((event: GestureResponderEvent) => {
+    if (disabled) return;
     if (reduceMotion) {
-      scale.setValue(1);
-      return;
-    }
-    Animated.spring(scale, {
-      toValue: 1,
-      useNativeDriver: true,
-      speed: 50,
-      bounciness: 4,
-    }).start();
-  }, [scale, reduceMotion]);
+      scale.value = 1;
+    } else scale.value = withSpring(1, { damping: 16, stiffness: 260, mass: 0.7, reduceMotion: ReduceMotion.System });
+    suppliedPressOut?.(event);
+  }, [disabled, scale, reduceMotion, suppliedPressOut]);
 
   return (
     <AnimatedTouchableOpacity
@@ -79,7 +81,7 @@ export function CardPressable({
       style={[
         { borderRadius: radius, opacity: disabled ? 0.5 : 1 },
         style,
-        { transform: typeof transform === "string" ? transform : [...(transform || []), { scale }] },
+        animatedStyle,
       ]}
       {...rest}
     >

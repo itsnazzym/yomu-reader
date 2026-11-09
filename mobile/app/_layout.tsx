@@ -17,6 +17,7 @@ import { Drawer } from "react-native-drawer-layout";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { enableScreens } from "react-native-screens";
 import * as Linking from "expo-linking";
+import { useReduceMotion } from "@/lib/reduceMotion";
 import { ThemeProvider, useTheme } from "@/lib/ThemeContext";
 import { DrawerProvider, useDrawer } from "@/lib/DrawerContext";
 import { SideMenu } from "@/components/SideMenu";
@@ -73,6 +74,7 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
 }
 
 function AppShell() {
+  const reduceMotion = useReduceMotion();
   const { colors } = useTheme();
   const { isOpen, openDrawer, closeDrawer, swipeEnabled } = useDrawer();
   const router = useRouter();
@@ -147,7 +149,7 @@ function AppShell() {
             screenOptions={{
               headerShown: false,
               contentStyle: { flex: 1, backgroundColor: colors.bg },
-              animation: "slide_from_right",
+              animation: reduceMotion ? "fade" : "slide_from_right",
               freezeOnBlur: true,
             }}
           >

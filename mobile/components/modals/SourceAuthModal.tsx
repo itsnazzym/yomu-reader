@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { StyleSheet, View, Text, TextInput, ActivityIndicator, Alert, Switch, TouchableOpacity, Linking, Keyboard, type TextInputProps } from "react-native";
+import { AnimatePresence } from "moti";
+import { MotionSection } from "@/components/motion/MotionSection";
+import { AuthMotionFeedback } from "@/components/motion/AuthMotionFeedback";
 import { IconBook, IconExternalLink } from "@tabler/icons-react-native";
 import { useTheme } from "@/lib/ThemeContext";
 import { CardPressable } from "@/components/ui/CardPressable";
@@ -194,6 +197,7 @@ export function SourceAuthModal({
     else setRule34ApiKey(text);
   };
   const switchSource = (source: SourceId) => {
+    Keyboard.dismiss();
     setActiveTab(source);
     setErrorMessage(null);
     setSuccessMessage(null);
@@ -217,13 +221,15 @@ export function SourceAuthModal({
           <ButtonLabel style={[styles.tabText, { color: activeTab === source ? colors.txt : colors.sub }]}>{source === "ehentai" ? "E-Hentai" : "Rule34"}</ButtonLabel>
         </TouchableOpacity>)}
       </View>
+      <AnimatePresence exitBeforeEnter>
+      <MotionSection key={`${activeTab}:${ehentaiLoginMode}`}>
       <Text accessibilityLiveRegion="polite" style={[styles.description, { color: colors.sub }]}>
         {auth.isLoggedIn ? `Connecté · ${auth.username || (activeTab === "rule34" ? "Rule34" : "E-Hentai")}` : activeTab === "rule34" ? "Une clé API est nécessaire pour consulter cette source." : "Mode invité · Connectez-vous pour accéder à votre compte."}
       </Text>
       {activeTab === "ehentai" ? <>
         <View style={styles.tabs}>
           {(["cookies", "forum"] as const).map(mode => <TouchableOpacity key={mode} disabled={loading}
-            onPress={() => { setEhentaiLoginMode(mode); setErrorMessage(null); setSuccessMessage(null); }}
+            onPress={() => { Keyboard.dismiss(); setEhentaiLoginMode(mode); setErrorMessage(null); setSuccessMessage(null); }}
             accessibilityRole="tab" accessibilityState={{ selected: ehentaiLoginMode === mode, disabled: loading }}
             style={[styles.tab, { backgroundColor: ehentaiLoginMode === mode ? colors.tagBg : colors.bg }]}>
             <ButtonLabel style={[styles.tabText, { color: colors.txt }]}>{mode === "cookies" ? "Cookies" : "Compte forum"}</ButtonLabel>
@@ -255,8 +261,7 @@ export function SourceAuthModal({
         <AuthField label="User ID Rule34" value={rule34UserId} onChangeText={text => updateRule34Field("userId", text)} editable={!loading} placeholder="Identifiant ou ligne complète" />
         <AuthField label="Clé API Rule34" value={rule34ApiKey} onChangeText={text => updateRule34Field("apiKey", text)} secureTextEntry editable={!loading} />
       </>}
-      {errorMessage && <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={styles.errorText}>{errorMessage}</Text>}
-      {successMessage && <Text accessibilityLiveRegion="polite" style={styles.successText}>{successMessage}</Text>}
+      <AuthMotionFeedback loading={loading} error={errorMessage} success={successMessage} active={visible && guideModalType === null} />
       <CardPressable onPress={activeTab === "rule34" ? handleRule34Login : handleEhentaiLogin} disabled={loading}
         accessibilityRole="button" accessibilityState={{ busy: loading, disabled: loading }} style={styles.primaryBtn}>
         {loading && <ActivityIndicator color="#20252b" />}
@@ -271,6 +276,8 @@ export function SourceAuthModal({
         <ButtonLabel style={[styles.helpText, { color: colors.txt }]}>Gérer mon compte nHentai</ButtonLabel>
       </TouchableOpacity>}
       {guideLink("nhentai_session")}
+      </MotionSection>
+      </AnimatePresence>
     </AuthModalShell>
     <AuthGuideModal visible={visible && guideModalType !== null} guideType={guideModalType} onClose={() => setGuideModalType(null)} />
   </>;

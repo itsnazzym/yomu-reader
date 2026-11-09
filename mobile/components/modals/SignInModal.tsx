@@ -4,6 +4,7 @@ import {
   View,
   Text,
   TextInput,
+  Keyboard,
   Pressable,
   ActivityIndicator,
   Alert,
@@ -22,6 +23,9 @@ import {
 } from "@tabler/icons-react-native";
 import { useTheme } from "@/lib/ThemeContext";
 import { CardPressable } from "@/components/ui/CardPressable";
+import { AnimatePresence } from "moti";
+import { MotionSection } from "@/components/motion/MotionSection";
+import { AuthMotionFeedback } from "@/components/motion/AuthMotionFeedback";
 import { AuthModalShell } from "@/components/auth/AuthModalShell";
 import { ButtonLabel } from "@/components/ui/ButtonLabel";
 import { useAccount, detectCredentialType } from "@/lib/accountStore";
@@ -135,6 +139,7 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
   };
 
   const switchMode = (m: AuthMode) => {
+    Keyboard.dismiss();
     setMode(m);
     resetForm();
   };
@@ -460,6 +465,8 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
                 ))}
               </View>
 
+              <AnimatePresence exitBeforeEnter>
+              <MotionSection key={mode}>
               {resetSuccess && (
                 <View style={styles.successBox}>
                   <Text style={styles.successText}>
@@ -635,11 +642,7 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
                   </View>
                 ))}
 
-              {errorMessage && (
-                <View style={styles.errorBox}>
-                  <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={styles.errorText}>{errorMessage}</Text>
-                </View>
-              )}
+              <AuthMotionFeedback loading={loading && !powProgress && !syncStatus} error={errorMessage} active={visible} />
 
               {/* Submit CTA */}
               <CardPressable
@@ -678,6 +681,8 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
               <Text style={styles.officialFootnote}>
                 nHentai · API v2 Officielle · Authentification sécurisée
               </Text>
+              </MotionSection>
+              </AnimatePresence>
             </View>
           )}
     </AuthModalShell>

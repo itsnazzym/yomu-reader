@@ -28,6 +28,10 @@ for (const entry of testEntries) {
       {
         name: "mock-rn-and-nhentai",
         setup(b) {
+          if (entry === "uiUx.test.tsx") {
+            b.onResolve({ filter: /^react-native-reanimated$/ },
+              () => ({ path: path.join(here, "mockReanimated.ts") }));
+          }
           if (entry === "sessionSecurity.test.ts") {
             b.onResolve({ filter: /^(?:@supabase\/supabase-js|expo-web-browser|\.\/googleNative|\.\.\/backupStore)$/ },
               () => ({ path: path.join(here, "mockCloudRuntime.ts") }));
