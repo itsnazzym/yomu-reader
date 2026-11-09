@@ -4,6 +4,12 @@ const { patchMainActivity } = require("../withPrivacyScreenCapture");
 const { patchMainApplicationKt } = require("../withAndroidDoh");
 const { patchImageWrapper } = require("../withSafeImageBlur");
 
+test("chaque installation réapplique le filtre et Android compile le module corrigé depuis ses sources", () => {
+  const pkg = require("../package.json");
+  assert.equal(pkg.scripts.postinstall, "node withSafeImageBlur.js");
+  assert.ok(pkg.expo.autolinking.android.buildFromSource.includes("expo-image"));
+});
+
 test("le flou natif emploie le filtre logiciel et le patch reste idempotent", () => {
   const source = "import jp.wasabeef.glide.transformations.BlurTransformation\ntransform(BlurTransformation(min(it, 25), 4))";
   const patched = patchImageWrapper(source);

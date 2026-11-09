@@ -3,6 +3,7 @@
   "main": "expo-router/entry",
   "version": "2.0.1",
   "scripts": {
+    "postinstall": "node withSafeImageBlur.js",
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
@@ -92,6 +93,13 @@
     "@sentry/react-native": true,
     "@sentry/cli": true,
     "expo-updates": true
+  },
+  "expo": {
+    "autolinking": {
+      "android": {
+        "buildFromSource": ["expo-image"]
+      }
+    }
   },
   "private": true
 }
