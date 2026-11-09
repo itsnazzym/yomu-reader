@@ -1,0 +1,38 @@
+[
+  {
+    "name": "direct",
+    "http": 206,
+    "type": "image/webp",
+    "ms": 156,
+    "magic": [
+      82,
+      73,
+      70,
+      70
+    ]
+  },
+  {
+    "name": "photon",
+    "http": 200,
+    "type": "image/jpeg",
+    "ms": 209,
+    "magic": [
+      255,
+      216,
+      255,
+      224
+    ]
+  },
+  {
+    "name": "canonical",
+    "http": 206,
+    "type": "image/webp",
+    "ms": 118,
+    "magic": [
+      82,
+      73,
+      70,
+      70
+    ]
+  }
+]

@@ -1,0 +1,453 @@
+{
+  "startedAt": "2026-11-09T19:19:27.702Z",
+  "endedAt": "2026-11-09T19:19:39.970Z",
+  "results": [
+    {
+      "source": "nhentai",
+      "network": "PC Node fetch, Android User-Agent; native modules/storage mocked; no credentials",
+      "stages": {
+        "catalogue": {
+          "cards": 25,
+          "hasMore": true,
+          "ms": 196
+        },
+        "pagination": {
+          "cards": 25,
+          "overlap": 0
+        },
+        "galleries": [
+          {
+            "nativeId": "695537",
+            "numPages": 33,
+            "urls": 33,
+            "uniqueUrls": 33,
+            "samples": [
+              {
+                "page": 1,
+                "placeholder": false,
+                "host": "i1.nhentai.net",
+                "http": 206,
+                "contentType": "image/webp",
+                "signature": "webp",
+                "ok": true
+              },
+              {
+                "page": 17,
+                "placeholder": false,
+                "host": "i1.nhentai.net",
+                "http": 206,
+                "contentType": "image/webp",
+                "signature": "webp",
+                "ok": true
+              },
+              {
+                "page": 33,
+                "placeholder": false,
+                "host": "i1.nhentai.net",
+                "http": 206,
+                "contentType": "image/webp",
+                "signature": "webp",
+                "ok": true
+              }
+            ]
+          },
+          {
+            "nativeId": "695536",
+            "numPages": 34,
+            "urls": 34,
+            "uniqueUrls": 34,
+            "samples": [
+              {
+                "page": 1,
+                "placeholder": false,
+                "host": "i1.nhentai.net",
+                "http": 206,
+                "contentType": "image/webp",
+                "signature": "webp",
+                "ok": true
+              },
+              {
+                "page": 18,
+                "placeholder": false,
+                "host": "i1.nhentai.net",
+                "http": 206,
+                "contentType": "image/webp",
+                "signature": "webp",
+                "ok": true
+              },
+              {
+                "page": 34,
+                "placeholder": false,
+                "host": "i1.nhentai.net",
+                "http": 206,
+                "contentType": "image/webp",
+                "signature": "webp",
+                "ok": true
+              }
+            ]
+          }
+        ]
+      },
+      "elapsedMs": 580
+    },
+    {
+      "source": "3hentai",
+      "network": "PC Node fetch, Android User-Agent; native modules/storage mocked; no credentials",
+      "stages": {
+        "catalogue": {
+          "cards": 25,
+          "hasMore": true,
+          "ms": 208
+        },
+        "pagination": {
+          "cards": 25,
+          "overlap": 0
+        },
+        "galleries": [
+          {
+            "nativeId": "788425",
+            "numPages": 31,
+            "urls": 31,
+            "uniqueUrls": 31,
+            "samples": [
+              {
+                "page": 1,
+                "placeholder": false,
+                "host": "s1.3hentai.xyz",
+                "http": 206,
+                "contentType": "image/jpeg",
+                "signature": "jpeg",
+                "ok": true
+              },
+              {
+                "page": 16,
+                "placeholder": false,
+                "host": "s1.3hentai.xyz",
+                "http": 206,
+                "contentType": "image/jpeg",
+                "signature": "jpeg",
+                "ok": true
+              },
+              {
+                "page": 31,
+                "placeholder": false,
+                "host": "s1.3hentai.xyz",
+                "http": 206,
+                "contentType": "image/jpeg",
+                "signature": "jpeg",
+                "ok": true
+              }
+            ]
+          },
+          {
+            "nativeId": "788360",
+            "numPages": 25,
+            "urls": 25,
+            "uniqueUrls": 25,
+            "samples": [
+              {
+                "page": 1,
+                "placeholder": false,
+                "host": "s1.3hentai.xyz",
+                "http": 206,
+                "contentType": "image/jpeg",
+                "signature": "jpeg",
+                "ok": true
+              },
+              {
+                "page": 13,
+                "placeholder": false,
+                "host": "s1.3hentai.xyz",
+                "http": 206,
+                "contentType": "image/jpeg",
+                "signature": "jpeg",
+                "ok": true
+              },
+              {
+                "page": 25,
+                "placeholder": false,
+                "host": "s1.3hentai.xyz",
+                "http": 206,
+                "contentType": "image/jpeg",
+                "signature": "jpeg",
+                "ok": true
+              }
+            ]
+          }
+        ]
+      },
+      "elapsedMs": 685
+    },
+    {
+      "source": "doujins",
+      "network": "PC Node fetch, Android User-Agent; native modules/storage mocked; no credentials",
+      "stages": {
+        "catalogue": {
+          "cards": 99,
+          "hasMore": true,
+          "ms": 3875
+        },
+        "pagination": {
+          "cards": 208,
+          "overlap": 0
+        },
+        "galleries": [
+          {
+            "nativeId": "105988",
+            "numPages": 26,
+            "urls": 26,
+            "uniqueUrls": 26,
+            "samples": [
+              {
+                "page": 1,
+                "placeholder": true,
+                "host": "static.doujins.com",
+                "http": 206,
+                "contentType": "image/jpeg",
+                "signature": "jpeg",
+                "ok": true
+              },
+              {
+                "page": 14,
+                "placeholder": false,
+                "host": "static.doujins.com",
+                "http": 206,
+                "contentType": "image/jpeg",
+                "signature": "jpeg",
+                "ok": true
+              },
+              {
+                "page": 26,
+                "placeholder": false,
+                "host": "static.doujins.com",
+                "http": 206,
+                "contentType": "image/jpeg",
+                "signature": "jpeg",
+                "ok": true
+              }
+            ]
+          },
+          {
+            "nativeId": "105985",
+            "numPages": 13,
+            "urls": 13,
+            "uniqueUrls": 13,
+            "samples": [
+              {
+                "page": 1,
+                "placeholder": true,
+                "host": "static.doujins.com",
+                "http": 206,
+                "contentType": "image/webp",
+                "signature": "webp",
+                "ok": true
+              },
+              {
+                "page": 7,
+                "placeholder": false,
+                "host": "static.doujins.com",
+                "http": 206,
+                "contentType": "image/webp",
+                "signature": "webp",
+                "ok": true
+              },
+              {
+                "page": 13,
+                "placeholder": false,
+                "host": "static.doujins.com",
+                "http": 206,
+                "contentType": "image/webp",
+                "signature": "webp",
+                "ok": true
+              }
+            ]
+          }
+        ]
+      },
+      "elapsedMs": 12230
+    },
+    {
+      "source": "ehentai",
+      "network": "PC Node fetch, Android User-Agent; native modules/storage mocked; no credentials",
+      "stages": {
+        "catalogue": {
+          "cards": 25,
+          "hasMore": true,
+          "ms": 249
+        },
+        "pagination": {
+          "cards": 25,
+          "overlap": 0
+        },
+        "galleries": [
+          {
+            "nativeId": "4317653_3d09d659bb",
+            "numPages": 76,
+            "urls": 76,
+            "uniqueUrls": 21,
+            "samples": [
+              {
+                "page": 1,
+                "placeholder": false,
+                "host": "joqxzhm.hgabxqhwequq.hath.network:4444",
+                "http": 200,
+                "contentType": "image/webp",
+                "signature": "webp",
+                "ok": true
+              },
+              {
+                "page": 39,
+                "placeholder": true,
+                "host": "ehgt.org",
+                "http": 206,
+                "contentType": "image/webp",
+                "signature": "webp",
+                "ok": true
+              },
+              {
+                "page": 76,
+                "placeholder": true,
+                "host": "ehgt.org",
+                "http": 206,
+                "contentType": "image/webp",
+                "signature": "webp",
+                "ok": true
+              }
+            ]
+          },
+          {
+            "nativeId": "4317615_3730eee9ea",
+            "numPages": 18,
+            "urls": 18,
+            "uniqueUrls": 18,
+            "samples": [
+              {
+                "page": 1,
+                "placeholder": false,
+                "host": "ilplcvt.likntswlsqbn.hath.network:3131",
+                "http": 200,
+                "contentType": "image/webp",
+                "signature": "webp",
+                "ok": true
+              },
+              {
+                "page": 10,
+                "placeholder": false,
+                "host": "nsxqvke.lbrqfyzaiebp.hath.network:26969",
+                "http": 200,
+                "contentType": "image/webp",
+                "signature": "webp",
+                "ok": true
+              },
+              {
+                "page": 18,
+                "placeholder": false,
+                "host": "sjpahef.rqqzigriehcw.hath.network",
+                "http": 200,
+                "contentType": "image/webp",
+                "signature": "webp",
+                "ok": true
+              }
+            ]
+          }
+        ]
+      },
+      "elapsedMs": 1682
+    },
+    {
+      "source": "hitomi",
+      "network": "PC Node fetch, Android User-Agent; native modules/storage mocked; no credentials",
+      "stages": {
+        "catalogue": {
+          "cards": 25,
+          "hasMore": true,
+          "ms": 1278
+        },
+        "pagination": {
+          "cards": 25,
+          "overlap": 0
+        },
+        "galleries": [
+          {
+            "nativeId": "4317764",
+            "numPages": 43,
+            "urls": 43,
+            "uniqueUrls": 43,
+            "samples": [
+              {
+                "page": 1,
+                "placeholder": false,
+                "host": "w2.gold-usergeneratedcontent.net",
+                "http": 404,
+                "contentType": "text/html; charset=UTF-8",
+                "signature": "not-image",
+                "ok": false
+              },
+              {
+                "page": 22,
+                "placeholder": false,
+                "host": "w2.gold-usergeneratedcontent.net",
+                "http": 404,
+                "contentType": "text/html; charset=UTF-8",
+                "signature": "not-image",
+                "ok": false
+              },
+              {
+                "page": 43,
+                "placeholder": false,
+                "host": "w1.gold-usergeneratedcontent.net",
+                "http": 404,
+                "contentType": "text/html; charset=UTF-8",
+                "signature": "not-image",
+                "ok": false
+              }
+            ]
+          },
+          {
+            "nativeId": "4317709",
+            "numPages": 75,
+            "urls": 75,
+            "uniqueUrls": 75,
+            "samples": [
+              {
+                "page": 1,
+                "placeholder": false,
+                "host": "w1.gold-usergeneratedcontent.net",
+                "http": 404,
+                "contentType": "text/html; charset=UTF-8",
+                "signature": "not-image",
+                "ok": false
+              },
+              {
+                "page": 38,
+                "placeholder": false,
+                "host": "w2.gold-usergeneratedcontent.net",
+                "http": 404,
+                "contentType": "text/html; charset=UTF-8",
+                "signature": "not-image",
+                "ok": false
+              },
+              {
+                "page": 75,
+                "placeholder": false,
+                "host": "w2.gold-usergeneratedcontent.net",
+                "http": 404,
+                "contentType": "text/html; charset=UTF-8",
+                "signature": "not-image",
+                "ok": false
+              }
+            ]
+          }
+        ]
+      },
+      "elapsedMs": 4003
+    },
+    {
+      "source": "rule34",
+      "network": "PC Node fetch, Android User-Agent; native modules/storage mocked; no credentials",
+      "stages": {},
+      "error": "Rule34 exige une clé API personnelle gratuite (api.rule34.xxx). Liez votre compte dans Paramètres > Sources.",
+      "elapsedMs": 2
+    }
+  ]
+}

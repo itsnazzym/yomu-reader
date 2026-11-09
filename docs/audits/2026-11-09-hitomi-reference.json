@@ -1,0 +1,30 @@
+{
+  "defaultValue": 1,
+  "caseValue": 0,
+  "probes": [
+    {
+      "label": "app",
+      "http": 404,
+      "type": "text/html; charset=UTF-8",
+      "webp": false
+    },
+    {
+      "label": "reference",
+      "http": 206,
+      "type": "image/webp",
+      "webp": true
+    },
+    {
+      "label": "app",
+      "http": 404,
+      "type": "text/html; charset=UTF-8",
+      "webp": false
+    },
+    {
+      "label": "reference",
+      "http": 206,
+      "type": "image/webp",
+      "webp": true
+    }
+  ]
+}
