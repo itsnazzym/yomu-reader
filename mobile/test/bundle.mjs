@@ -31,6 +31,8 @@ for (const entry of testEntries) {
           if (entry === "uiUx.test.tsx") {
             b.onResolve({ filter: /^react-native-reanimated$/ },
               () => ({ path: path.join(here, "mockReanimated.ts") }));
+            b.onResolve({ filter: /^@\/lib\/ThemeContext$/ },
+              () => ({ path: path.join(here, "mockUiTheme.ts") }));
           }
           if (entry === "sessionSecurity.test.ts") {
             b.onResolve({ filter: /^(?:@supabase\/supabase-js|expo-web-browser|\.\/googleNative|\.\.\/backupStore)$/ },

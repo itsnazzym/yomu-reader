@@ -72,24 +72,24 @@ aucune connexion nHentai réelle n’est déclarée validée. Aucun identifiant
 personnel Rule34/E-Hentai n’a été demandé ni utilisé pour un test distant.
 TalkBack et la performance sur téléphone réel n’ont pas été mesurés.
 
-**Point ouvert : illustrations des guides en release.** Les trois PNG sont
-présents dans les ressources générées mais l’illustration E-Hentai reste
-vide sur l’émulateur release. Trois pistes bornées ont été essayées : ratio
-adaptatif, dimensions explicites et chargeur Expo Image. Le problème de
-résolution native de la ressource reste à isoler ; un avertissement natif
-`source.uri should not be an empty string` a été observé. Un repli textuel
-est prévu si l’URI est absente ou si le chargeur signale une erreur. Les
-étapes écrites, le défilement et le bouton de retour restent utilisables.
-La disparition définitive de la zone vide après ce dernier garde-fou n’a
-pas été revérifiée visuellement ; aucune illustration affichée dans le
-build final n’est déclarée validée.
+**Résolu après l’audit : illustrations des guides en release.** Le repli
+« Illustration indisponible » a été reproduit sur l’APK installé. Les
+ressources PNG et leur résolution d’URI ont été retirées des guides. Un
+composant natif affiche désormais les repères, les correspondances avec les
+champs de Yomu et une séquence lisible pour chaque source. Aucun écran de
+site authentifié ni valeur de compte fictive n’est présenté comme une
+capture réelle. Les quatre guides ont été ouverts sur l’émulateur release ;
+les repères E-Hentai, Rule34, forum et sessionid sont présents dans les
+hiérarchies natives. Les nouveaux tests vérifient leurs champs et leur rendu
+sans chargeur d’images : **109/109 tests mobiles passent**. Contrôle effectué
+également en largeur de téléphone réduite et avec la police système à 130 %.
 
 Les petites pastilles colorées des sources dans les paramètres généraux
 restent celles de l’interface existante ; la réduction de couleur porte sur
 les fenêtres de connexion et d’aide. Le badge Rule34 des paramètres indique
 désormais « Non lié » au lieu d’annoncer un accès anonyme.
 
-Livraison locale : code, rapport et APK installable. Aucune publication
-GitHub, OTA ou Gofile effectuée dans cette intervention. Le précédent lien
-Gofile ne désigne donc pas le nouvel APK. Les fichiers préexistants
+La livraison initiale de cet audit était locale : code, rapport et APK
+installable, sans publication GitHub, OTA ou Gofile. La publication Gofile
+demandée ensuite est distincte et son URL est communiquée dans le chat. Les fichiers préexistants
 `GEMINI.md` et `prompt.txt` ne font pas partie du correctif.

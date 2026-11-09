@@ -206,7 +206,7 @@ export function SourceAuthModal({
   const guideLink = (type: GuideType) => (
     <TouchableOpacity onPress={() => openGuide(type)} style={styles.help} accessibilityRole="button">
       <IconBook size={18} color={colors.metaText} />
-      <ButtonLabel style={[styles.helpText, { color: colors.metaText }]}>Guide illustré avec captures d’écran</ButtonLabel>
+      <ButtonLabel style={[styles.helpText, { color: colors.metaText }]}>Guide illustré pas à pas</ButtonLabel>
     </TouchableOpacity>
   );
   const auth = activeTab === "rule34" ? rule34Auth : ehentaiAuth;

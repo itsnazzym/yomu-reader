@@ -8,6 +8,21 @@ import { getHomeSearchQuery, setHomeSearchQuery, toggleHomeSearchTerm } from "@/
 import { queryContainsTerm } from "@/lib/searchQuery";
 import { __getTouchHandlers, __setReduceMotion } from "./mockUiReactNative";
 import { __getLastAnimatedValue } from "./mockReanimated";
+import { GuideIllustration } from "@/components/auth/GuideIllustration";
+import { AUTH_GUIDES } from "@/lib/authGuides";
+
+for (const [id, guide] of Object.entries(AUTH_GUIDES)) {
+  test(`le guide ${id} affiche ses repères complets sans chargeur d’images`, () => {
+    const html = renderToStaticMarkup(<GuideIllustration guide={guide} />);
+    for (const field of guide.fields) {
+      assert.ok(html.includes(field.name), `Repère absent : ${field.name}`);
+      assert.ok(html.includes(field.destination), `Destination absente : ${field.destination}`);
+    }
+    assert.ok(html.includes("Schéma explicatif"));
+    assert.ok(html.includes("aucune donnée de compte affichée"));
+    assert.doesNotMatch(html, /<img\b|data:image|Illustration indisponible|data-lines=/);
+  });
+}
 
 test("un bouton en ligne garde icône et texte comme enfants directs de son conteneur", () => {
   const html = renderToStaticMarkup(<CardPressable style={{ flexDirection: "row", gap: 8, transform: [{ rotate: "3deg" }] }}><span>Icône</span><ButtonLabel>Mot de passe oublié</ButtonLabel></CardPressable>);

@@ -6,95 +6,19 @@ import {
   Modal,
   ScrollView,
   TouchableOpacity,
-  Image,
-  useWindowDimensions,
-
 } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useModalMotion } from "@/components/motion/useModalMotion";
 import { useReduceMotion } from "@/lib/reduceMotion";
 import { IconX } from "@tabler/icons-react-native";
-import { Image as ExpoImage } from "expo-image";
+import { GuideIllustration } from "@/components/auth/GuideIllustration";
+import { AUTH_GUIDES, type GuideType } from "@/lib/authGuides";
 import { useTheme } from "@/lib/ThemeContext";
 import { ButtonLabel } from "@/components/ui/ButtonLabel";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { lightTap } from "@/lib/haptics";
 
-export type GuideType = "ehentai_cookies" | "ehentai_forum" | "rule34_api" | "nhentai_session";
-
-interface GuideConfig {
-  title: string;
-  sourceLabel: string;
-  badgeColor: string;
-  image?: any;
-  steps: string[];
-  tips: string[];
-}
-
-const GUIDES: Record<GuideType, GuideConfig> = {
-  rule34_api: {
-    title: "Comment obtenir sa Clé API Rule34 gratuite",
-    sourceLabel: "Rule34",
-    badgeColor: "#7ebd78",
-    image: require("@/assets/images/guides/rule34_api_guide.png"),
-    steps: [
-      "1. Rendez-vous sur rule34.xxx/index.php?page=account&s=options (Options de compte).",
-      "2. Dans la section 'API Access Credentials', repérez le champ contenant &api_key=&user_id=...",
-      "3. Cochez la case obligatoire : '[x] Generate New Key DO NOT CLICK IF YOU DON'T UNDERSTAND WHAT THIS IS'.",
-      "4. Descendez tout en bas à gauche de la page et cliquez sur le bouton gris 'Save'.",
-      "5. La page recharge : copiez la clé générée dans &api_key= ou collez toute la ligne dans Yomu !",
-    ],
-    tips: [
-      "Votre User ID est le nombre après user_id= (ex: 6978141).",
-      "Dans Yomu Reader, vous pouvez coller directement l'intégralité du texte &api_key=...&user_id=... : l'application remplit automatiquement les deux champs.",
-    ],
-  },
-  ehentai_cookies: {
-    title: "Comment récupérer les Cookies E-Hentai & ExHentai",
-    sourceLabel: "E-Hentai / ExHentai",
-    badgeColor: "#e63946",
-    image: require("@/assets/images/guides/ehentai_cookies_guide.png"),
-    steps: [
-      "1. Sur un ordinateur, connectez-vous sur e-hentai.org ou forums.e-hentai.org.",
-      "2. Ouvrez les Outils de développement (touche F12 ou clic droit > Inspecter).",
-      "3. Allez dans l'onglet 'Application' (Chrome/Edge) ou 'Stockage' (Firefox).",
-      "4. Déroulez 'Cookies' > 'https://e-hentai.org'.",
-      "5. Copiez les valeurs des cookies : ipb_member_id (nombre), ipb_pass_hash (32 caractères) et igneous (requis pour Panda 🐼).",
-    ],
-    tips: [
-      "Le cookie 'igneous' est indispensable pour débloquer ExHentai (le Panda triste).",
-      "Vous pouvez aussi exporter toute la chaîne de cookies (avec une extension de cookies) et la coller directement dans le champ 'Coller chaîne brute'.",
-    ],
-  },
-  ehentai_forum: {
-    title: "Connexion directe Forums E-Hentai IP.Board",
-    sourceLabel: "E-Hentai Forum",
-    badgeColor: "#e63946",
-    steps: [
-      "1. Utilisez vos identifiants de compte enregistrés sur les forums officiels (forums.e-hentai.org).",
-      "2. Renseignez votre nom d'utilisateur et votre mot de passe de forum.",
-      "3. L'application effectue l'authentification HTTPS isolée et extrait automatiquement vos cookies de session ipb.",
-    ],
-    tips: [
-      "Si vous avez la vérification en 2 étapes activée sur votre compte forum, préférez le mode 'Cookies manuels'.",
-    ],
-  },
-  nhentai_session: {
-    title: "Synchronisation de compte nHentai",
-    sourceLabel: "nHentai",
-    badgeColor: "#ed2553",
-    image: require("@/assets/images/guides/nhentai_session_guide.png"),
-    steps: [
-      "1. Connectez-vous à votre compte sur nhentai.net.",
-      "2. Ouvrez la console DevTools (F12) > onglet 'Application' > 'Cookies' > 'https://nhentai.net'.",
-      "3. Récupérez la valeur du cookie 'sessionid'.",
-      "4. Renseignez-la pour synchroniser vos favoris en ligne directement dans l'application.",
-    ],
-    tips: [
-      "Le cookie sessionid permet à Yomu d'ajouter et retirer des favoris directement sur votre profil en ligne.",
-    ],
-  },
-};
+export type { GuideType } from "@/lib/authGuides";
 
 export interface AuthGuideModalProps {
   visible: boolean;
@@ -109,16 +33,10 @@ export function AuthGuideModal({ visible, guideType, onClose }: AuthGuideModalPr
   const [lastGuideType, setLastGuideType] = useState(guideType);
   useEffect(() => { if (guideType) setLastGuideType(guideType); }, [guideType]);
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
-  const imageWidth = Math.max(1, Math.min(width - 32, 520) - 56);
-  const [imageFailed, setImageFailed] = useState(false);
-  useEffect(() => setImageFailed(false), [guideType]);
 
   const renderedType = guideType || lastGuideType;
-  if (!renderedType || !GUIDES[renderedType]) return null;
-  const guide = GUIDES[renderedType];
-  const imageSource = guide.image ? Image.resolveAssetSource(guide.image) : null;
-  const imageAvailable = Boolean(imageSource?.uri) && !imageFailed;
+  if (!renderedType || !AUTH_GUIDES[renderedType]) return null;
+  const guide = AUTH_GUIDES[renderedType];
 
   return (
     <Modal visible={presented} transparent animationType="none" onRequestClose={onClose}>
@@ -153,33 +71,16 @@ export function AuthGuideModal({ visible, guideType, onClose }: AuthGuideModalPr
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
           >
-            {/* Capture d'écran exacte si disponible */}
-            {guide.image && imageAvailable && imageSource && (
-              <View style={styles.imageContainer}>
-                <ExpoImage
-                  source={guide.image}
-                  style={[styles.guideImage, {
-                    width: imageWidth,
-                    height: imageWidth * imageSource.height / imageSource.width,
-                  }]}
-                  accessible accessibilityLabel={`Illustration du guide ${guide.sourceLabel}`}
-                  contentFit="contain"
-                  onError={() => setImageFailed(true)}
-                />
-                <Text style={styles.imageCaption}>
-                  Illustration des éléments à repérer · Les pages peuvent évoluer
-                </Text>
-              </View>
-            )}
-            {guide.image && !imageAvailable && <Text style={styles.imageCaption}>Illustration indisponible. Les étapes ci-dessous restent accessibles.</Text>}
+            <GuideIllustration key={renderedType} guide={guide} />
 
             {/* Étapes numérotées */}
             <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: colors.txt }]}>Instructions détaillées :</Text>
+              <Text style={[styles.sectionTitle, { color: colors.txt }]}>Pas à pas</Text>
               {guide.steps.map((st, i) => (
                 <Animated.View key={`${renderedType}:${i}`} style={styles.stepRow}
                   entering={reduced ? undefined : FadeInDown.duration(280).delay(Math.min(i * 45, 180))}>
-                  <Text style={[styles.stepText, { color: "#d1d5db" }]}>{st}</Text>
+                  <Text style={[styles.stepNumber, { color: colors.sub }]}>{i + 1}.</Text>
+                  <Text style={[styles.stepText, { color: colors.txt }]}>{st}</Text>
                 </Animated.View>
               ))}
             </View>
@@ -251,8 +152,7 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     fontSize: 11,
-    fontWeight: "700",
-    textTransform: "uppercase",
+    fontWeight: "600",
   },
   headerTitle: {
     fontSize: 16,
@@ -272,25 +172,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 18,
   },
-  imageContainer: {
-    alignItems: "center",
-    marginBottom: 16,
-    backgroundColor: "#0d0d14",
-    borderRadius: 12,
-    padding: 8,
-    borderWidth: 1,
-    borderColor: "#242436",
-  },
-  guideImage: {
-    borderRadius: 8,
-  },
-  imageCaption: {
-    fontSize: 11,
-    color: "#9ca3af",
-    marginTop: 6,
-    fontStyle: "italic",
-    textAlign: "center",
-  },
   section: {
     marginBottom: 16,
   },
@@ -299,14 +180,9 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginBottom: 8,
   },
-  stepRow: {
-    marginBottom: 8,
-    paddingLeft: 4,
-  },
-  stepText: {
-    fontSize: 13,
-    lineHeight: 19,
-  },
+  stepRow: { flexDirection: "row", gap: 10, marginBottom: 16 },
+  stepNumber: { fontSize: 14, lineHeight: 22, minWidth: 18 },
+  stepText: { flex: 1, minWidth: 0, fontSize: 14, lineHeight: 22 },
   tipsBox: {
     backgroundColor: "rgba(255, 255, 255, 0.04)",
     padding: 12,
