@@ -42,6 +42,8 @@ export function sourceGalleryToGallery(
     })),
     num_pages: sg.numPages,
     num_favorites: 0,
+    category: sg.category,
+    rating: sg.rating,
     globalId: sg.globalId,
   };
 }

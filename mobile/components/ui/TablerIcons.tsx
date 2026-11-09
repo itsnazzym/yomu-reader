@@ -100,6 +100,7 @@ export const IconSettings = makeFeatherIcon("settings");
 export const IconShare = makeFeatherIcon("share");
 export const IconShield = makeFeatherIcon("shield");
 export const IconShieldCheck = makeFeatherIcon("check-circle");
+export const IconShieldLock = makeFeatherIcon("shield");
 export const IconSparkles = makeFeatherIcon("star");
 export const IconStar = makeFeatherIcon("star");
 export const IconTag = makeFeatherIcon("tag");

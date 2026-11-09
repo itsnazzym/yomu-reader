@@ -10,6 +10,7 @@ import SmartImage from "@/components/SmartImage";
 import { useFavorites } from "@/lib/favoritesStore";
 import { lightTap } from "@/lib/haptics";
 import { TAG_TYPE_COLORS } from "@/lib/tagDisplay";
+import { getEhentaiCategoryInfo } from "@/lib/sources/ehentaiCategories";
 import {
   listSources,
   type SourceMeta,
@@ -37,7 +38,10 @@ export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
   const sourceMeta = globalId ? SOURCE_METAS[globalId.split(":")[0]] : undefined;
 
   const galleryId = gallery?.id ? Number(gallery.id) : 0;
-  const fav = galleryId ? isFavorite(galleryId) : false;
+  const rawId = globalId
+    ? globalId.slice(globalId.indexOf(":") + 1)
+    : (galleryId > 0 ? String(galleryId) : (gallery?.media_id || ""));
+  const fav = globalId ? isFavorite(globalId) : (galleryId ? isFavorite(galleryId) : false);
 
   // Extract language badge
   const lang = (() => {
@@ -72,11 +76,11 @@ export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
   const handleCardPress = () => {
     if (onPress) {
       onPress();
-    } else if (galleryId > 0) {
+    } else if (rawId) {
       router.push({
         pathname: "/book/[id]",
         params: {
-          id: String(galleryId),
+          id: rawId,
           ...(globalId ? { src: globalId.split(":")[0] } : {}),
           ...(title ? { title: title.slice(0, 180) } : {}),
         },
@@ -87,7 +91,7 @@ export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
   const handleFavoritePress = (e: any) => {
     e?.stopPropagation?.();
     lightTap();
-    if (gallery && galleryId > 0) toggleFavorite(gallery);
+    if (gallery) toggleFavorite(gallery);
   };
 
   const handleTagPress = (e: any, name: string, type?: string) => {
@@ -133,7 +137,7 @@ export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
 
         {/* Archive Stamp ID Badge (Top-Left) */}
         <View style={styles.archiveStamp}>
-          <Text style={styles.archiveStampText}>#{galleryId}</Text>
+          <Text style={styles.archiveStampText}>#{galleryId > 0 ? galleryId : (rawId.length > 8 ? rawId.slice(0, 8) : rawId)}</Text>
         </View>
 
         {/* Discrete Bookmark Notch (Top-Right) */}
@@ -169,6 +173,30 @@ export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
               <Text style={styles.langText}>{lang}</Text>
             </View>
           )}
+          {gallery.category ? (
+            <View
+              style={[
+                styles.specBadge,
+                { backgroundColor: getEhentaiCategoryInfo(gallery.category).bgTint },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.specText,
+                  { color: getEhentaiCategoryInfo(gallery.category).color, fontWeight: "700" },
+                ]}
+              >
+                {gallery.category}
+              </Text>
+            </View>
+          ) : null}
+          {typeof gallery.rating === "number" && gallery.rating > 0 ? (
+            <View style={[styles.specBadge, { backgroundColor: "rgba(255, 183, 3, 0.2)" }]}>
+              <Text style={[styles.specText, { color: "#ffb703", fontWeight: "700" }]}>
+                ★ {gallery.rating.toFixed(1)}
+              </Text>
+            </View>
+          ) : null}
           {/* Badge de source multi-sources (masqué pour nhentai, source par défaut) */}
           {sourceMeta && sourceMeta.id !== "nhentai" && (
             <View style={[styles.sourceBadge, { backgroundColor: sourceMeta.accentColor }]}>

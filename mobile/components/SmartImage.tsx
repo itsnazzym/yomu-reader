@@ -49,6 +49,15 @@ function refererForImage(imageUri: string): string {
     if (host.includes("doujins.com")) return "https://doujins.com/";
     if (host.includes("3hentai")) return "https://fr.3hentai.net/";
     if (
+      host.includes("e-hentai.org") ||
+      host.includes("exhentai.org") ||
+      host.includes("ehgt.org") ||
+      host.includes("hath.network")
+    ) {
+      return "https://e-hentai.org/";
+    }
+    if (host.includes("rule34.xxx")) return "https://rule34.xxx/";
+    if (
       host.includes("hitomi.la") ||
       host.includes("gold-usergeneratedcontent.net")
     ) {

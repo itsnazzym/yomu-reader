@@ -77,6 +77,9 @@ import {
   sendGlitchTipTestEvent,
 } from "@/lib/glitchTip";
 import { SignInModal } from "@/components/modals/SignInModal";
+import { SourceAuthModal } from "@/components/modals/SourceAuthModal";
+import { useSourceAuth } from "@/lib/sources/authStore";
+import type { SourceId } from "@/lib/sources/types";
 import SmartImage from "@/components/SmartImage";
 import { resolveAvatarUrl } from "@/app/profile";
 import { displayAvatarUri } from "@/lib/avatarPersist";
@@ -300,6 +303,10 @@ export default function SettingsScreen() {
   const [syncingCloud, setSyncingCloud] = useState(false);
 
   const [isSignInOpen, setIsSignInOpen] = useState(false);
+  const [sourceAuthOpen, setSourceAuthOpen] = useState(false);
+  const [sourceAuthInitialSource, setSourceAuthInitialSource] = useState<SourceId>("ehentai");
+  const ehentaiAuth = useSourceAuth("ehentai");
+  const rule34Auth = useSourceAuth("rule34");
 
   useEffect(() => {
     getCacheSize().then(setCacheSizeBytes);
@@ -489,6 +496,87 @@ export default function SettingsScreen() {
               </View>
             </CardPressable>
           )}
+        </View>
+
+        {/* ================================================================= */}
+        {/* ================================================================= */}
+        {/* SOURCES & COMPTES ISOLÉS (E-HENTAI, RULE34) */}
+        {/* ================================================================= */}
+        <View style={styles.sectionBlock}>
+          <View style={styles.sectionTitleRow}>
+            <View style={[styles.sectionIconBadge, { backgroundColor: "rgba(230, 57, 70, 0.15)" }]}>
+              <IconWorld size={14} color="#e63946" strokeWidth={2} />
+            </View>
+            <Text style={styles.sectionHeaderTitle}>Sources & Comptes Isolés</Text>
+          </View>
+
+          <CardPressable
+            radius={16}
+            onPress={() => {
+              setSourceAuthInitialSource("ehentai");
+              setSourceAuthOpen(true);
+            }}
+            style={[styles.accountHeroCard, { borderColor: "#28283a" }]}
+          >
+            <View style={styles.accountHeroRow}>
+              <View style={[styles.avatarBox, { backgroundColor: "#e63946", overflow: "hidden" }]}>
+                <Text style={styles.avatarInitial}>EH</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={styles.accountNameRow}>
+                  <Text style={styles.accountName}>E-Hentai / ExHentai</Text>
+                  <View
+                    style={[
+                      styles.activePill,
+                      { backgroundColor: ehentaiAuth.isLoggedIn ? "#2ed573" : "#747d8c" },
+                    ]}
+                  >
+                    <Text style={styles.activePillText}>
+                      {ehentaiAuth.isLoggedIn ? "Connecté" : "Invité"}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.accountMeta}>
+                  {ehentaiAuth.isExHentaiEnabled ? "🐼 Mode Panda actif" : "Import cookies & forum (JHenTai)"}
+                </Text>
+              </View>
+              <IconChevronRight size={18} color="#6b7280" strokeWidth={2} />
+            </View>
+          </CardPressable>
+
+          <CardPressable
+            radius={16}
+            onPress={() => {
+              setSourceAuthInitialSource("rule34");
+              setSourceAuthOpen(true);
+            }}
+            style={[styles.accountHeroCard, { borderColor: "#28283a", marginTop: 8 }]}
+          >
+            <View style={styles.accountHeroRow}>
+              <View style={[styles.avatarBox, { backgroundColor: "#7ebd78", overflow: "hidden" }]}>
+                <Text style={[styles.avatarInitial, { color: "#101018" }]}>R34</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={styles.accountNameRow}>
+                  <Text style={styles.accountName}>Rule34</Text>
+                  <View
+                    style={[
+                      styles.activePill,
+                      { backgroundColor: rule34Auth.isLoggedIn ? "#2ed573" : "#747d8c" },
+                    ]}
+                  >
+                    <Text style={styles.activePillText}>
+                      {rule34Auth.isLoggedIn ? "Lié" : "Anonyme"}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.accountMeta}>
+                  {rule34Auth.isLoggedIn ? `ID #${rule34Auth.credentials?.userId || ""}` : "Clé API & User ID"}
+                </Text>
+              </View>
+              <IconChevronRight size={18} color="#6b7280" strokeWidth={2} />
+            </View>
+          </CardPressable>
         </View>
 
         {/* ================================================================= */}
@@ -1590,6 +1678,12 @@ export default function SettingsScreen() {
 
       {/* Modal de connexion */}
       <SignInModal visible={isSignInOpen} onClose={() => setIsSignInOpen(false)} />
+      <SourceAuthModal
+        visible={sourceAuthOpen}
+        initialSource={sourceAuthInitialSource}
+        onClose={() => setSourceAuthOpen(false)}
+        onOpenNhentaiAuth={() => setIsSignInOpen(true)}
+      />
       <PinLockModal
         visible={pinModalOpen}
         title="Code de verrouillage"

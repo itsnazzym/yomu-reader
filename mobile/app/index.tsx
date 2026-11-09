@@ -330,7 +330,7 @@ export default function HomeScreen() {
         // resolves. Slow or failed secondary sources never hold it hostage.
         if (activeSource === "all") {
           const nhentaiPromise = searchGalleries(effectiveQuery, p, sort);
-          const altSources = (["3hentai", "doujins", "hitomi"] as SourceId[]).filter(
+          const altSources = (["3hentai", "doujins", "hitomi", "ehentai", "rule34"] as SourceId[]).filter(
             (sid) => sourceHealth[sid]?.status !== "down"
           );
           const altPromises = altSources.map(async (sid) => {
@@ -357,6 +357,8 @@ export default function HomeScreen() {
                 tags: (c.tags || []).map((t) => ({ id: 0, type: (t.type || "tag") as any, name: t.name, url: "", count: 0 })),
                 num_pages: c.numPages || 0,
                 num_favorites: 0,
+                category: c.category,
+                rating: c.rating,
               })) as Gallery[];
             } catch (e) {
               console.warn(`Source ${sid} indisponible:`, e);
@@ -446,6 +448,8 @@ export default function HomeScreen() {
             tags: (c.tags || []).map((t) => ({ id: 0, type: (t.type || "tag") as any, name: t.name, url: "", count: 0 })),
             num_pages: c.numPages || 0,
             num_favorites: 0,
+            category: c.category,
+            rating: c.rating,
           }));
           const dedupKey = (g: Gallery) => (g as any).globalId;
           if (isPagination) {

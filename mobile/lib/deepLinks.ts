@@ -16,6 +16,8 @@ const KNOWN_SOURCES: ReadonlySet<SourceId> = new Set([
   "3hentai",
   "doujins",
   "hitomi",
+  "ehentai",
+  "rule34",
 ]);
 
 function asSourceId(value: string): SourceId | undefined {

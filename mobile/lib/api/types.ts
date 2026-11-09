@@ -49,6 +49,8 @@ export interface Gallery {
   origin?: "cloud" | "local";
   /** Identifiant global multi-sources ("nhentai:123", "3hentai:456"...). */
   globalId?: string;
+  category?: string;
+  rating?: number;
   /** IDs bruts des tags (favoris v2) — résolus en tags nommés côté app. */
   tag_ids?: number[];
 }

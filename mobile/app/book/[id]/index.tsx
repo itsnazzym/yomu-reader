@@ -56,6 +56,7 @@ import type { SourceId } from "@/lib/sources/types";
 import { makeGlobalId } from "@/lib/sources/types";
 import { CollectionPickerModal } from "@/components/modals/CollectionPickerModal";
 import { GalleryTagChip } from "@/components/ui/GalleryTagChip";
+import { getEhentaiCategoryInfo } from "@/lib/sources/ehentaiCategories";
 import {
   findDuplicateGroups,
   galleryToDuplicateCandidate,
@@ -508,6 +509,30 @@ export default function BookDetailScreen() {
                   {gallery.num_favorites || 0}
                 </Text>
               </View>
+              {gallery.category ? (
+                <View
+                  style={[
+                    styles.statChip,
+                    { backgroundColor: getEhentaiCategoryInfo(gallery.category).bgTint },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.statText,
+                      { color: getEhentaiCategoryInfo(gallery.category).color, fontWeight: "700" },
+                    ]}
+                  >
+                    {gallery.category}
+                  </Text>
+                </View>
+              ) : null}
+              {typeof gallery.rating === "number" && gallery.rating > 0 ? (
+                <View style={[styles.statChip, { backgroundColor: "rgba(255, 183, 3, 0.2)" }]}>
+                  <Text style={[styles.statText, { color: "#ffb703", fontWeight: "700" }]}>
+                    ★ {gallery.rating.toFixed(2)}
+                  </Text>
+                </View>
+              ) : null}
               {gallery.upload_date ? (
                 <View style={[styles.statChip, { backgroundColor: colors.tagBg }]}>
                   <IconCalendar size={13} color={colors.sub} strokeWidth={2} />

@@ -10,6 +10,8 @@ import { NhentaiSource } from "./nhentai";
 import { ThreeHentaiSource } from "./threehentai";
 import { DoujinsSource } from "./doujins";
 import { HitomiSource } from "./hitomi";
+import { EhentaiSource } from "./ehentai";
+import { Rule34Source } from "./rule34";
 
 export type { SourceMeta };
 
@@ -18,6 +20,8 @@ const FACTORIES: Record<SourceId, () => SourceAdapter> = {
   "3hentai": () => new ThreeHentaiSource(),
   doujins: () => new DoujinsSource(),
   hitomi: () => new HitomiSource(),
+  ehentai: () => new EhentaiSource(),
+  rule34: () => new Rule34Source(),
 };
 
 /** Cache statique des métadonnées (pas d'instanciation nécessaire). */
@@ -26,6 +30,8 @@ const METAS: Record<SourceId, SourceMeta> = {
   "3hentai": new ThreeHentaiSource().meta,
   doujins: new DoujinsSource().meta,
   hitomi: new HitomiSource().meta,
+  ehentai: new EhentaiSource().meta,
+  rule34: new Rule34Source().meta,
 };
 
 const instances = new Map<SourceId, SourceAdapter>();

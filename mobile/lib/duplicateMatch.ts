@@ -46,7 +46,7 @@ export function galleryToDuplicateCandidate(gallery: Gallery): DuplicateCandidat
   const prefix = gallery.globalId?.split(":")[0];
   const source: string =
     prefix ||
-    (gallery.scanlator === "3hentai" || gallery.scanlator === "doujins"
+    (gallery.scanlator === "3hentai" || gallery.scanlator === "doujins" || gallery.scanlator === "hitomi" || gallery.scanlator === "ehentai" || gallery.scanlator === "rule34"
       ? gallery.scanlator
       : "nhentai");
   const sourceId: SourceId =

@@ -7,7 +7,7 @@
  * des ids natifs nus.
  */
 
-export type SourceId = "nhentai" | "3hentai" | "doujins" | "hitomi";
+export type SourceId = "nhentai" | "3hentai" | "doujins" | "hitomi" | "ehentai" | "rule34";
 
 /** Identifiant global unique d'une galerie, toutes sources confondues. */
 export type GlobalGalleryId = string;
@@ -30,7 +30,7 @@ export function splitGlobalId(id: GlobalGalleryId): {
   }
   const source = id.slice(0, idx);
   // Un préfixe inconnu retombe sur nhentai plutôt que de crasher l'app.
-  if (!["nhentai", "3hentai", "doujins", "hitomi"].includes(source)) {
+  if (!["nhentai", "3hentai", "doujins", "hitomi", "ehentai", "rule34"].includes(source)) {
     return { source: "nhentai", nativeId: id };
   }
   return { source: source as SourceId, nativeId: id.slice(idx + 1) };
@@ -106,6 +106,9 @@ export interface SourceGalleryCard {
   uploadDate?: number;
   tags?: SourceTag[];
   access?: "public" | "subscriber" | "unknown";
+  category?: string;
+  rating?: number;
+  uploader?: string;
 }
 
 /** Galerie complète, prête pour le lecteur. */
@@ -117,6 +120,9 @@ export interface SourceGallery {
   numPages: number;
   uploadDate?: number;
   tags: SourceTag[];
+  category?: string;
+  rating?: number;
+  uploader?: string;
   /**
    * URLs des pages dans l'ordre. Pour les sources à signatures (doujins),
    * ces URLs sont fraîchement capturées et périment : toujours passer par

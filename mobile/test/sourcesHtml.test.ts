@@ -1,3 +1,7 @@
+import { parseEhentaiNativeId, parseEhentaiListingCards } from "../lib/sources/ehentai";
+import { getEhentaiCategoryInfo, calculateCategoryBitmask } from "../lib/sources/ehentaiCategories";
+import { buildRule34Title, parseRule34Tags } from "../lib/sources/rule34";
+import { parseCookieString, formatCookieHeader } from "../lib/sources/authStore";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -214,4 +218,69 @@ test("thumbUrl: chemin webpsmalltn atn|btn (common.js tn)", () => {
     url,
     /^https:\/\/[ab]tn\.gold-usergeneratedcontent\.net\/webpsmalltn\/b\/fe\/[0-9a-f]{64}\.webp$/
   );
+});
+
+
+test("parseEhentaiNativeId: sépare gid et token proprement", () => {
+  assert.deepEqual(parseEhentaiNativeId("3184920/a9b8c7d6e5"), { gid: "3184920", token: "a9b8c7d6e5" });
+  assert.deepEqual(parseEhentaiNativeId("3184920_a9b8c7d6e5"), { gid: "3184920", token: "a9b8c7d6e5" });
+  assert.deepEqual(parseEhentaiNativeId("/3184920/a9b8c7d6e5/"), { gid: "3184920", token: "a9b8c7d6e5" });
+});
+
+test("parseEhentaiListingCards: extrait titre, gid, token, cover et metadata", () => {
+  const html = `
+    <table class="itg gltc">
+      <tr class="gtr0">
+        <td class="gl1c glcat"><div class="cn cs-doujinshi">Doujinshi</div></td>
+        <td class="gl2c">2026-11-09 12:00</td>
+        <td class="gl1c"><div class="ir it2" style="background-image:url(https://ehgt.org/g/sample.jpg)"><img src="https://ehgt.org/g/sample.jpg"/></div></td>
+        <td class="gl3c glname">
+          <a href="https://e-hentai.org/g/3184920/a9b8c7d6e5/"><div class="glink">[Circle] Sample Doujin Title</div></a>
+        </td>
+        <td class="gl4c glhide"><div>24 pages</div></td>
+      </tr>
+    </table>
+  `;
+  const cards = parseEhentaiListingCards(html);
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].globalId, "ehentai:3184920/a9b8c7d6e5");
+  assert.equal(cards[0].title, "[Circle] Sample Doujin Title");
+  assert.equal(cards[0].category, "Doujinshi");
+  assert.equal(cards[0].numPages, 24);
+  assert.equal(cards[0].coverUrl, "https://ehgt.org/g/sample.jpg");
+});
+
+test("ehentaiCategories: calcule le masque binaire f_cats et résout les couleurs", () => {
+  const mask = calculateCategoryBitmask(["Doujinshi", "Manga"]);
+  assert.equal(mask, 6);
+  const info = getEhentaiCategoryInfo("Doujinshi");
+  assert.equal(info.color, "#e63946");
+  assert.equal(info.name, "Doujinshi");
+  const misc = getEhentaiCategoryInfo("UnknownCategory");
+  assert.equal(misc.id, "Misc");
+});
+
+test("rule34: formatte le titre et découpe les tags", () => {
+  const title = buildRule34Title(9876543, "hatsune_miku vocaloid 1girl rating:questionable");
+  assert.equal(title, "hatsune miku, vocaloid, 1girl (#9876543)");
+  const emptyTitle = buildRule34Title(123, "");
+  assert.equal(emptyTitle, "Rule34 #123");
+  const tags = parseRule34Tags("hatsune_miku 1girl");
+  assert.deepEqual(tags, [
+    { name: "hatsune miku", type: "tag" },
+    { name: "1girl", type: "tag" },
+  ]);
+});
+
+test("authStore: parse et formate les cookies de session isolés", () => {
+  const parsed = parseCookieString("ipb_member_id=12345; ipb_pass_hash=abcdef; igneous=panda; ");
+  assert.equal(parsed.ipb_member_id, "12345");
+  assert.equal(parsed.ipb_pass_hash, "abcdef");
+  assert.equal(parsed.igneous, "panda");
+
+  const formatted = formatCookieHeader({
+    ipb_member_id: "12345",
+    ipb_pass_hash: "abcdef",
+  });
+  assert.equal(formatted, "ipb_member_id=12345; ipb_pass_hash=abcdef");
 });

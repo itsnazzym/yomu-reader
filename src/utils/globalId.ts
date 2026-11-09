@@ -3,7 +3,7 @@
  * Desktop nHentai API still uses numeric ids; stores key on "nhentai:123".
  */
 
-export type SourceId = "nhentai" | "3hentai" | "doujins" | "hitomi";
+export type SourceId = "nhentai" | "3hentai" | "doujins" | "hitomi" | "ehentai" | "rule34";
 export type GlobalGalleryId = string;
 
 export function makeGlobalId(
@@ -23,7 +23,7 @@ export function splitGlobalId(id: GlobalGalleryId | number): {
     return { source: "nhentai", nativeId: raw };
   }
   const source = raw.slice(0, idx);
-  if (!["nhentai", "3hentai", "doujins", "hitomi"].includes(source)) {
+  if (!["nhentai", "3hentai", "doujins", "hitomi", "ehentai", "rule34"].includes(source)) {
     return { source: "nhentai", nativeId: raw };
   }
   return { source: source as SourceId, nativeId: raw.slice(idx + 1) };

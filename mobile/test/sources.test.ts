@@ -26,11 +26,11 @@ test("splitGlobalId: préfixe inconnu -> nhentai (pas de crash)", () => {
   assert.deepEqual(splitGlobalId("mystery:99"), { source: "nhentai", nativeId: "mystery:99" });
 });
 
-test("registry: listSources retourne les 4 sources avec métadonnées", () => {
+test("registry: listSources retourne les 6 sources avec métadonnées", () => {
   const metas = listSources();
-  assert.equal(metas.length, 4);
+  assert.equal(metas.length, 6);
   const ids = metas.map((m) => m.id).sort();
-  assert.deepEqual(ids, ["3hentai", "doujins", "hitomi", "nhentai"]);
+  assert.deepEqual(ids, ["3hentai", "doujins", "ehentai", "hitomi", "nhentai", "rule34"]);
 });
 
 test("registry: getSource résout depuis globalId et réutilise les instances", () => {
