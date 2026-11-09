@@ -126,6 +126,8 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   mainPress: {
+    minHeight: 44,
+    justifyContent: "center",
     flex: 1,
     minWidth: 0,
     flexShrink: 1,
@@ -146,6 +148,8 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   actionBtn: {
+    minHeight: 44,
+    minWidth: 44,
     paddingHorizontal: 6,
     paddingVertical: 5,
     alignItems: "center",

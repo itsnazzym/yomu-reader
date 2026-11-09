@@ -7,7 +7,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const testEntries = ["engine.test.ts"];
 try {
   const fs = await import("node:fs");
-  for (const extra of ["resumable.test.ts", "sourcesHtml.test.ts", "sources.test.ts", "cloudSync.test.ts", "stabilization.test.ts"]) {
+  for (const extra of ["resumable.test.ts", "sourcesHtml.test.ts", "sources.test.ts", "cloudSync.test.ts", "stabilization.test.ts", "uiUx.test.tsx"]) {
     if (fs.existsSync(path.join(here, extra))) {
       testEntries.push(extra);
     }
@@ -20,7 +20,8 @@ for (const entry of testEntries) {
     bundle: true,
     platform: "node",
     format: "cjs",
-    outfile: path.join(here, entry.replace(/\.ts$/, ".cjs")),
+    outfile: path.join(here, entry.replace(/\.tsx?$/, ".cjs")),
+    external: entry === "uiUx.test.tsx" ? ["react", "react-dom/server"] : [],
     tsconfig: path.join(here, "..", "tsconfig.json"),
     logLevel: "info",
     plugins: [
@@ -47,7 +48,7 @@ for (const entry of testEntries) {
           );
           b.onResolve(
             { filter: /^react-native$/ },
-            () => ({ path: path.join(here, "mockReactNative.ts") })
+            () => ({ path: path.join(here, entry === "uiUx.test.tsx" ? "mockUiReactNative.ts" : "mockReactNative.ts") })
           );
           // Sous-chemins internes de RN (codegen...) tirés par certaines
           // dépendances transitives (icônes, modules expo).

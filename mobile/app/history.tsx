@@ -15,6 +15,7 @@ import { useTheme } from "@/lib/ThemeContext";
 import { useHistory, HistoryEntry } from "@/lib/historyStore";
 import SmartImage from "@/components/SmartImage";
 import { CardPressable } from "@/components/ui/CardPressable";
+import { ButtonLabel } from "@/components/ui/ButtonLabel";
 import { AnimatedEmptyState } from "@/components/ui/AnimatedEmptyState";
 import { readLocalGallery } from "@/lib/localLibrary";
 
@@ -122,6 +123,8 @@ export default function HistoryScreen() {
               removeHistoryItem(item.gallery.id);
             }}
             style={({ pressed }) => [styles.deleteBtn, { opacity: pressed ? 0.6 : 1 }]}
+            accessibilityRole="button"
+            accessibilityLabel="Retirer ce titre de l'historique"
           >
             <IconTrash size={16} color={colors.sub} strokeWidth={1.8} />
           </Pressable>
@@ -141,9 +144,9 @@ export default function HistoryScreen() {
       ]}
     >
       <View style={[styles.header, { borderBottomColor: colors.tagBg }]}>
-        <View>
+        <View style={{ flexGrow: 1, flexBasis: 220, minWidth: 0 }}>
           <Text style={[styles.headerTitle, { color: colors.txt }]}>
-            Historique de Lecture
+            Historique de lecture
           </Text>
           <Text style={[styles.headerSub, { color: colors.sub }]}>
             {history.length} manga(s) consulté(s)
@@ -153,13 +156,15 @@ export default function HistoryScreen() {
         {history.length > 0 && (
           <Pressable
             onPress={handleClearAll}
+            accessibilityRole="button"
+            accessibilityLabel="Effacer tout l'historique de lecture"
             style={({ pressed }) => [
               styles.clearAllBtn,
               { backgroundColor: colors.tagBg, opacity: pressed ? 0.7 : 1 },
             ]}
           >
             <IconTrash size={14} color="#ff4757" strokeWidth={2} style={{ marginRight: 6 }} />
-            <Text style={[styles.clearAllText, { color: "#ff4757" }]}>Tout effacer</Text>
+            <ButtonLabel style={[styles.clearAllText, { color: "#ff4757" }]}>Tout effacer</ButtonLabel>
           </Pressable>
         )}
       </View>
@@ -178,7 +183,7 @@ export default function HistoryScreen() {
             padding: 14,
             paddingBottom: insets.bottom + 24,
           }}
-          keyExtractor={(item) => String(item.gallery.id)}
+          keyExtractor={(item) => `${item.source || "nhentai"}:${item.gallery.id}`}
         />
       )}
     </View>
@@ -189,6 +194,8 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
     flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
@@ -198,6 +205,8 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 20, fontWeight: "800" },
   headerSub: { fontSize: 13, marginTop: 2 },
   clearAllBtn: {
+    minHeight: 44,
+    maxWidth: "100%",
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 12,
@@ -217,9 +226,9 @@ const styles = StyleSheet.create({
   cover: { width: "100%", height: "100%" },
   info: { flex: 1, marginRight: 8 },
   title: { fontSize: 13, fontWeight: "700", lineHeight: 17, marginBottom: 4 },
-  metaRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 },
+  metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, justifyContent: "space-between", alignItems: "center", marginBottom: 6 },
   pageText: { fontSize: 11.5, fontWeight: "700" },
-  dateText: { fontSize: 10.5 },
+  dateText: { fontSize: 10.5, flexShrink: 1 },
   progressBarTrack: { width: "100%", height: 3.5, borderRadius: 2, overflow: "hidden" },
   progressBarFill: { height: "100%", borderRadius: 2 },
   actions: { paddingLeft: 4 },

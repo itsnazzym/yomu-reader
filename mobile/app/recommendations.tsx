@@ -72,7 +72,8 @@ export default function RecommendationsScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const { width, fontScale } = useWindowDimensions();
+  const compactHeader = width < 400 || fontScale > 1.15;
 
   const [result, setResult] = useState<RecommendationResult | null>(
     getCachedRecommendations()
@@ -338,7 +339,7 @@ export default function RecommendationsScreen() {
             <Animated.View style={{ transform: [{ rotate: spin }] }}>
               <IconRefresh size={14} color="#fff" strokeWidth={2} />
             </Animated.View>
-            <Text style={styles.heroRefreshText}>Actualiser</Text>
+            <ButtonLabel style={styles.heroRefreshText}>Actualiser</ButtonLabel>
           </TouchableOpacity>
           <TouchableOpacity
             activeOpacity={0.8}
@@ -347,7 +348,7 @@ export default function RecommendationsScreen() {
             style={[styles.heroInfoButton, { borderColor: colors.tagBg }]}
           >
             <IconInfoCircle size={14} color={colors.accent} strokeWidth={2} />
-            <Text style={[styles.heroInfoText, { color: colors.txt }]}>Comment ça marche ?</Text>
+            <ButtonLabel style={[styles.heroInfoText, { color: colors.txt }]}>Comment ça marche ?</ButtonLabel>
           </TouchableOpacity>
         </View>
       </View>
@@ -461,7 +462,7 @@ export default function RecommendationsScreen() {
         >
           <IconArrowLeft size={20} color={colors.txt} strokeWidth={2} />
         </TouchableOpacity>
-        <View style={styles.headerCopy}>
+        <View style={[styles.headerCopy, compactHeader && { flexBasis: "80%" }]}>
           <Text style={[styles.headerTitle, { color: colors.txt }]}>Recommandations</Text>
           <Text style={[styles.headerSubtitle, { color: colors.sub }]}>Moteur personnalisé</Text>
         </View>
@@ -743,6 +744,7 @@ export default function RecommendationsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
+    flexWrap: "wrap",
     flexDirection: "row",
     alignItems: "center",
     minHeight: 62,
@@ -753,27 +755,27 @@ const styles = StyleSheet.create({
   headerCopy: { flex: 1, paddingHorizontal: 8 },
   headerTitle: { fontSize: 18, fontWeight: "800", letterSpacing: 0.1 },
   headerSubtitle: { fontSize: 11, marginTop: 2 },
-  headerActions: { flexDirection: "row", alignItems: "center", gap: 2 },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 2, marginLeft: "auto" },
   headerAction: { width: 34, height: 38, alignItems: "center", justifyContent: "center" },
   countBadge: { minWidth: 28, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 9, alignItems: "center" },
   countText: { fontSize: 12, fontWeight: "900" },
 
   heroCard: { marginHorizontal: 2, padding: 15, borderRadius: 18, borderWidth: 1 },
-  heroTopRow: { flexDirection: "row", alignItems: "center" },
+  heroTopRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" },
   heroIcon: { width: 42, height: 42, borderRadius: 13, alignItems: "center", justifyContent: "center", marginRight: 11 },
-  heroCopy: { flex: 1 },
+  heroCopy: { flexGrow: 1, flexBasis: 140, minWidth: 0 },
   heroEyebrow: { fontSize: 9, fontWeight: "900", letterSpacing: 1.4, marginBottom: 3 },
   heroTitle: { fontSize: 15, lineHeight: 19, fontWeight: "800" },
   heroCount: { alignItems: "center", paddingHorizontal: 8, paddingVertical: 6, borderRadius: 10, marginLeft: 8 },
   heroCountText: { fontSize: 17, fontWeight: "900", lineHeight: 19 },
   heroCountLabel: { fontSize: 8.5, marginTop: 1 },
   heroDescription: { fontSize: 12, lineHeight: 17, marginTop: 13 },
-  statsGrid: { flexDirection: "row", gap: 8, marginTop: 14 },
-  statItem: { flex: 1, minHeight: 51, paddingHorizontal: 9, paddingVertical: 8, borderRadius: 11, backgroundColor: "rgba(255,255,255,0.035)" },
+  statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 14 },
+  statItem: { flexGrow: 1, flexBasis: 96, minHeight: 51, paddingHorizontal: 9, paddingVertical: 8, borderRadius: 11, backgroundColor: "rgba(255,255,255,0.035)" },
   statValue: { fontSize: 15, fontWeight: "900", marginTop: 3 },
   statLabel: { fontSize: 9.5, marginTop: 1 },
   preferenceSection: { marginTop: 15 },
-  preferenceHeader: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 },
+  preferenceHeader: { flexDirection: "row", flexWrap: "wrap", gap: 4, alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 },
   preferenceTitle: { fontSize: 12, fontWeight: "800" },
   preferenceHint: { fontSize: 9.5 },
   preferenceScroll: { gap: 6, paddingRight: 4 },
@@ -781,10 +783,10 @@ const styles = StyleSheet.create({
   preferenceChipText: { maxWidth: 140, flexShrink: 1, minWidth: 0 },
   preferenceChipScore: { fontSize: 9, fontWeight: "900", marginLeft: 7 },
   preferenceChipChevron: { marginLeft: 5 },
-  heroActions: { flexDirection: "row", gap: 8, marginTop: 15 },
-  heroRefreshButton: { flex: 1, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 7, minHeight: 38, borderRadius: 11 },
+  heroActions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 15 },
+  heroRefreshButton: { flexGrow: 1, flexBasis: 160, paddingHorizontal: 10, paddingVertical: 10, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 7, minHeight: 44, borderRadius: 11 },
   heroRefreshText: { color: "#fff", fontSize: 12, fontWeight: "800" },
-  heroInfoButton: { flex: 1.55, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 7, minHeight: 38, borderRadius: 11, borderWidth: 1 },
+  heroInfoButton: { flexGrow: 1, flexBasis: 160, paddingHorizontal: 10, paddingVertical: 10, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 7, minHeight: 44, borderRadius: 11, borderWidth: 1 },
   heroInfoText: { fontSize: 11.5, fontWeight: "700" },
   errorBanner: { flexDirection: "row", alignItems: "center", gap: 8, marginHorizontal: 2, marginTop: 10, paddingHorizontal: 11, paddingVertical: 10, borderRadius: 11, borderWidth: 1 },
   errorBannerText: { flex: 1, color: "#ff9da6", fontSize: 11, lineHeight: 15 },

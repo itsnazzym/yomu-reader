@@ -443,6 +443,10 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
                   <Pressable
                     key={m}
                     onPress={() => switchMode(m)}
+                    disabled={loading}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: mode === m, disabled: loading }}
+                    accessibilityLabel={m === "login" ? "Connexion" : m === "register" ? "Inscription" : m === "reset" ? "Mot de passe oublié" : "Clé API"}
                     style={[
                       styles.tabBtn,
                       mode === m && { backgroundColor: colors.accent + "26", borderColor: colors.accent },
@@ -454,24 +458,13 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
                         { color: mode === m ? colors.txt : colors.sub },
                         mode === m && { fontWeight: "800" },
                       ]}
-                      accessibilityRole="tab"
-                      accessibilityState={{ selected: mode === m }}
-                      accessibilityLabel={
-                        m === "login"
-                          ? "Connexion"
-                          : m === "register"
-                            ? "Inscription"
-                            : m === "reset"
-                              ? "Réinitialisation du mot de passe"
-                              : "Connexion par clé API"
-                      }
                     >
                       {m === "login"
                         ? "Connexion"
                         : m === "register"
                           ? "Inscription"
                           : m === "reset"
-                            ? "Oubli"
+                            ? "Mot de passe oublié"
                             : "Clé API"}
                     </Text>
                   </Pressable>
@@ -678,7 +671,7 @@ export function SignInModal({ visible, onClose, onSuccess, initialMode = "login"
                         : mode === "register"
                           ? "Créer mon compte"
                           : mode === "reset"
-                            ? "Réinitialiser"
+                            ? "Envoyer le lien par e-mail"
                             : "Valider la clé"}
                   </ButtonLabel>
                 </View>
@@ -723,11 +716,14 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   headerLeft: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
   },
   headerTitle: {
+    flexShrink: 1,
     fontSize: 17,
     fontWeight: "800",
     color: "#f3f4f6",
@@ -738,13 +734,18 @@ const styles = StyleSheet.create({
   },
   tabContainer: {
     flexDirection: "row",
+    flexWrap: "wrap",
     borderRadius: 12,
     padding: 3,
     gap: 4,
     marginBottom: 6,
   },
   tabBtn: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: "45%",
+    minWidth: 0,
+    minHeight: 44,
     paddingVertical: 8,
     paddingHorizontal: 6,
     alignItems: "center",
@@ -754,6 +755,7 @@ const styles = StyleSheet.create({
     borderColor: "transparent",
   },
   tabText: {
+    textAlign: "center",
     fontSize: 12,
     color: "#9ca3af",
     fontWeight: "600",
@@ -775,7 +777,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 12,
-    height: 46,
+    minHeight: 48,
+    paddingVertical: 8,
     gap: 10,
   },
   input: {
@@ -845,7 +848,9 @@ const styles = StyleSheet.create({
   },
   submitBtn: {
     marginTop: 6,
-    height: 48,
+    minHeight: 48,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
@@ -905,7 +910,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   syncBtn: {
-    height: 44,
+    minHeight: 44,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
@@ -926,7 +933,8 @@ const styles = StyleSheet.create({
     paddingRight: 4,
   },
   logoutBtn: {
-    height: 40,
+    minHeight: 44,
+    paddingVertical: 10,
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",

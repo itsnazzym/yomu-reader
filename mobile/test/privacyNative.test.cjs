@@ -2,6 +2,19 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { patchMainActivity } = require("../withPrivacyScreenCapture");
 const { patchMainApplicationKt } = require("../withAndroidDoh");
+const { patchImageWrapper } = require("../withSafeImageBlur");
+
+test("le flou natif emploie le filtre logiciel et le patch reste idempotent", () => {
+  const source = "import jp.wasabeef.glide.transformations.BlurTransformation\ntransform(BlurTransformation(min(it, 25), 4))";
+  const patched = patchImageWrapper(source);
+  assert.match(patched, /YomuBlurTransformation as BlurTransformation/);
+  assert.doesNotMatch(patched, /import jp\.wasabeef/);
+  assert.equal(patchImageWrapper(patched), patched);
+});
+
+test("une version inconnue du chargeur d'images bloque le patch plutôt que masquer sa perte", () => {
+  assert.throws(() => patchImageWrapper("import new.sdk.UnknownBlur"), /revérifié/);
+});
 
 test("la fenêtre est protégée avant la création de l'activité et le prebuild reste idempotent", () => {
   const template = "class MainActivity { override fun onCreate(state: Bundle?) { super.onCreate(null) } }";

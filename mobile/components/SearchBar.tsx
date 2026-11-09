@@ -206,9 +206,9 @@ export function SearchBar({
         >
           {[
             { key: "all", label: "Toutes" },
-            { key: "english", label: "English" },
-            { key: "japanese", label: "Japanese" },
-            { key: "chinese", label: "Chinese" },
+            { key: "english", label: "Anglais" },
+            { key: "japanese", label: "Japonais" },
+            { key: "chinese", label: "Chinois" },
           ].map((item) => {
             const isActive = selectedLanguage === item.key;
             return (
@@ -232,8 +232,6 @@ export function SearchBar({
                     styles.langChipText,
                     { color: isActive ? "#fff" : colors.sub },
                   ]}
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
                 >
                   {item.label}
                 </Text>
@@ -320,14 +318,14 @@ const styles = StyleSheet.create({
   bar: {
     flexDirection: "row",
     alignItems: "center",
-    height: 48,
+    minHeight: 48,
     borderRadius: 24,
     borderWidth: 1,
     paddingHorizontal: 6,
   },
   input: {
     flex: 1,
-    height: "100%",
+    minHeight: 48,
     fontSize: 13,
     paddingHorizontal: 8,
   },

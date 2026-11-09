@@ -1098,13 +1098,15 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   formInput: {
-    height: 38,
+    minHeight: 48,
+    paddingVertical: 10,
     borderRadius: 8,
     paddingHorizontal: 10,
     fontSize: 12.5,
   },
   savePassBtn: {
-    height: 38,
+    minHeight: 44,
+    paddingVertical: 10,
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",

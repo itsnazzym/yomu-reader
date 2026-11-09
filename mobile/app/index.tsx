@@ -1632,7 +1632,8 @@ const styles = StyleSheet.create({
   },
   jumpCancelBtn: {
     flex: 1,
-    height: 44,
+    minHeight: 44,
+    paddingVertical: 10,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
@@ -1643,7 +1644,8 @@ const styles = StyleSheet.create({
   },
   jumpSubmitBtn: {
     flex: 1,
-    height: 44,
+    minHeight: 44,
+    paddingVertical: 10,
     borderRadius: 12,
     flexDirection: "row",
     alignItems: "center",

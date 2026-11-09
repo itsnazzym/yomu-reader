@@ -8,6 +8,7 @@ import {
   Pressable,
   ActivityIndicator,
   Alert,
+  ScrollView,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import {
@@ -20,6 +21,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/lib/ThemeContext";
 import { BookCard } from "@/components/BookCard";
 import { CardPressable } from "@/components/ui/CardPressable";
+import { ButtonLabel } from "@/components/ui/ButtonLabel";
 import { useFavorites } from "@/lib/favoritesStore";
 import { useAccount, useSyncProgress } from "@/lib/accountStore";
 import { Gallery } from "@/lib/api/types";
@@ -139,20 +141,20 @@ export default function FavoritesScreen() {
               ) : (
                 <IconCloud size={15} color="#fff" strokeWidth={2} />
               )}
-              <Text
+              <ButtonLabel
                 style={[
                   styles.syncBtnText,
                   { color: isLoggedIn ? colors.accent : "#fff" },
                 ]}
               >
-                {syncing ? "Synchronisation..." : isLoggedIn ? "Sync Cloud" : "Lier Compte"}
-              </Text>
+                {syncing ? "Synchronisation…" : isLoggedIn ? "Synchroniser les favoris" : "Connecter mon compte"}
+              </ButtonLabel>
             </View>
           </CardPressable>
         </View>
 
         {/* Sélecteur de provenance : Tous / nHentai.net / Signets locaux */}
-        <View style={styles.tabRow}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabScroll} contentContainerStyle={styles.tabRow}>
           {(
             [
               { key: "all", label: `Tous (${tabCounts.all})` },
@@ -184,7 +186,7 @@ export default function FavoritesScreen() {
               </Pressable>
             );
           })}
-        </View>
+        </ScrollView>
 
         {/* Sync Status Banner */}
         {isLoggedIn && (
@@ -281,12 +283,16 @@ const styles = StyleSheet.create({
   },
   headerRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
     justifyContent: "space-between",
     alignItems: "center",
   },
   headerTitle: { fontSize: 20, fontWeight: "800", color: "#f3f4f6" },
   headerSub: { fontSize: 13, marginTop: 2, color: "#9ca3af" },
   syncBtn: {
+    maxWidth: "100%",
+    minHeight: 44,
     borderRadius: 12,
   },
   syncBtnInner: {
@@ -305,8 +311,11 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 10,
   },
+  tabScroll: { flexGrow: 0 },
   tabPill: {
-    flex: 1,
+    paddingHorizontal: 14,
+    minHeight: 44,
+    justifyContent: "center",
     paddingVertical: 7,
     borderRadius: 10,
     borderWidth: 1,
@@ -367,14 +376,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 12,
-    height: 38,
+    minHeight: 48,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: "#28283a",
     backgroundColor: "#161622",
     marginTop: 10,
   },
-  filterInput: { flex: 1, fontSize: 13, color: "#f3f4f6" },
+  filterInput: { flex: 1, fontSize: 13, color: "#f3f4f6", paddingVertical: 10 },
   centerContainer: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32 },
   emptyTitle: { fontSize: 16, fontWeight: "700", marginTop: 16, marginBottom: 6, color: "#f3f4f6" },
   emptySub: { fontSize: 13, textAlign: "center", lineHeight: 18, color: "#9ca3af" },

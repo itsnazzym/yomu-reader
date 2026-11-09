@@ -276,7 +276,10 @@ export default function TagsScreen() {
 
   const { query: homeQuery, toggleTerm, replaceTerm } = useHomeSearch();
   const [appendNotice, setAppendNotice] = useState<string | null>(null);
-  const appendLockRef = useRef(false);
+  const appendNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (appendNoticeTimerRef.current) clearTimeout(appendNoticeTimerRef.current);
+  }, []);
 
   // Clic sur le tag -> remplace la recherche, bascule l'accueil sur la
   // source d'origine du tag et ouvre l'accueil.
@@ -296,16 +299,12 @@ export default function TagsScreen() {
 
   // Clic sur +/- : ajoute ou retire le tag de la recherche actuelle, sans quitter la page
   const handleToggleSearchTag = useCallback((tag: TaxonomyItem) => {
-    if (appendLockRef.current) return;
-    appendLockRef.current = true;
     lightTap();
     const type = CATEGORY_TYPE_MAP[tag.category] || "tag";
     const result = toggleTerm(type, tag.name);
-    setAppendNotice(result.added ? `Ajouté · ${result.term}` : `Retiré · ${result.term}`);
-    setTimeout(() => {
-      appendLockRef.current = false;
-      setAppendNotice(null);
-    }, 1400);
+    setAppendNotice(`${tag.name} ${result.added ? "ajouté à" : "retiré de"} la recherche`);
+    if (appendNoticeTimerRef.current) clearTimeout(appendNoticeTimerRef.current);
+    appendNoticeTimerRef.current = setTimeout(() => setAppendNotice(null), 1200);
   }, [toggleTerm]);
 
   // Clic sur le cœur -> met en favoris instantanément
@@ -441,6 +440,9 @@ export default function TagsScreen() {
             onPress={() => handleToggleFavorite(item)}
             hitSlop={6}
             style={[styles.tagActionBtn, { borderLeftColor: "#232332" }]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: favorited }}
+            accessibilityLabel={`${favorited ? "Retirer" : "Ajouter"} ${item.name} ${favorited ? "des" : "aux"} favoris tags`}
           >
             <IconHeart
               size={16}
@@ -584,8 +586,8 @@ export default function TagsScreen() {
       ) : null}
 
       {appendNotice ? (
-        <View style={[styles.appendNotice, { backgroundColor: colors.accent + "22", borderColor: colors.accent }]}>
-          <Text style={[styles.appendNoticeText, { color: colors.accent }]}>{appendNotice}</Text>
+        <View pointerEvents="none" style={[styles.appendNotice, { top: Math.max(insets.top, 12) + 56, backgroundColor: colors.page, borderColor: colors.accent }]}>
+          <Text accessibilityLiveRegion="polite" style={[styles.appendNoticeText, { color: colors.txt }]}>{appendNotice}</Text>
         </View>
       ) : null}
 
@@ -972,8 +974,11 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   appendNotice: {
-    marginHorizontal: 12,
-    marginTop: 8,
+    position: "absolute",
+    left: 16,
+    right: 16,
+    zIndex: 20,
+    elevation: 8,
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 12,
@@ -1005,7 +1010,8 @@ const styles = StyleSheet.create({
   searchBarBox: {
     flexDirection: "row",
     alignItems: "center",
-    height: 40,
+    minHeight: 48,
+    paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
     paddingHorizontal: 12,
@@ -1091,6 +1097,8 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   tagActionBtn: {
+    minHeight: 44,
+    minWidth: 44,
     paddingHorizontal: 12,
     paddingVertical: 12,
     borderLeftWidth: 1,
@@ -1209,7 +1217,8 @@ const styles = StyleSheet.create({
     color: "#f3f4f6",
   },
   modalInput: {
-    height: 42,
+    minHeight: 48,
+    paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
     paddingHorizontal: 12,

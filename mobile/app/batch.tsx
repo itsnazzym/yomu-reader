@@ -453,11 +453,11 @@ export default function BatchScreen() {
     >
       {/* Top Header */}
       <View style={[styles.header, { borderBottomColor: colors.tagBg }]}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <IconBtn onPress={() => router.back()} size={36}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexGrow: 1, flexBasis: 220, minWidth: 0 }}>
+          <IconBtn onPress={() => router.back()} size={36} accessibilityLabel="Retour">
             <IconArrowLeft size={20} color={colors.txt} strokeWidth={2} />
           </IconBtn>
-          <View>
+          <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={[styles.headerTitle, { color: colors.txt }]}>
               Téléchargement par lot
             </Text>
@@ -470,6 +470,8 @@ export default function BatchScreen() {
 
         <Pressable
           onPress={() => setIsAddModalVisible(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Créer un nouveau lot de téléchargements"
           style={({ pressed }) => [
             styles.addBatchBtn,
             { backgroundColor: colors.accent, opacity: pressed ? 0.8 : 1 },
@@ -514,18 +516,24 @@ export default function BatchScreen() {
         <View style={styles.toolbarButtons}>
           <Pressable
             onPress={resumeAllQueue}
+            accessibilityRole="button"
+            accessibilityLabel="Reprendre tous les téléchargements"
             style={({ pressed }) => [styles.toolbarBtn, { opacity: pressed ? 0.6 : 1 }]}
           >
             <IconPlayerPlay size={16} color={colors.accent} strokeWidth={2} />
           </Pressable>
           <Pressable
             onPress={pauseAllQueue}
+            accessibilityRole="button"
+            accessibilityLabel="Suspendre tous les téléchargements"
             style={({ pressed }) => [styles.toolbarBtn, { opacity: pressed ? 0.6 : 1 }]}
           >
             <IconPlayerPause size={16} color={colors.sub} strokeWidth={2} />
           </Pressable>
           <Pressable
             onPress={clearCompletedQueue}
+            accessibilityRole="button"
+            accessibilityLabel="Retirer les téléchargements terminés de la liste"
             style={({ pressed }) => [styles.toolbarBtn, { opacity: pressed ? 0.6 : 1 }]}
           >
             <IconTrash size={16} color={colors.sub} strokeWidth={1.8} />
@@ -729,6 +737,8 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 10,
     flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
     alignItems: "center",
     justifyContent: "space-between",
     borderBottomWidth: 1,
@@ -736,6 +746,7 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: "800" },
   headerSubtitle: { fontSize: 12, marginTop: 2 },
   addBatchBtn: {
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 12,
@@ -746,12 +757,14 @@ const styles = StyleSheet.create({
   addBatchBtnText: { color: "#fff", fontWeight: "700", fontSize: 12 },
   toolbar: {
     flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 6,
   },
-  toolbarTabs: { flexDirection: "row", gap: 12 },
+  toolbarTabs: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   tabButton: { paddingVertical: 6 },
   tabButtonText: { fontSize: 13, fontWeight: "600" },
   toolbarButtons: { flexDirection: "row", gap: 14, alignItems: "center" },
@@ -769,7 +782,7 @@ const styles = StyleSheet.create({
   cardCoverPlaceholder: { width: "100%", height: "100%", alignItems: "center", justifyContent: "center" },
   cardInfo: { flex: 1, marginRight: 8 },
   cardTitle: { fontSize: 13, fontWeight: "700", lineHeight: 17, marginBottom: 4 },
-  cardMetaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 },
+  cardMetaRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, alignItems: "center", justifyContent: "space-between", marginBottom: 6 },
   statusBadge: { fontSize: 11, fontWeight: "700" },
   cardPagesText: { fontSize: 11 },
   verifyButton: { flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 2 },

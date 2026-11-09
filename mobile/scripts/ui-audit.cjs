@@ -81,6 +81,9 @@ function scanFile(filePath) {
   // Une ellipse ou un multiplicateur de police bloqué rendrait à nouveau les
   // boutons inaccessibles sur Android avec une taille de police élevée.
   if (relativePath === "components/ui/ButtonLabel.tsx") {
+    if (/numberOfLines\s*=|adjustsFontSizeToFit|minimumFontScale\s*=/.test(content)) {
+      log("error", relativePath, 0, "Un libellé d'action doit pouvoir revenir à la ligne sans réduction automatique");
+    }
     if (/ellipsizeMode\s*=/.test(content)) {
       log("error", relativePath, 0, "ButtonLabel ne doit pas utiliser d'ellipse : le libellé d'une action doit rester entier");
     }

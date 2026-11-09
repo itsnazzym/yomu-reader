@@ -454,7 +454,7 @@ export default function SettingsScreen() {
                     <IconRefresh size={12} color={colors.accent} strokeWidth={2} />
                   )}
                   <ButtonLabel style={[styles.quickActionText, { color: colors.accent }]}>
-                    {syncingCloud ? "Synchro..." : "Synchroniser"}
+                    {syncingCloud ? "Synchronisation…" : "Synchroniser"}
                   </ButtonLabel>
                 </Pressable>
 

@@ -620,7 +620,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   input: {
-    height: 40,
+    minHeight: 48,
+    paddingVertical: 10,
     borderRadius: 10,
     paddingHorizontal: 12,
     fontSize: 13,
@@ -633,14 +634,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   actionBtn: {
-    height: 38,
+    minHeight: 44,
+    paddingVertical: 10,
     borderRadius: 10,
     justifyContent: "center",
     alignItems: "center",
     marginTop: 4,
   },
   createBtn: {
-    height: 40,
+    minHeight: 44,
+    paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: 10,
     justifyContent: "center",
@@ -775,7 +778,8 @@ const styles = StyleSheet.create({
   },
   keyModalBtn: {
     flexDirection: "row",
-    height: 42,
+    minHeight: 44,
+    paddingVertical: 10,
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
@@ -788,7 +792,8 @@ const styles = StyleSheet.create({
   },
   keyModalBtnSecondary: {
     flexDirection: "row",
-    height: 40,
+    minHeight: 44,
+    paddingVertical: 10,
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",

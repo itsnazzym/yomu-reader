@@ -302,7 +302,7 @@ export default function BookDetailScreen() {
     appendLockRef.current = true;
     lightTap();
     const result = toggleTerm(type, name);
-    setAppendNotice(result.added ? `Ajouté · ${result.term}` : `Retiré · ${result.term}`);
+    setAppendNotice(`${name} ${result.added ? "ajouté à" : "retiré de"} la recherche`);
     setTimeout(() => {
       appendLockRef.current = false;
       setAppendNotice(null);
@@ -1115,7 +1115,8 @@ const styles = StyleSheet.create({
   previewNavLeft: { left: 8 },
   previewNavRight: { right: 8 },
   previewReadBtn: {
-    height: 46,
+    minHeight: 46,
+    paddingVertical: 10,
     borderRadius: 12,
     flexDirection: "row",
     alignItems: "center",

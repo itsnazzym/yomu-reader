@@ -4,10 +4,13 @@ import {
   StyleProp,
   ViewStyle,
   Animated,
+  StyleSheet,
   type GestureResponderEvent,
   type TouchableOpacityProps,
 } from "react-native";
 import { useReduceMotion } from "@/lib/reduceMotion";
+
+const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
 
 /**
  * Échelle au press pour les petites puces cliquables (chips, tags, lignes).
@@ -41,6 +44,7 @@ export function CardPressable({
 }: CardPressableProps) {
   const scale = useRef(new Animated.Value(1)).current;
   const reduceMotion = useReduceMotion();
+  const transform = StyleSheet.flatten(style)?.transform;
 
   const onPressIn = useCallback(() => {
     if (reduceMotion) return;
@@ -66,26 +70,21 @@ export function CardPressable({
   }, [scale, reduceMotion]);
 
   return (
-    <TouchableOpacity
+    <AnimatedTouchableOpacity
       activeOpacity={activeOpacity}
       disabled={disabled}
       onPress={onPress}
       onPressIn={onPressIn}
       onPressOut={onPressOut}
-      style={[{ opacity: disabled ? 0.5 : 1 }, style]}
+      style={[
+        { borderRadius: radius, opacity: disabled ? 0.5 : 1 },
+        style,
+        { transform: typeof transform === "string" ? transform : [...(transform || []), { scale }] },
+      ]}
       {...rest}
     >
-      <Animated.View
-        style={{
-          borderRadius: radius,
-          transform: [{ scale }],
-          alignSelf: "stretch",
-          width: "100%",
-        }}
-      >
-        {children}
-      </Animated.View>
-    </TouchableOpacity>
+      {children}
+    </AnimatedTouchableOpacity>
   );
 }
 

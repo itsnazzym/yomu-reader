@@ -110,6 +110,7 @@
       ],
       "./withAndroidDoh",
       "./withPrivacyScreenCapture",
+      "./withSafeImageBlur",
       "./withAndroidReleaseKeystore",
       "./withDownloadForegroundService"
     ],
