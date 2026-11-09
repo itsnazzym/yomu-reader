@@ -58,11 +58,7 @@ import { GalleryTagChip } from "@/components/ui/GalleryTagChip";
 import { getEhentaiCategoryInfo } from "@/lib/sources/ehentaiCategories";
 import { GalleryLoading } from "@/components/GalleryLoading";
 import { getSource } from "@/lib/sources/registry";
-import {
-  findDuplicateGroups,
-  galleryToDuplicateCandidate,
-  otherSourcesInGroup,
-} from "@/lib/duplicateMatch";
+import { findDuplicateSourcesForGallery } from "@/lib/duplicateMatch";
 
 export default function BookDetailScreen() {
   const { id, src, title: titleParam, localId: localIdParam } = useLocalSearchParams<{
@@ -91,6 +87,8 @@ export default function BookDetailScreen() {
   const [related, setRelated] = useState<RelatedCard[]>([]);
   const [relatedLoading, setRelatedLoading] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [duplicateSources, setDuplicateSources] = useState<string[]>([]);
+  const [thumbnailLimit, setThumbnailLimit] = useState(12);
   const [error, setError] = useState<string | null>(null);
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
@@ -117,6 +115,17 @@ export default function BookDetailScreen() {
     };
   }, [fadeOut]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setDuplicateSources([]);
+    if (gallery) {
+      void findDuplicateSourcesForGallery(gallery, favorites, () => cancelled)
+        .then((sources) => { if (!cancelled) setDuplicateSources(sources); })
+        .catch(() => { if (!cancelled) setDuplicateSources([]); });
+    }
+    return () => { cancelled = true; };
+  }, [gallery, favorites]);
+
   const fav = gallery ? isFavorite(gallery.id) : false;
 
   useEffect(() => {
@@ -129,6 +138,7 @@ export default function BookDetailScreen() {
     setLoading(true);
     setError(null);
     setGallery(null);
+    setThumbnailLimit(12);
     setComments([]);
     setRelated([]);
     setRelatedLoading(true);
@@ -377,18 +387,7 @@ export default function BookDetailScreen() {
   const thumbGap = 8;
   const bookGlobalId =
     gallery.globalId || makeGlobalId(sourceId, gallery.id || id || 0);
-  const duplicateSources = (() => {
-    try {
-      const candidates = [
-        galleryToDuplicateCandidate(gallery),
-        ...favorites.map(galleryToDuplicateCandidate),
-      ];
-      const groups = findDuplicateGroups(candidates);
-      return otherSourcesInGroup(bookGlobalId, groups);
-    } catch {
-      return [] as string[];
-    }
-  })();
+
 
   const thumbWidth = Math.floor((width - 32 - thumbGap * (thumbCols - 1)) / thumbCols);
 
@@ -713,7 +712,7 @@ export default function BookDetailScreen() {
           </Text>
 
           <View style={styles.thumbsGrid}>
-            {(gallery.images?.pages || []).map((p, idx) => (
+            {(gallery.images?.pages || []).slice(0, thumbnailLimit).map((p, idx) => (
               <Pressable
                 key={idx}
                 onPress={() => setPreviewIndex(idx)}
@@ -737,6 +736,13 @@ export default function BookDetailScreen() {
               </Pressable>
             ))}
           </View>
+          {(gallery.images?.pages?.length || 0) > thumbnailLimit && (
+            <CardPressable onPress={() => setThumbnailLimit((count) => count + 12)}
+              accessibilityRole="button" accessibilityLabel="Afficher plus de pages"
+              style={[styles.backBtn, { backgroundColor: colors.tagBg, alignSelf: "center", marginTop: 16 }]}>
+              <ButtonLabel style={{ color: colors.txt }}>Afficher plus de pages</ButtonLabel>
+            </CardPressable>
+          )}
         </View>
       </ScrollView>
 

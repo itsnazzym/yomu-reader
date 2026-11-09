@@ -70,6 +70,31 @@ function pagesClose(a: number, b: number): boolean {
   return Math.abs(a - b) <= 1;
 }
 
+/** Only compare the opened book with the library; yield to touch/navigation. */
+export async function findDuplicateSourcesForGallery(
+  gallery: Gallery,
+  favorites: readonly Gallery[],
+  cancelled: () => boolean = () => false
+): Promise<string[]> {
+  const target = galleryToDuplicateCandidate(gallery);
+  const title = normalizeTitle(target.title);
+  if (!title) return [];
+  const sources = new Set<string>();
+  for (let i = 0; i < favorites.length; i++) {
+    // Start after the fiche can paint, and never monopolize the JS thread.
+    if (i % 128 === 0) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      if (cancelled()) return [];
+    }
+    const other = galleryToDuplicateCandidate(favorites[i]);
+    if (other.globalId === target.globalId || other.source === target.source) continue;
+    if (normalizeTitle(other.title) === title && other.artist === target.artist && pagesClose(other.numPages, target.numPages)) {
+      if (other.source) sources.add(other.source);
+    }
+  }
+  return [...sources];
+}
+
 /** Deux candidats matchent s'ils partagent titre+artist+pages±1. */
 export function isDuplicateMatch(
   a: DuplicateCandidate,

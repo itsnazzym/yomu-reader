@@ -10,6 +10,56 @@ import { sourceGalleryToGallery } from "@/lib/sources/galleryMapper";
 import { createSyncBaseline, mergeBackups, backupsEqual } from "@/lib/cloudSync/merge";
 import { userFacingError } from "@/lib/userFacingError";
 import type { BackupData } from "@/lib/backupStore";
+import { findDuplicateSourcesForGallery } from "@/lib/duplicateMatch";
+
+test("la fiche compare 10 000 favoris sans bloquer les timers ni comparer les favoris entre eux", async (t) => {
+  const opened = gallery(99, "ehentai");
+  let reads = 0;
+  const favorites = Array.from({ length: 10_000 }, (_, i) => {
+    const g = gallery(i, "nhentai");
+    Object.defineProperty(g, "title", { get() {
+      reads++;
+      return { pretty: `Livre unique ${i}`, english: "", japanese: "" };
+    } });
+    return g;
+  });
+  let timerRan = false;
+  setTimeout(() => { timerRan = true; }, 0);
+  const started = performance.now();
+  const pending = findDuplicateSourcesForGallery(opened, favorites);
+  assert.equal(reads, 0, "la fiche doit pouvoir s'afficher avant le premier lot");
+  assert.deepEqual(await pending, []);
+  assert.equal(timerRan, true);
+  assert.ok(reads <= favorites.length, `lectures de titre non linéaires : ${reads}`);
+  t.diagnostic(`${favorites.length} favoris : ${reads} lectures, ${Math.round(performance.now() - started)} ms, timers disponibles`);
+});
+
+test("les doublons de la fiche respectent titre, artiste, pages et source, sans modifier les favoris", async () => {
+  const opened = gallery(99, "ehentai");
+  const match = gallery(7, "nhentai");
+  const sameSource = gallery(8, "ehentai");
+  const wrongPages = { ...gallery(9, "doujins"), num_pages: 30 };
+  const wrongArtist = { ...gallery(10, "hitomi"), tags: [{ id: 1, type: "artist" as const, name: "autre", url: "", count: 0 }] };
+  const rows = [match, match, sameSource, wrongPages, wrongArtist];
+  const before = JSON.stringify(rows);
+  assert.deepEqual(await findDuplicateSourcesForGallery(opened, rows), ["nhentai"]);
+  assert.equal(JSON.stringify(rows), before);
+});
+
+test("quitter une fiche interrompt la recherche facultative au prochain lot", async () => {
+  const opened = gallery(99, "ehentai");
+  let reads = 0;
+  const rows = Array.from({ length: 10_000 }, (_, i) => {
+    const g = gallery(i);
+    Object.defineProperty(g, "title", { get() { reads++; return { pretty: `Livre ${i}` }; } });
+    return g;
+  });
+  let cancelled = false;
+  const pending = findDuplicateSourcesForGallery(opened, rows, () => cancelled);
+  setTimeout(() => { cancelled = true; }, 0);
+  assert.deepEqual(await pending, []);
+  assert.ok(reads <= 128, `calcul poursuivi après navigation : ${reads}`);
+});
 
 test("les réglages DNS refusent une ancienne build sans module et les choix inconnus", async () => {
   await assert.rejects(getDnsMode(), /nouvelle version Android/);
