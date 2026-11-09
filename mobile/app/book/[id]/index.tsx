@@ -226,7 +226,7 @@ export default function BookDetailScreen() {
     router.push({
       pathname: "/read",
       params: {
-        id: String(gallery.id),
+        id: gallery.media_id || String(gallery.id),
         initialPage: String(initialPage),
         ...(sourceId !== "nhentai" ? { src: sourceId } : {}),
       },

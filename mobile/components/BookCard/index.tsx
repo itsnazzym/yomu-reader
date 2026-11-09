@@ -137,7 +137,7 @@ export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
 
         {/* Archive Stamp ID Badge (Top-Left) */}
         <View style={styles.archiveStamp}>
-          <Text style={styles.archiveStampText}>#{galleryId > 0 ? galleryId : (rawId.length > 8 ? rawId.slice(0, 8) : rawId)}</Text>
+          <Text style={styles.archiveStampText}>#{galleryId > 0 ? galleryId : ((rawId ? rawId.split(/[/_]/)[0] : ''))}</Text>
         </View>
 
         {/* Discrete Bookmark Notch (Top-Right) */}

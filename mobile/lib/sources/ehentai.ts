@@ -3,9 +3,10 @@
  *
  * Fonctionnalités clés :
  * - Mode double E-Hentai (e-hentai.org) / ExHentai (exhentai.org "Panda") selon les cookies isolés.
- * - Catégories standard E-Hentai avec couleurs JHenTai.
+ * - Catégories standard E-Hentai avec typage et charte de couleur JHenTai.
  * - API JSON officielle (api.php) pour des métadonnées riches et rapides.
- * - Résolution des pages de lecture avec cache d'URLs fraîches.
+ * - Extraction des vraies vignettes WebP (ehgt.org) et rejet des icônes d'interface (td.png).
+ * - Résolution des pages de lecture avec cache en mémoire pour vitesse maximale.
  */
 
 import { Platform } from "react-native";
@@ -67,7 +68,15 @@ interface EhentaiApiMetadata {
 
 /** Cache des URLs d'images directes résolues par page de lecture (/s/...) */
 const pageImageCache = new Map<string, { url: string; cachedAt: number }>();
-const PAGE_IMAGE_TTL_MS = 30 * 60 * 1000;
+const PAGE_IMAGE_TTL_MS = 60 * 60 * 1000;
+
+export function getCachedEhentaiPageImage(viewerUrl: string): string | undefined {
+  const cached = pageImageCache.get(viewerUrl);
+  if (cached && Date.now() - cached.cachedAt < PAGE_IMAGE_TTL_MS) {
+    return cached.url;
+  }
+  return undefined;
+}
 
 export function parseEhentaiNativeId(nativeId: string): { gid: string; token: string } {
   const clean = nativeId.trim().replace(/^\/+|\/+$/g, "");
@@ -78,81 +87,101 @@ export function parseEhentaiNativeId(nativeId: string): { gid: string; token: st
   };
 }
 
+/**
+ * Calcule la note moyenne (sur 5.0) à partir des coordonnées de sprite E-Hentai.
+ */
+function parseRatingFromSprite(posXStr?: string, posYStr?: string): number | undefined {
+  if (!posXStr || !posYStr) return undefined;
+  const x = parseInt(posXStr, 10);
+  const y = parseInt(posYStr, 10);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return undefined;
+
+  const base = 5 - Math.abs(x) / 16;
+  const halfPenalty = Math.abs(y) > 10 ? 0.5 : 0;
+  const r = Math.max(0, Math.min(5, base - halfPenalty));
+  return Number.isFinite(r) ? parseFloat(r.toFixed(2)) : undefined;
+}
+
 /** Parse les cartes depuis le HTML d'un listing E-Hentai / ExHentai. */
 export function parseEhentaiListingCards(html: string): SourceGalleryCard[] {
   const cards: SourceGalleryCard[] = [];
   const seenGids = new Set<string>();
 
-  // Pattern pour localiser chaque entrée de galerie dans le listing
-  // <a href="https://e-hentai.org/g/3184920/a9b8c7d6e5/">...</a>
-  const galleryLinkRe =
-    /href="https?:\/\/(?:e-hentai|exhentai)\.org\/g\/(\d+)\/([a-f0-9]+)\/?"[^>]*>([\s\S]*?)<\/a>/gi;
+  // 1. Découpage par lignes de tableau (mode standard Minimal / Minimal+ `dm_m`)
+  const rows = [...html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)];
 
-  const matches = [...html.matchAll(galleryLinkRe)];
-
-  for (const match of matches) {
-    const gid = match[1];
-    const token = match[2];
-    const innerHtml = match[3] || "";
-
+  for (const r of rows) {
+    const rowHtml = r[1] || "";
+    const linkMatch = rowHtml.match(/href="https?:\/\/(?:e-hentai|exhentai)\.org\/g\/(\d+)\/([a-f0-9]+)\/?"[^>]*>/i);
+    if (!linkMatch) continue;
+    const gid = linkMatch[1];
+    const token = linkMatch[2];
     if (!gid || !token || seenGids.has(gid)) continue;
 
-    // Titre : extrait depuis <div class="glink">Titre</div> ou le texte de l'élément
-    let title = "";
-    const glinkMatch = innerHtml.match(/<div class="glink">([\s\S]*?)<\/div>/i);
-    if (glinkMatch) {
-      title = decodeEntities(stripTags(glinkMatch[1]));
-    } else {
-      title = decodeEntities(stripTags(innerHtml));
-    }
-
+    // Titre
+    const titleMatch = rowHtml.match(/<div class="glink">([\s\S]*?)<\/div>/i);
+    if (!titleMatch) continue;
+    const title = decodeEntities(stripTags(titleMatch[1])).trim();
     if (!title || title.length < 2) continue;
     seenGids.add(gid);
 
-    // Extraction du contexte adjacent (balises sœurs pour cover, catégorie, pages, rating)
-    const matchIndex = match.index ?? 0;
-    const surroundingSnippet = html.slice(
-      Math.max(0, matchIndex - 600),
-      Math.min(html.length, matchIndex + 1400)
-    );
-
-    // Cover image
-    let coverUrl = "";
-    const imgMatch = surroundingSnippet.match(
-      /<img[^>]*(?:data-src|src)="([^"]*ehgt\.org\/[^"]*|[^"]*hentai\.org\/[^"]*|[^"]*t\.ehgt\.org\/[^"]*)"/i
-    );
-    if (imgMatch) {
-      coverUrl = imgMatch[1];
-    }
-
     // Catégorie
     let category = "Misc";
-    const catMatch = surroundingSnippet.match(
-      /<div class="(?:cn|cs) [^"]*">([A-Za-z\s-]+)<\/div>/i
-    );
+    const catMatch =
+      rowHtml.match(/<div class="cn ct[a-z0-9]+"[^>]*>([\s\S]*?)<\/div>/i) ||
+      rowHtml.match(/<div class="cn [^"]*"[^>]*>([\s\S]*?)<\/div>/i);
     if (catMatch) {
-      category = catMatch[1].trim();
+      const rawCat = stripTags(catMatch[1]).trim();
+      category = getEhentaiCategoryInfo(rawCat).name;
+    }
+
+    // Vignette de couverture : cibler spécifiquement le conteneur glthumb
+    let coverUrl = "";
+    const thumbAreaMatch = rowHtml.match(/<div class="glthumb"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/i);
+    const searchArea = thumbAreaMatch ? thumbAreaMatch[1] : rowHtml;
+
+    // data-src en priorité pour les images lazy-loadées
+    const dataSrcMatch = searchArea.match(/data-src="([^"]+)"/i);
+    if (dataSrcMatch && !dataSrcMatch[1].startsWith("data:")) {
+      coverUrl = dataSrcMatch[1];
+    } else {
+      const srcMatches = [...searchArea.matchAll(/src="([^"]+)"/gi)];
+      for (const sm of srcMatches) {
+        const u = sm[1];
+        if (
+          u &&
+          !u.startsWith("data:") &&
+          !u.includes("/g/td.png") &&
+          !u.includes("blank.gif") &&
+          !u.includes("/g/t.png")
+        ) {
+          coverUrl = u;
+          break;
+        }
+      }
     }
 
     // Nombre de pages
     let numPages: number | undefined;
-    const pagesMatch = surroundingSnippet.match(/(\d+)\s*pages?/i);
+    const pagesMatch = rowHtml.match(/(\d+)\s*pages?/i);
     if (pagesMatch) {
       numPages = parseInt(pagesMatch[1], 10);
     }
 
-    // Note moyenne (rating)
+    // Note moyenne (sprite d'étoiles)
     let rating: number | undefined;
-    const ratingMatch = surroundingSnippet.match(/rating:\s*([0-9.]+)/i);
-    if (ratingMatch) {
-      rating = parseFloat(ratingMatch[1]);
+    const spriteMatch = rowHtml.match(/background-position:(-?\d+)px\s*(-?\d+)px/i);
+    if (spriteMatch) {
+      rating = parseRatingFromSprite(spriteMatch[1], spriteMatch[2]);
+    }
+    if (typeof rating !== "number") {
+      const ratingMatch = rowHtml.match(/rating:\s*([0-9.]+)/i);
+      if (ratingMatch) rating = parseFloat(ratingMatch[1]);
     }
 
     // Date
     let uploadDate: number | undefined;
-    const dateMatch = surroundingSnippet.match(
-      /(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})/
-    );
+    const dateMatch = rowHtml.match(/(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})/);
     if (dateMatch) {
       const parsed = Date.parse(dateMatch[1] + " UTC");
       if (Number.isFinite(parsed)) uploadDate = parsed;
@@ -160,15 +189,13 @@ export function parseEhentaiListingCards(html: string): SourceGalleryCard[] {
 
     // Uploader
     let uploader: string | undefined;
-    const uploaderMatch = surroundingSnippet.match(
-      /\/uploader\/([^"]+)"[^>]*>([^<]+)<\/a>/i
-    );
+    const uploaderMatch = rowHtml.match(/\/uploader\/([^"]+)"[^>]*>([^<]+)<\/a>/i);
     if (uploaderMatch) {
       uploader = decodeEntities(uploaderMatch[2].trim());
     }
 
     cards.push({
-      globalId: makeGlobalId("ehentai", `${gid}/${token}`),
+      globalId: makeGlobalId("ehentai", `${gid}_${token}`),
       title,
       coverUrl: coverUrl || "https://ehgt.org/g/blank.gif",
       numPages,
@@ -180,7 +207,79 @@ export function parseEhentaiListingCards(html: string): SourceGalleryCard[] {
     });
   }
 
+  // Fallback si la page était dans un autre mode (ex: thumbnails `gtd`)
+  if (cards.length === 0) {
+    const galleryLinkRe =
+      /href="https?:\/\/(?:e-hentai|exhentai)\.org\/g\/(\d+)\/([a-f0-9]+)\/?"[^>]*>([\s\S]*?)<\/a>/gi;
+    const matches = [...html.matchAll(galleryLinkRe)];
+
+    for (const match of matches) {
+      const gid = match[1];
+      const token = match[2];
+      const innerHtml = match[3] || "";
+      if (!gid || !token || seenGids.has(gid)) continue;
+
+      let title = "";
+      const glinkMatch = innerHtml.match(/<div class="glink">([\s\S]*?)<\/div>/i);
+      title = glinkMatch ? decodeEntities(stripTags(glinkMatch[1])) : decodeEntities(stripTags(innerHtml));
+      if (!title || title.length < 2) continue;
+      seenGids.add(gid);
+
+      const matchIndex = match.index ?? 0;
+      const snippet = html.slice(Math.max(0, matchIndex - 600), Math.min(html.length, matchIndex + 1400));
+
+      let coverUrl = "";
+      const dataSrc = snippet.match(/data-src="([^"]*ehgt\.org\/[^"]*|[^"]*hentai\.org\/[^"]*)"/i);
+      if (dataSrc) {
+        coverUrl = dataSrc[1];
+      } else {
+        const srcMatch = snippet.match(/src="([^"]*ehgt\.org\/[^"]*|[^"]*hentai\.org\/[^"]*)"/i);
+        if (srcMatch && !srcMatch[1].includes("td.png") && !srcMatch[1].includes("blank.gif")) {
+          coverUrl = srcMatch[1];
+        }
+      }
+
+      cards.push({
+        globalId: makeGlobalId("ehentai", `${gid}_${token}`),
+        title,
+        coverUrl: coverUrl || "https://ehgt.org/g/blank.gif",
+        category: "Misc",
+        tags: [{ name: "misc", type: "category" }],
+      });
+    }
+  }
+
   return cards;
+}
+
+export async function resolveEhentaiPageImage(
+  viewerUrl: string,
+  headers?: Record<string, string>
+): Promise<string> {
+  const cached = getCachedEhentaiPageImage(viewerUrl);
+  if (cached) return cached;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  try {
+    const res = await fetch(viewerUrl, {
+      headers: headers || { ...BASE_HEADERS, Cookie: "nw=1" },
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status} sur ${viewerUrl}`);
+    const html = await res.text();
+
+    const match = html.match(/<img\b[^>]*id=["']img["'][^>]*src=["']([^"']+)["']/i);
+    if (match && match[1]) {
+      const directUrl = decodeEntities(match[1]);
+      pageImageCache.set(viewerUrl, { url: directUrl, cachedAt: Date.now() });
+      return directUrl;
+    }
+    throw new Error("Balise <img id='img'> introuvable dans la page E-Hentai");
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export class EhentaiSource implements SourceAdapter {
@@ -211,12 +310,11 @@ export class EhentaiSource implements SourceAdapter {
       Referer: `${baseUrl}/`,
     };
 
-    if (auth.cookies) {
-      const cookieHeader = formatCookieHeader(auth.cookies);
-      if (cookieHeader) {
-        headers.Cookie = cookieHeader;
-      }
-    }
+    const cookieMap: Record<string, string> = {
+      nw: "1", // Bypass prompt d'avertissement de contenu
+      ...(auth.cookies || {}),
+    };
+    headers.Cookie = formatCookieHeader(cookieMap);
 
     return { baseUrl, headers };
   }
@@ -226,6 +324,9 @@ export class EhentaiSource implements SourceAdapter {
     const pageIndex = Math.max(0, (opts.page || 1) - 1);
 
     const params = new URLSearchParams();
+    // inline_set=dm_m force l'affichage en mode tableau Minimal+ prévisible
+    params.append("inline_set", "dm_m");
+
     if (opts.query?.trim()) {
       params.append("f_search", opts.query.trim());
     }
@@ -256,7 +357,7 @@ export class EhentaiSource implements SourceAdapter {
   async getGallery(nativeId: string): Promise<SourceGallery> {
     const { gid, token } = parseEhentaiNativeId(nativeId);
     if (!gid || !token) {
-      throw new Error(`Identifiant E-Hentai invalide: '${nativeId}' (attendu: 'gid/token')`);
+      throw new Error(`Identifiant E-Hentai invalide: '${nativeId}'`);
     }
 
     const { baseUrl, headers } = await this.getRequestConfig();
@@ -340,27 +441,23 @@ export class EhentaiSource implements SourceAdapter {
       tags.unshift({ name: meta.category, type: "category" });
     }
 
-    // Résolution immédiate de l'image de la première page pour réactivité instantanée
-    let firstPageImageUrl = "";
-    if (readerPageLinks[0]?.url) {
-      try {
-        firstPageImageUrl = await this.resolvePageImageUrl(readerPageLinks[0].url, headers);
-      } catch {}
-    }
+    // Pré-résolution en parallèle des premières pages pour lancement immédiat du lecteur
+    const preResolveCount = Math.min(3, readerPageLinks.length);
+    const preResolvePromises = readerPageLinks.slice(0, preResolveCount).map((p) =>
+      this.resolvePageImageUrl(p.url, headers).catch(() => "")
+    );
+    await Promise.allSettled(preResolvePromises);
 
     // Construction de la liste des pages pour le lecteur
     const pageUrls: { url: string; width?: number; height?: number }[] = [];
     for (let i = 0; i < totalPages; i++) {
       const readerLink = readerPageLinks[i]?.url;
-      // Si la page 1 est déjà résolue, on fournit l'URL directe, sinon le lien de page
-      if (i === 0 && firstPageImageUrl) {
-        pageUrls.push({ url: firstPageImageUrl });
+      const cached = readerLink ? getCachedEhentaiPageImage(readerLink) : undefined;
+      if (cached) {
+        pageUrls.push({ url: cached });
       } else if (readerLink) {
-        // Enregistre dans le cache et passe le lien de page ou l'URL déjà en cache
-        const cached = pageImageCache.get(readerLink);
-        pageUrls.push({ url: cached?.url || readerLink });
+        pageUrls.push({ url: readerLink });
       } else {
-        // Fallback placeholder avec la couverture
         pageUrls.push({ url: meta?.thumb || `${baseUrl}/g/blank.gif` });
       }
     }
@@ -371,8 +468,8 @@ export class EhentaiSource implements SourceAdapter {
     const uploadDate = meta?.posted ? parseInt(String(meta.posted), 10) * 1000 : undefined;
 
     return {
-      globalId: makeGlobalId("ehentai", `${gid}/${token}`),
-      nativeId: `${gid}/${token}`,
+      globalId: makeGlobalId("ehentai", `${gid}_${token}`),
+      nativeId: `${gid}_${token}`,
       title: decodeEntities(title),
       coverUrl,
       numPages: totalPages,
@@ -385,38 +482,10 @@ export class EhentaiSource implements SourceAdapter {
     };
   }
 
-  /** Résout l'URL directe de l'image depuis une page de visualisation (/s/...) */
   async resolvePageImageUrl(viewerUrl: string, headers?: Record<string, string>): Promise<string> {
-    const cached = pageImageCache.get(viewerUrl);
-    if (cached && Date.now() - cached.cachedAt < PAGE_IMAGE_TTL_MS) {
-      return cached.url;
-    }
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
-    try {
-      const res = await fetch(viewerUrl, {
-        headers: headers || BASE_HEADERS,
-        signal: controller.signal,
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status} sur ${viewerUrl}`);
-      const html = await res.text();
-
-      // <img id="img" src="https://.../img.jpg" ...>
-      const match = html.match(/<img\b[^>]*id=["']img["'][^>]*src=["']([^"']+)["']/i);
-      if (match && match[1]) {
-        const directUrl = decodeEntities(match[1]);
-        pageImageCache.set(viewerUrl, { url: directUrl, cachedAt: Date.now() });
-        return directUrl;
-      }
-      throw new Error("Balise <img id='img'> introuvable dans la page E-Hentai");
-    } finally {
-      clearTimeout(timer);
-    }
+    return resolveEhentaiPageImage(viewerUrl, headers);
   }
 
-  /** Retourne les catégories officielles comme taxonomie native. */
   async getTags(): Promise<SourceTaxonomyItem[]> {
     return EHENTAI_CATEGORY_LIST.map((c) => ({
       name: c.name,

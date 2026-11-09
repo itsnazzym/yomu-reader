@@ -4,6 +4,7 @@ import { Image, ImageProps, ImageStyle } from "expo-image";
 import { IconReload } from "@tabler/icons-react-native";
 import { useTheme } from "@/lib/ThemeContext";
 import { useReaderSettings } from "@/lib/readerSettingsStore";
+import { resolveEhentaiPageImage, getCachedEhentaiPageImage } from "@/lib/sources/ehentai";
 
 export interface SmartImageProps extends Omit<ImageProps, "source"> {
   uri: string;
@@ -112,6 +113,46 @@ export function SmartImage({
 
   const shimmerAnim = useRef(new Animated.Value(0.3)).current;
 
+  // Résolution paresseuse des pages de lecteur E-Hentai (/s/...) vers l'URL d'image réelle
+  const isEhPage = Boolean(
+    uri && (uri.includes("e-hentai.org/s/") || uri.includes("exhentai.org/s/"))
+  );
+  const [resolvedUri, setResolvedUri] = useState<string>(() => {
+    if (isEhPage) {
+      return getCachedEhentaiPageImage(uri) || "";
+    }
+    return uri;
+  });
+
+  useEffect(() => {
+    let active = true;
+    if (isEhPage) {
+      const cached = getCachedEhentaiPageImage(uri);
+      if (cached) {
+        setResolvedUri(cached);
+      } else {
+        setLoading(true);
+        resolveEhentaiPageImage(uri)
+          .then((directUrl) => {
+            if (active) {
+              setResolvedUri(directUrl);
+            }
+          })
+          .catch(() => {
+            if (active) {
+              setHasError(true);
+              setLoading(false);
+            }
+          });
+      }
+    } else {
+      setResolvedUri(uri);
+    }
+    return () => {
+      active = false;
+    };
+  }, [uri, isEhPage]);
+
   useEffect(() => {
     softAttemptRef.current = 0;
     if (softTimerRef.current) {
@@ -126,7 +167,7 @@ export function SmartImage({
     setSoftAttempt(0);
     setLoading(true);
     setHasError(false);
-  }, [uri]);
+  }, [uri, resolvedUri]);
 
   useEffect(() => {
     return () => {
@@ -135,23 +176,23 @@ export function SmartImage({
     };
   }, []);
 
+  const activeSourceUri = resolvedUri || uri;
+
   // Build high-speed, unblocked CDN candidates
   const candidateUrls = useMemo(() => {
-    if (!uri) return [];
+    if (!activeSourceUri) return [];
 
-    const { host: targetHost, path: pathOnly } = resolveCdnHostAndPath(uri);
+    const { host: targetHost, path: pathOnly } = resolveCdnHostAndPath(activeSourceUri);
     if (!targetHost || !pathOnly) {
-      return [uri];
+      return [activeSourceUri];
     }
 
-    // Peu de candidats, dans un ordre déterministe. Une longue cascade de
-    // proxys transforme une panne CDN ponctuelle en spinner quasi infini.
     return [...new Set([
       `https://i0.wp.com/${targetHost}/${pathOnly}`,
       `https://${targetHost}/${pathOnly}`,
-      uri,
+      activeSourceUri,
     ])];
-  }, [uri]);
+  }, [activeSourceUri]);
 
   // Subtle shimmer pulse when loading
   useEffect(() => {
@@ -165,7 +206,7 @@ export function SmartImage({
             useNativeDriver: true,
           }),
           Animated.timing(shimmerAnim, {
-            toValue: 0.3,
+            toValue: 0.25,
             duration: 700,
             useNativeDriver: true,
           }),
@@ -180,17 +221,14 @@ export function SmartImage({
     };
   }, [loading, hasError, shimmerAnim]);
 
-  const baseUri = candidateUrls[retryIndex] || uri;
-  // Soft-retry Hitomi/CDN flaky : bust cache pour forcer un nouveau fetch.
+  const baseUri = candidateUrls[retryIndex] || activeSourceUri;
   const currentUri =
     baseUri && softAttempt > 0
       ? `${baseUri}${baseUri.includes("?") ? "&" : "?"}_yr=${softAttempt}`
       : baseUri;
-  const effectiveRecyclingKey = recyclingKey || uri;
+  const effectiveRecyclingKey = recyclingKey || activeSourceUri;
   const MAX_SOFT_RETRIES = 2;
 
-  // Certaines piles réseau Android ne signalent ni succès ni erreur pour une
-  // requête bloquée. On passe au candidat suivant, puis on expose un retry.
   useEffect(() => {
     if (!loading || hasError || !currentUri) return;
     if (imageTimeoutRef.current) clearTimeout(imageTimeoutRef.current);
@@ -215,8 +253,6 @@ export function SmartImage({
       setRetryIndex((prev) => prev + 1);
       return;
     }
-    // CDN flaky (Hitomi, etc.) : une seule URL candidate → retry auto avec backoff
-    // avant d'afficher le bouton reload manuel.
     if (softAttemptRef.current < MAX_SOFT_RETRIES) {
       softAttemptRef.current += 1;
       const delayMs = 450 * softAttemptRef.current;
@@ -259,19 +295,17 @@ export function SmartImage({
     setHasError(false);
   }, []);
 
+  const containerStyle = useMemo<StyleProp<ViewStyle>>(() => {
+    if (typeof aspectRatio === "number" && Number.isFinite(aspectRatio) && aspectRatio > 0) {
+      return [{ aspectRatio }, style];
+    }
+    return style;
+  }, [aspectRatio, style]);
+
   return (
-    <View
-      style={[
-        styles.container,
-        { backgroundColor: "#0d0d14" },
-        aspectRatio ? { aspectRatio } : null,
-        style as StyleProp<ViewStyle>,
-      ]}
-    >
-      {currentUri && !hasError && (!sensitive || privacyReady) ? (
+    <View style={[styles.container, containerStyle]}>
+      {currentUri && (!isEhPage || resolvedUri) ? (
         <Image
-          key={`${effectiveRecyclingKey}_${softAttempt}_${retryIndex}`}
-          recyclingKey={`${effectiveRecyclingKey}_${softAttempt}`}
           source={{
             uri: currentUri,
             headers: {

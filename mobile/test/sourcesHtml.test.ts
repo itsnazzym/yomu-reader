@@ -243,7 +243,7 @@ test("parseEhentaiListingCards: extrait titre, gid, token, cover et metadata", (
   `;
   const cards = parseEhentaiListingCards(html);
   assert.equal(cards.length, 1);
-  assert.equal(cards[0].globalId, "ehentai:3184920/a9b8c7d6e5");
+  assert.equal(cards[0].globalId, "ehentai:3184920_a9b8c7d6e5");
   assert.equal(cards[0].title, "[Circle] Sample Doujin Title");
   assert.equal(cards[0].category, "Doujinshi");
   assert.equal(cards[0].numPages, 24);

@@ -4,13 +4,15 @@
  * Fonctionnalités clés :
  * - API JSON native haute performance (dapi post index).
  * - Support de l'authentification isolée (User ID + API Key).
- * - Extraction et typage des tags (artist, copyright, character, general).
- * - URLs d'images directes en haute résolution.
+ * - Nettoyage automatique des opérateurs nHentai (language:english, etc.).
+ * - Signalisation claire de l'état d'authentification requis.
+ * - Extraction et typage des tags et médias haute résolution.
  */
 
 import { Platform } from "react-native";
 import {
   makeGlobalId,
+  SourceError,
   type SourceAdapter,
   type SourceGallery,
   type SourceGalleryCard,
@@ -20,6 +22,7 @@ import {
   type SourceTaxonomyItem,
 } from "./types";
 import { getSourceAuth } from "./authStore";
+import { stripNhentaiOperators } from "./html";
 
 const BASE_URL = "https://rule34.xxx";
 const API_URL = "https://api.rule34.xxx/index.php";
@@ -56,7 +59,6 @@ export function buildRule34Title(id: string | number, tagsStr?: string): string 
   const rawTags = tagsStr.trim().split(/\s+/).filter(Boolean);
   if (rawTags.length === 0) return `Rule34 #${id}`;
 
-  // Priorité aux tags courts et descriptifs (ex: noms de personnages)
   const candidateTags = rawTags
     .filter((t) => !t.startsWith("rating:") && !t.startsWith("score:"))
     .slice(0, 3)
@@ -111,9 +113,17 @@ export class Rule34Source implements SourceAdapter {
     const pageIndex = Math.max(0, (opts.page || 1) - 1);
     const authParams = await this.getAuthQueryParams();
 
-    const query = (opts.query || "").trim();
+    if (!authParams) {
+      throw new SourceError(
+        "paywalled",
+        "Rule34 exige une clé API personnelle gratuite (api.rule34.xxx). Liez votre compte dans Paramètres > Sources."
+      );
+    }
+
+    // Nettoyage des opérateurs nHentai (ex: language:english) incompatibles avec le booru
+    const cleanQuery = stripNhentaiOperators(opts.query) || "";
     const url = `${API_URL}?page=dapi&s=post&q=index&json=1&limit=40&pid=${pageIndex}&tags=${encodeURIComponent(
-      query
+      cleanQuery
     )}${authParams}`;
 
     const controller = new AbortController();
@@ -122,10 +132,24 @@ export class Rule34Source implements SourceAdapter {
     try {
       const res = await fetch(url, { headers: HEADERS, signal: controller.signal });
       if (!res.ok) {
-        throw new Error(`Rule34 HTTP ${res.status} sur ${url}`);
+        throw new SourceError("http", `Rule34 HTTP ${res.status}`, res.status);
       }
 
-      const json = await res.json();
+      const text = await res.text();
+      if (text.includes("Missing authentication")) {
+        throw new SourceError(
+          "paywalled",
+          "Clé API Rule34 invalide ou expirée. Rendez-vous sur rule34.xxx/index.php?page=account&s=options pour générer votre clé."
+        );
+      }
+
+      let json: unknown;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        return { cards: [], hasMore: false };
+      }
+
       if (!Array.isArray(json)) {
         return { cards: [], hasMore: false };
       }
@@ -160,6 +184,13 @@ export class Rule34Source implements SourceAdapter {
   async getGallery(nativeId: string): Promise<SourceGallery> {
     const cleanId = nativeId.trim();
     const authParams = await this.getAuthQueryParams();
+    if (!authParams) {
+      throw new SourceError(
+        "paywalled",
+        "Rule34 exige une clé API personnelle gratuite. Liez votre compte dans Paramètres > Sources."
+      );
+    }
+
     const url = `${API_URL}?page=dapi&s=post&q=index&json=1&id=${encodeURIComponent(cleanId)}${authParams}`;
 
     const controller = new AbortController();
@@ -168,14 +199,19 @@ export class Rule34Source implements SourceAdapter {
     try {
       const res = await fetch(url, { headers: HEADERS, signal: controller.signal });
       if (!res.ok) {
-        throw new Error(`Rule34 HTTP ${res.status} pour le post #${cleanId}`);
+        throw new SourceError("http", `Rule34 HTTP ${res.status}`, res.status);
       }
 
-      const json = await res.json();
+      const text = await res.text();
+      if (text.includes("Missing authentication")) {
+        throw new SourceError("paywalled", "Clé API Rule34 invalide.");
+      }
+
+      const json = JSON.parse(text);
       const post: Rule34PostItem | undefined = Array.isArray(json) ? json[0] : json;
 
       if (!post || !post.id) {
-        throw new Error(`Post Rule34 #${cleanId} introuvable.`);
+        throw new SourceError("not_found", `Post Rule34 #${cleanId} introuvable.`);
       }
 
       const mainImageUrl = post.file_url || post.sample_url || post.preview_url || "";
@@ -206,7 +242,8 @@ export class Rule34Source implements SourceAdapter {
   }
 
   async getTags(): Promise<SourceTaxonomyItem[]> {
-    const url = `${API_URL}?page=dapi&s=tag&q=index&json=1&limit=60&order=count`;
+    const authParams = await this.getAuthQueryParams();
+    const url = `${API_URL}?page=dapi&s=tag&q=index&json=1&limit=60&order=count${authParams}`;
     try {
       const res = await fetch(url, { headers: HEADERS });
       if (res.ok) {
@@ -225,7 +262,8 @@ export class Rule34Source implements SourceAdapter {
   async healthCheck(): Promise<{ ok: boolean; latencyMs: number; error?: string }> {
     const startedAt = Date.now();
     try {
-      const res = await fetch(`${API_URL}?page=dapi&s=post&q=index&json=1&limit=1`, {
+      const authParams = await this.getAuthQueryParams();
+      const res = await fetch(`${API_URL}?page=dapi&s=post&q=index&json=1&limit=1${authParams}`, {
         headers: HEADERS,
       });
       return { ok: res.ok, latencyMs: Date.now() - startedAt };

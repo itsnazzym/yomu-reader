@@ -41,6 +41,7 @@ import { TagLabel } from "@/components/ui/TagLabel";
 import { ButtonLabel } from "@/components/ui/ButtonLabel";
 import { FilterModal, FilterOptions } from "@/components/modals/FilterModal";
 import { ReverseImageSearchModal } from "@/components/modals/ReverseImageSearchModal";
+import { SourceAuthModal } from "@/components/modals/SourceAuthModal";
 import { searchGalleries } from "@/lib/api/nhentai";
 import { listSources } from "@/lib/sources/registry";
 import { getSource } from "@/lib/sources/registry";
@@ -97,6 +98,8 @@ export default function HomeScreen() {
   const [isSearchOpen, setIsSearchOpen] = useState(() => Boolean(getHomeSearchQuery()));
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [isImageSearchOpen, setIsImageSearchOpen] = useState(false);
+  const [sourceAuthModalOpen, setSourceAuthModalOpen] = useState(false);
+  const [sourceAuthInitial, setSourceAuthInitial] = useState<SourceId>("rule34");
   const { collections, formatQuery: formatColQuery } = useTagCollections();
   const consumedParamsRef = useRef("");
 
@@ -343,8 +346,8 @@ export default function HomeScreen() {
               });
               // Map les cartes sources vers un pseudo-Gallery pour l'affichage.
               return r.cards.map((c) => ({
-                id: Number(c.globalId.split(":")[1]) || 0,
-                media_id: "",
+                id: Number.parseInt(c.globalId.split(":")[1], 10) || 0,
+                media_id: c.globalId.split(":")[1] || "",
                 globalId: c.globalId,
                 title: { english: c.title, japanese: "", pretty: c.title },
                 images: {
@@ -434,8 +437,8 @@ export default function HomeScreen() {
           });
           if (requestId !== latestRequestRef.current) return;
           const mapped: Gallery[] = res.cards.map((c) => ({
-            id: Number(c.globalId.split(":")[1]) || 0,
-            media_id: "",
+            id: Number.parseInt(c.globalId.split(":")[1], 10) || 0,
+            media_id: c.globalId.split(":")[1] || "",
             globalId: c.globalId,
             title: { english: c.title, japanese: "", pretty: c.title },
             images: {
@@ -473,6 +476,9 @@ export default function HomeScreen() {
         console.error("Fetch galleries error:", err);
         const message = err instanceof Error ? err.message : "Erreur de chargement des galeries.";
         setError(message);
+        if (!isPagination) {
+          setGalleries([]);
+        }
       } finally {
         if (requestId === latestRequestRef.current) {
           setIsInitialLoading(false);
@@ -777,6 +783,7 @@ export default function HomeScreen() {
               onPress={() => {
                 lightTap();
                 setPage(1);
+                setGalleries([]);
                 setActiveSource(sid);
               }}
               style={[
@@ -1137,6 +1144,30 @@ export default function HomeScreen() {
           >
             <ButtonLabel style={styles.retryBtnText}>Réessayer</ButtonLabel>
           </TouchableOpacity>
+          {(activeSource === "rule34" || (error && error.includes("Rule34"))) && (
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => {
+                setSourceAuthInitial("rule34");
+                setSourceAuthModalOpen(true);
+              }}
+              style={[styles.retryBtn, { marginTop: 12, backgroundColor: "#7ebd78" }]}
+            >
+              <ButtonLabel style={[styles.retryBtnText, { color: "#101018", fontWeight: "700" }]}>Configurer clé API Rule34</ButtonLabel>
+            </TouchableOpacity>
+          )}
+          {activeSource === "ehentai" && (
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => {
+                setSourceAuthInitial("ehentai");
+                setSourceAuthModalOpen(true);
+              }}
+              style={[styles.retryBtn, { marginTop: 12, backgroundColor: "#e63946" }]}
+            >
+              <ButtonLabel style={[styles.retryBtnText, { color: "#fff", fontWeight: "700" }]}>Cookies / Compte E-Hentai</ButtonLabel>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             onPress={() => router.push("/downloaded")}
             style={[styles.retryBtn, { marginTop: 12, backgroundColor: colors.page }]}
@@ -1348,6 +1379,15 @@ export default function HomeScreen() {
       <ReverseImageSearchModal
         visible={isImageSearchOpen}
         onClose={() => setIsImageSearchOpen(false)}
+      />
+
+      <SourceAuthModal
+        visible={sourceAuthModalOpen}
+        initialSource={sourceAuthInitial}
+        onClose={() => {
+          setSourceAuthModalOpen(false);
+          fetchGalleries(activeQuery, filterOptions, 1);
+        }}
       />
     </View>
   );

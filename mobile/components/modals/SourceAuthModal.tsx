@@ -12,6 +12,7 @@ import {
   Alert,
   Switch,
   TouchableOpacity,
+  Linking,
 } from "react-native";
 import {
   IconX,
@@ -504,8 +505,18 @@ export function SourceAuthModal({
                   </View>
 
                   <Text style={[styles.fieldHint, { color: colors.sub }]}>
-                    Renseignez votre User ID et votre clé API (obtenue sur votre compte rule34.xxx) pour accéder à vos favoris et bénéficier des quotas étendus :
+                    Renseignez votre User ID et votre clé API (obtenue sur votre compte rule34.xxx) pour accéder aux galeries et posts :
                   </Text>
+                  <TouchableOpacity
+                    onPress={() => Linking.openURL("https://rule34.xxx/index.php?page=account&s=options")}
+                    style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12 }}
+                    activeOpacity={0.7}
+                  >
+                    <IconWorld size={14} color="#7ebd78" />
+                    <Text style={{ color: "#7ebd78", fontSize: 13, textDecorationLine: "underline" }}>
+                      Obtenir ma clé API gratuite sur rule34.xxx
+                    </Text>
+                  </TouchableOpacity>
 
                   <View style={styles.inputsBlock}>
                     <TextInput

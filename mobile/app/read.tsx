@@ -127,18 +127,23 @@ export default function ReaderScreen() {
           return;
         }
 
-        if (!id || !/^\d+$/.test(id) || Number(id) <= 0) {
+        if (!id) {
           if (!cancelled) setError("Identifiant de galerie invalide.");
           return;
         }
 
-        // Sources alternatives (src=3hentai|doujins) : chargement via
+        // Sources alternatives (src=3hentai|doujins|ehentai|rule34) : chargement via
         // l'adaptateur, pages déjà résolues avec URLs fraîches.
         if (src && src !== "nhentai") {
           const sg = await loadSourceGallery(src as SourceId, id);
           if (!cancelled) {
             setGallery(sourceGalleryToGallery(sg, src as SourceId));
           }
+          return;
+        }
+
+        if (!/^\d+$/.test(id) || Number(id) <= 0) {
+          if (!cancelled) setError("Identifiant de galerie invalide.");
           return;
         }
 

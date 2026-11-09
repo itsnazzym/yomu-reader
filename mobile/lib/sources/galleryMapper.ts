@@ -18,7 +18,7 @@ export function sourceGalleryToGallery(
   sourceId: SourceId
 ): Gallery {
   return {
-    id: Number(sg.nativeId) || 0,
+    id: Number.parseInt(String(sg.nativeId), 10) || 0,
     media_id: sg.nativeId,
     title: { english: sg.title, japanese: "", pretty: sg.title },
     images: {
