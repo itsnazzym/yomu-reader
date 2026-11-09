@@ -342,7 +342,7 @@ export class HitomiSource implements SourceAdapter {
 
   async getGallery(nativeId: string): Promise<SourceGallery> {
     const [gg, js] = await Promise.all([
-      loadGg(),
+      loadGg(true),
       fetchText(`${LTN}/galleries/${nativeId}.js`),
     ]);
     const info = parseGalleryInfo(js);

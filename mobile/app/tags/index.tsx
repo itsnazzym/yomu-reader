@@ -684,7 +684,7 @@ export default function TagsScreen() {
             <IconFolder size={44} color="#6b7280" strokeWidth={1.5} style={{ opacity: 0.6 }} />
             <Text style={styles.emptyTitle}>Aucun pack de tags</Text>
             <Text style={styles.emptySub}>
-              Appuyez sur « Nouveau pack » ci-dessus pour regrouper vos tags favoris en pack de recherche personnalisé.
+              Appuyez sur « Créer » ci-dessus pour regrouper vos tags favoris en pack de recherche personnalisé.
             </Text>
           </View>
         ) : (

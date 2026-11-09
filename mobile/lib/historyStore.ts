@@ -8,6 +8,7 @@ const PERSIST_DEBOUNCE_MS = 1000;
 
 export interface HistoryGallery {
   id: number;
+  globalId?: string;
   media_id: string;
   title: Gallery["title"];
   tags: Tag[];
@@ -113,6 +114,7 @@ export function toHistoryGallery(gallery: Gallery | HistoryGallery): HistoryGall
   const thumbnail = gallery.images?.thumbnail ?? cover;
   return {
     id: Number(gallery.id),
+    globalId: "globalId" in gallery ? gallery.globalId : undefined,
     media_id: gallery.media_id ?? "",
     title: gallery.title ?? { english: "", japanese: "", pretty: "" },
     tags: Array.isArray(gallery.tags) ? gallery.tags : [],
@@ -136,6 +138,7 @@ function normalizeEntry(raw: unknown): HistoryEntry | null {
   const thumbnail = parseImage(rawImages.thumbnail ?? rawImages.cover);
   const gallery: HistoryGallery = {
     id: Number(rawGallery.id),
+    globalId: typeof rawGallery.globalId === "string" ? rawGallery.globalId : undefined,
     media_id: typeof rawGallery.media_id === "string" ? rawGallery.media_id : "",
     title: parseTitle(rawGallery.title),
     tags: Array.isArray(rawGallery.tags)
@@ -161,21 +164,21 @@ function normalizeEntry(raw: unknown): HistoryEntry | null {
   };
 }
 
+function gallerySource(gallery: HistoryGallery, source?: string): string {
+  const known = new Set(["nhentai", "3hentai", "doujins", "hitomi"]);
+  const prefix = gallery.globalId?.split(":")[0];
+  if (prefix && known.has(prefix)) return prefix;
+  if (source && known.has(source)) return source;
+  return gallery.scanlator && known.has(gallery.scanlator) ? gallery.scanlator : "nhentai";
+}
+
 function entryMatches(
   entry: HistoryEntry,
   targetId: number,
   opts?: RecordProgressOptions
 ): boolean {
-  if (opts?.localId) {
-    return entry.localId === opts.localId;
-  }
-  if (opts?.source) {
-    return (
-      Number(entry.gallery?.id) === targetId &&
-      (entry.source === opts.source || (!entry.source && opts.source === "nhentai"))
-    );
-  }
-  return Number(entry.gallery?.id) === targetId && !entry.localId;
+  if (opts?.localId && entry.localId === opts.localId) return true;
+  return Number(entry.gallery?.id) === targetId && gallerySource(entry.gallery, entry.source) === (opts?.source || "nhentai");
 }
 
 function persistHistory(): Promise<void> {
@@ -232,6 +235,15 @@ async function loadHistoryFromStorage(): Promise<void> {
       historyList = Array.isArray(parsed)
         ? parsed.map(normalizeEntry).filter((entry): entry is HistoryEntry => entry !== null)
         : [];
+      const merged = new Map<string, HistoryEntry>();
+      for (const entry of [...historyList].sort((a, b) => b.readAt - a.readAt)) {
+        entry.source = gallerySource(entry.gallery, entry.source);
+        const key = `${entry.source}:${entry.gallery.id}`;
+        const current = merged.get(key);
+        if (!current) merged.set(key, entry);
+        else if (!current.localId && entry.localId) current.localId = entry.localId;
+      }
+      historyList = [...merged.values()];
       notify();
     }
   } catch {}
@@ -262,9 +274,7 @@ export async function recordReadingProgress(
 
   const lastPage = Math.max(0, page);
   const nextTotal = totalPages || preview.num_pages || 1;
-  const source =
-    opts?.source ||
-    (typeof preview.scanlator === "string" && preview.scanlator ? preview.scanlator : undefined);
+  const source = gallerySource(preview, opts?.source);
   const localId = opts?.localId;
   const matchOpts: RecordProgressOptions = { source, localId };
 
@@ -294,7 +304,7 @@ export async function recordReadingProgress(
     totalPages: nextTotal,
     readAt: Date.now(),
     source,
-    localId,
+    localId: localId || existing?.localId,
   };
   historyList = [entry, ...remaining].slice(0, 200);
   schedulePersist();
@@ -308,7 +318,8 @@ export function findHistoryEntry(opts: {
   localId?: string;
 }): HistoryEntry | undefined {
   if (opts.localId) {
-    return historyList.find((entry) => entry.localId === opts.localId);
+    const local = historyList.find((entry) => entry.localId === opts.localId);
+    if (local) return local;
   }
   const targetId = Number(opts.id);
   if (!Number.isFinite(targetId)) return undefined;

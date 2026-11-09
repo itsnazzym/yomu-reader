@@ -38,11 +38,18 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Build debug APK
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+
+      - name: Build standalone test APK
         working-directory: mobile
         run: |
+          npx expo prebuild --platform android --no-install
           cd android
-          ./gradlew assembleDebug -PreactNativeArchitectures=x86_64
+          ./gradlew assembleRelease -PreactNativeArchitectures=x86_64
 
       - name: Run Maestro on API 33 emulator
         uses: reactivecircus/android-emulator-runner@v2
@@ -50,7 +57,7 @@ jobs:
           api-level: 33
           arch: x86_64
           script: |
-            adb install mobile/android/app/build/outputs/apk/debug/app-debug.apk
+            adb install mobile/android/app/build/outputs/apk/release/app-release.apk
             maestro test .maestro/ --format junit --output mobile/maestro-report.xml
 
       - name: Upload Maestro report

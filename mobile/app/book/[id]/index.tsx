@@ -433,6 +433,7 @@ export default function BookDetailScreen() {
         </IconBtn>
 
         <View style={styles.topBarActions}>
+          {isNhentai && (
           <IconBtn
             onPress={() => void handleAccountHeart()}
             size={40}
@@ -447,6 +448,7 @@ export default function BookDetailScreen() {
               />
             </Animated.View>
           </IconBtn>
+          )}
           <IconBtn
             onPress={handleBookmark}
             size={40}
@@ -475,7 +477,7 @@ export default function BookDetailScreen() {
         {/* Hero Section */}
         <View style={styles.heroSection}>
           <View style={styles.coverWrapper}>
-            <SmartImage
+            <SmartImage sensitive
               uri={gallery.images?.cover?.url || ""}
               style={styles.coverImage}
               contentFit="cover"
@@ -692,7 +694,7 @@ export default function BookDetailScreen() {
                   },
                 ]}
               >
-                <SmartImage
+                <SmartImage sensitive
                   uri={p.urlThumb || p.url || ""}
                   style={styles.thumbImage}
                   contentFit="cover"
@@ -738,7 +740,7 @@ export default function BookDetailScreen() {
 
               {/* High-res Image Preview */}
               <View style={styles.previewImageContainer}>
-                <SmartImage
+                <SmartImage sensitive
                   uri={
                     gallery.images?.pages?.[previewIndex]?.url ||
                     gallery.images?.pages?.[previewIndex]?.urlThumb ||

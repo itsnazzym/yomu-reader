@@ -1,4 +1,8 @@
 import { Platform, PermissionsAndroid, Linking } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const NOTIFICATION_CHOICE_KEY = "@yomu_notifications_requested_v1";
+let notificationRequest: Promise<boolean> | null = null;
 
 export interface PermissionStatus {
   storageGranted: boolean;
@@ -86,23 +90,24 @@ export async function requestStoragePermissions(): Promise<boolean> {
   }
 }
 
-export async function requestNotificationPermissions(): Promise<boolean> {
+export function requestNotificationPermissions(): Promise<boolean> {
+  if (notificationRequest) return notificationRequest;
+  notificationRequest = requestNotificationsOnce().finally(() => { notificationRequest = null; });
+  return notificationRequest;
+}
+
+async function requestNotificationsOnce(): Promise<boolean> {
   if (Platform.OS !== "android") return true;
 
   const apiLevel = Number(Platform.Version);
   if (apiLevel < 33) return true; // Les notifications sont accordées par défaut avant Android 13
 
   try {
-    const res = await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
-      {
-        title: "Notifications de téléchargement",
-        message:
-          "Autorisez les notifications pour suivre l'avancement de vos téléchargements de mangas en arrière-plan.",
-        buttonPositive: "Autoriser",
-        buttonNegative: "Plus tard",
-      }
-    );
+    const permission = PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS;
+    if (await PermissionsAndroid.check(permission)) return true;
+    if (await AsyncStorage.getItem(NOTIFICATION_CHOICE_KEY)) return false;
+    await AsyncStorage.setItem(NOTIFICATION_CHOICE_KEY, "1");
+    const res = await PermissionsAndroid.request(permission);
     return res === PermissionsAndroid.RESULTS.GRANTED;
   } catch {
     return false;

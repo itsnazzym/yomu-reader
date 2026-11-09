@@ -1,5 +1,5 @@
 import React from "react";
-import { StyleSheet, Text, View, TouchableOpacity, Pressable } from "react-native";
+import { StyleSheet, Text, View, TouchableOpacity, Pressable, useWindowDimensions } from "react-native";
 import { IconBookmark, IconBook2 } from "@tabler/icons-react-native";
 import { useRouter } from "expo-router";
 import { Gallery } from "@/lib/api/types";
@@ -28,6 +28,7 @@ const SOURCE_METAS: Record<string, SourceMeta> = Object.fromEntries(
 );
 
 export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
+  const { fontScale } = useWindowDimensions();
   const { colors } = useTheme();
   const router = useRouter();
   const { isFavorite, toggleFavorite } = useFavorites();
@@ -108,6 +109,7 @@ export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
 
   return (
     <CardPressable
+      key={fontScale}
       onPress={handleCardPress}
       radius={14}
       activeOpacity={0.85}
@@ -122,7 +124,7 @@ export function BookCard({ gallery, cardWidth = 160, onPress }: BookCardProps) {
     >
       {/* Cover Image Container (B6 Tankōbon Ratio 1:1.414) */}
       <View style={[styles.imageContainer, { backgroundColor: colors.bg }]}>
-        <SmartImage
+        <SmartImage sensitive
           uri={coverUrl}
           recyclingKey={`cover_${galleryId}_${coverUrl}`}
           style={styles.image}

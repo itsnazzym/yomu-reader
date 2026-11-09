@@ -1,8 +1,9 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import { StyleSheet, View, Animated, ActivityIndicator, StyleProp, Pressable, ViewStyle } from "react-native";
+import { StyleSheet, View, Text, Animated, ActivityIndicator, StyleProp, Pressable, ViewStyle } from "react-native";
 import { Image, ImageProps, ImageStyle } from "expo-image";
 import { IconReload } from "@tabler/icons-react-native";
 import { useTheme } from "@/lib/ThemeContext";
+import { useReaderSettings } from "@/lib/readerSettingsStore";
 
 export interface SmartImageProps extends Omit<ImageProps, "source"> {
   uri: string;
@@ -11,6 +12,7 @@ export interface SmartImageProps extends Omit<ImageProps, "source"> {
   priority?: "low" | "normal" | "high";
   showLoader?: boolean;
   recyclingKey?: string;
+  sensitive?: boolean;
 }
 
 /**
@@ -86,9 +88,11 @@ export function SmartImage({
   priority = "normal",
   showLoader = true,
   recyclingKey,
+  sensitive = false,
   ...rest
 }: SmartImageProps) {
   const { colors } = useTheme();
+  const { settings, ready: privacyReady } = useReaderSettings();
   const [retryIndex, setRetryIndex] = useState(0);
   const [softAttempt, setSoftAttempt] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -255,7 +259,7 @@ export function SmartImage({
         style as StyleProp<ViewStyle>,
       ]}
     >
-      {currentUri && !hasError ? (
+      {currentUri && !hasError && (!sensitive || privacyReady) ? (
         <Image
           key={`${effectiveRecyclingKey}_${softAttempt}_${retryIndex}`}
           recyclingKey={`${effectiveRecyclingKey}_${softAttempt}`}
@@ -273,6 +277,7 @@ export function SmartImage({
           priority={priority}
           cachePolicy="memory-disk"
           {...rest}
+          blurRadius={sensitive && settings.blurNsfwCovers ? 24 : rest.blurRadius}
           onError={handleError}
           onLoad={handleLoad}
           onDisplay={handleLoad}
@@ -296,9 +301,12 @@ export function SmartImage({
       {hasError && (
         <Pressable
           onPress={handleManualRetry}
+          accessibilityRole="button"
+          accessibilityLabel="Image indisponible. Réessayer le chargement"
           style={[StyleSheet.absoluteFillObject, styles.errorBox, { backgroundColor: "#13131d" }]}
         >
           <IconReload size={18} color="#6b7280" strokeWidth={1.8} />
+          {showLoader && <Text style={styles.errorText}>Image indisponible{`\n`}Réessayer</Text>}
         </Pressable>
       )}
     </View>
@@ -318,6 +326,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  errorText: { color: "#b5b5c4", fontSize: 12, textAlign: "center", marginTop: 8, paddingHorizontal: 8 },
 });
 
 export default SmartImage;

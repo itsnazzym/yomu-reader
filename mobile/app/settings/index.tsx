@@ -970,7 +970,7 @@ export default function SettingsScreen() {
             <View style={styles.divider} />
 
             <Text style={styles.rowToggleSub}>
-              Export CBZ + ComicInfo.xml : bouton archive sur un titre hors-ligne
+              Export CBZ + ComicInfo.xml : bouton de partage sur un titre hors-ligne
               (compatible Mihon, Komga, Kavita).
             </Text>
 
@@ -1505,7 +1505,7 @@ export default function SettingsScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.rowToggleTitle}>Proxy Photon nHentai</Text>
                 <Text style={styles.rowToggleSub}>
-                  DNS sécurisé DoH pour l'API, Photon pour les images : aucun réglage FAI requis.
+                  DNS sécurisé pour le catalogue et les images. La disponibilité dépend des sources.
                 </Text>
               </View>
               <View style={styles.onlineBadge}>
@@ -1529,6 +1529,7 @@ export default function SettingsScreen() {
 
             <View style={styles.divider} />
 
+            {__DEV__ && (
             <CardPressable
               radius={10}
               onPress={() => {
@@ -1550,6 +1551,7 @@ export default function SettingsScreen() {
               <Text style={styles.linkRowText}>Tester GlitchTip</Text>
               <IconChevronRight size={16} color="#6b7280" strokeWidth={2} />
             </CardPressable>
+            )}
 
             <View style={styles.divider} />
 

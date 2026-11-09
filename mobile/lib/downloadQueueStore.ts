@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { userFacingError } from "./userFacingError";
 import * as FileSystem from "expo-file-system/legacy";
 import { getGallery, resolvePageUrl } from "./api/nhentai";
 import { Gallery } from "./api/types";
@@ -595,7 +596,7 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
         status: "error",
         errorMessage: message,
       });
-      void notifyDownloadFinished({ title: item.title, ok: false, errorMessage: message });
+      void notifyDownloadFinished({ title: item.title, ok: false, errorMessage: userFacingError(err) });
     }
   } finally {
     activeWorkers.delete(qKey);

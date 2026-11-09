@@ -66,6 +66,7 @@ const defaultSettings: ReaderSettings = {
 };
 
 let currentSettings: ReaderSettings = { ...defaultSettings };
+let ready = false;
 const listeners = new Set<() => void>();
 const writes = createWriteQueue();
 
@@ -79,9 +80,11 @@ async function loadReaderSettings() {
     const raw = await AsyncStorage.getItem(READER_SETTINGS_STORAGE_KEY);
     if (raw) {
       currentSettings = { ...defaultSettings, ...JSON.parse(raw) };
-      notify();
     }
-  } catch {}
+  } catch {} finally {
+    ready = true;
+    notify();
+  }
 }
 
 export const initReaderSettings = createInitOnce(loadReaderSettings);
@@ -100,9 +103,13 @@ export function getReaderSettings(): ReaderSettings {
 
 export function useReaderSettings() {
   const [settings, setSettings] = useState<ReaderSettings>(currentSettings);
+  const [initialized, setInitialized] = useState(ready);
 
   useEffect(() => {
-    const update = () => setSettings({ ...currentSettings });
+    const update = () => {
+      setSettings({ ...currentSettings });
+      setInitialized(ready);
+    };
     listeners.add(update);
     initReaderSettings();
     return () => {
@@ -112,6 +119,7 @@ export function useReaderSettings() {
 
   return {
     settings,
+    ready: initialized,
     updateSettings: updateReaderSettings,
   };
 }

@@ -16,6 +16,7 @@ import { useHistory, HistoryEntry } from "@/lib/historyStore";
 import SmartImage from "@/components/SmartImage";
 import { CardPressable } from "@/components/ui/CardPressable";
 import { AnimatedEmptyState } from "@/components/ui/AnimatedEmptyState";
+import { readLocalGallery } from "@/lib/localLibrary";
 
 export default function HistoryScreen() {
   const { colors } = useTheme();
@@ -34,12 +35,15 @@ export default function HistoryScreen() {
     );
   };
 
-  const handleResume = (entry: HistoryEntry) => {
+  const handleResume = async (entry: HistoryEntry) => {
+    const local = entry.localId ? await readLocalGallery(entry.localId).catch(() => null) : null;
     router.push({
       pathname: "/read",
       params: {
         id: String(entry.gallery.id),
         initialPage: String(entry.lastPage),
+        ...(local && entry.localId ? { localId: entry.localId } : {}),
+        ...(entry.source && entry.source !== "nhentai" ? { src: entry.source } : {}),
       },
     });
   };
@@ -71,7 +75,7 @@ export default function HistoryScreen() {
         ]}
       >
         <View style={styles.coverWrap}>
-          <SmartImage
+          <SmartImage sensitive
             uri={
               item.gallery.images?.cover?.url ||
               item.gallery.images?.thumbnail?.url ||

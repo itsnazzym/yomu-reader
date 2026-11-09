@@ -6,6 +6,8 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Alert,
+  useWindowDimensions,
   Linking,
 } from "react-native";
 import {
@@ -42,6 +44,7 @@ interface SideMenuProps {
 }
 
 export function SideMenu({ closeDrawer }: SideMenuProps) {
+  const { fontScale } = useWindowDimensions();
   const { colors } = useTheme();
   const router = useRouter();
   const pathname = usePathname();
@@ -69,7 +72,7 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
     { label: "Étagères", icon: IconFolder, route: "/collections", hasArrow: true },
     { label: "Favoris locaux", icon: IconBookmark, route: "/favorites", hasArrow: true },
     {
-      label: isLoggedIn ? `Favoris Cloud (${session.cloudFavoritesCount || 0})` : "Favoris Cloud",
+      label: isLoggedIn ? `Favoris nHentai (${session.cloudFavoritesCount || 0})` : "Favoris nHentai",
       icon: IconHeart,
       route: "/favorites",
       isLocked: !isLoggedIn,
@@ -104,14 +107,19 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
       }
     } catch (e) {
       console.warn("Random failed:", e);
+      Alert.alert("Source indisponible", "La galerie aléatoire ne peut pas être chargée. Vérifiez votre connexion puis réessayez.");
     } finally {
       setRandomLoading(false);
     }
   };
 
+  const candidateInvite = process.env.EXPO_PUBLIC_DISCORD_INVITE_URL;
+  const discordInvite = candidateInvite && /^https:\/\/discord\.gg\/[A-Za-z0-9-]+\/?$/.test(candidateInvite) ? candidateInvite : undefined;
+
   const handleDiscord = () => {
+    if (!discordInvite) return;
     try {
-      Linking.openURL("https://discord.gg");
+      Linking.openURL(discordInvite);
     } catch {}
   };
 
@@ -144,10 +152,7 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
               <Text style={styles.brandTitle}>Yomu</Text>
-              <View style={styles.networkDiodeWrap}>
-                <View style={styles.networkDiode} />
-                <Text style={styles.networkDiodeText}>Photon</Text>
-              </View>
+
             </View>
             <Text style={styles.brandSubtitle}>Archive & Reader</Text>
           </View>
@@ -155,8 +160,8 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
       </View>
 
       {/* Nav Menu Items */}
-      <ScrollView style={styles.menuScroll} showsVerticalScrollIndicator={false}>
-        <Text style={styles.sectionHeader}>LIBRARY</Text>
+      <ScrollView key={fontScale} style={styles.menuScroll} showsVerticalScrollIndicator={false}>
+        <Text style={styles.sectionHeader}>BIBLIOTHÈQUE</Text>
 
         <View style={styles.menuList}>
           {menuItems.map((item) => {
@@ -208,7 +213,7 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
           })}
         </View>
 
-        {/* I'M FEELING LUCKY Button */}
+        {/* AU HASARD Button */}
         <View style={styles.luckySection}>
           <TouchableOpacity
             activeOpacity={0.82}
@@ -224,14 +229,14 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
               ) : (
                 <IconArrowsShuffle size={17} color={colors.bg} strokeWidth={2.2} />
               )}
-              <Text style={styles.luckyText}>I'M FEELING LUCKY</Text>
+              <Text style={styles.luckyText}>AU HASARD</Text>
               <Text style={styles.sparkleFloral}>✧ ✦</Text>
             </View>
           </TouchableOpacity>
         </View>
 
         {/* Discord Join Card */}
-        <TouchableOpacity
+        {discordInvite && (<TouchableOpacity
           activeOpacity={0.82}
           onPress={handleDiscord}
           style={[styles.discordCard, { backgroundColor: colors.page, borderColor: colors.tagBg }]}
@@ -242,15 +247,15 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
             <IconBrandDiscord size={20} color={colors.accent} strokeWidth={1.8} />
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                <Text style={styles.discordTitle}>Join Discord</Text>
+                <Text style={styles.discordTitle}>Communauté Discord</Text>
                 <Text style={[styles.discordSparkles, { color: colors.accent }]}>✧ ✦ ⋆</Text>
               </View>
               <Text style={styles.discordSub}>
-                Get early builds, ask questions, share ideas
+                Versions, questions et idées
               </Text>
             </View>
           </View>
-        </TouchableOpacity>
+        </TouchableOpacity>)}
       </ScrollView>
 
       {/* Sign in / User Profile footer */}
@@ -285,7 +290,7 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
               <IconLogin size={18} color={colors.accent} strokeWidth={2} />
             )}
             <Text style={styles.signInText}>
-              {isLoggedIn ? (session.username || "Mon Profil") : "Sign in"}
+              {isLoggedIn ? (session.username || "Mon Profil") : "Se connecter"}
             </Text>
           </View>
         </TouchableOpacity>

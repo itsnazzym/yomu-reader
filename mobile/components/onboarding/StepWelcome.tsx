@@ -15,7 +15,7 @@ export function StepWelcome() {
     {
       icon: IconShieldCheck,
       title: "Contournement DNS & FAI",
-      desc: "Accès direct et illimité sans blocage réseau ni configuration complexe.",
+      desc: "Plusieurs sources et un DNS sécurisé pour limiter les erreurs de connexion.",
     },
     {
       icon: IconCloudDownload,

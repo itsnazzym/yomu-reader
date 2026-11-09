@@ -10,7 +10,7 @@ import {
   BackHandler,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
-import { IconCheck, IconTrash, IconX, IconFolderPlus } from "@tabler/icons-react-native";
+import { IconCheck, IconTrash, IconX, IconFolderPlus, IconShare } from "@tabler/icons-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useTheme } from "@/lib/ThemeContext";
@@ -23,12 +23,13 @@ import {
   formatLibrarySize,
 } from "@/lib/localLibrary";
 import { removeCompletedByLocalId } from "@/lib/downloadQueueStore";
-import { findHistoryEntry, getHistory, initHistory } from "@/lib/historyStore";
+import { findHistoryEntry, initHistory } from "@/lib/historyStore";
 import { AnimatedEmptyState } from "@/components/ui/AnimatedEmptyState";
 import { ButtonLabel } from "@/components/ui/ButtonLabel";
 import { mediumImpact } from "@/lib/haptics";
 import { CollectionPickerModal } from "@/components/modals/CollectionPickerModal";
 import { makeGlobalId } from "@/lib/sources/types";
+import { shareLocalGalleryCbz } from "@/lib/cbzExport";
 
 const SELECTION_BAR_H = 52;
 
@@ -62,6 +63,23 @@ export default function DownloadedScreen() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const router = useRouter();
+  const [exportingId, setExportingId] = useState<string | null>(null);
+  const exportingRef = useRef(false);
+
+  const exportCbz = async (localId: string) => {
+    if (exportingRef.current) return;
+    exportingRef.current = true;
+    setExportingId(localId);
+    try {
+      const result = await shareLocalGalleryCbz(localId);
+      if (!result.success || result.error) Alert.alert("Export CBZ", result.error || "Export impossible. Réessayez.");
+    } catch {
+      Alert.alert("Export CBZ", "L'archive n'a pas pu être préparée. Réessayez.");
+    } finally {
+      exportingRef.current = false;
+      setExportingId(null);
+    }
+  };
 
   const [downloadedGalleries, setDownloadedGalleries] = useState<LocalLibraryEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -124,9 +142,10 @@ export default function DownloadedScreen() {
   const openLocalReader = useCallback(
     (localId: string) => {
       void initHistory().then(() => {
-        const hist =
-          findHistoryEntry({ localId }) ||
-          getHistory().find((entry) => entry.localId === localId);
+        const localEntry = downloadedGalleries.find((item) => item.localId === localId);
+        const candidate = localEntry?.gallery.globalId?.split(":")[0] || localEntry?.gallery.scanlator;
+        const source = candidate && ["nhentai", "3hentai", "doujins", "hitomi"].includes(candidate) ? candidate : "nhentai";
+        const hist = findHistoryEntry({ localId, id: localEntry?.galleryId, source });
         const params: Record<string, string> = { localId };
         if (hist && hist.lastPage > 0) {
           params.initialPage = String(hist.lastPage);
@@ -137,7 +156,7 @@ export default function DownloadedScreen() {
         });
       });
     },
-    [router]
+    [router, downloadedGalleries]
   );
 
   const toggleSelect = useCallback((localId: string) => {
@@ -264,6 +283,16 @@ export default function DownloadedScreen() {
         {!selecting ? (
           <View style={styles.cardActions}>
             <TouchableOpacity
+              onPress={() => void exportCbz(item.localId)}
+              disabled={exportingId !== null}
+              style={styles.folderBtn}
+              accessibilityRole="button"
+              accessibilityLabel={`Exporter ${item.title} en CBZ`}
+              accessibilityState={{ busy: exportingId === item.localId, disabled: exportingId !== null }}
+            >
+              {exportingId === item.localId ? <ActivityIndicator size="small" color={colors.accent} /> : <IconShare size={15} color={colors.accent} />}
+            </TouchableOpacity>
+            <TouchableOpacity
               activeOpacity={0.7}
               onPress={() => setCollectionTarget(item)}
               hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
@@ -275,6 +304,8 @@ export default function DownloadedScreen() {
             <TouchableOpacity
               activeOpacity={0.7}
               onPress={() => confirmDeleteOne(item)}
+              accessibilityRole="button"
+              accessibilityLabel={`Supprimer ${item.title} de l'appareil`}
               hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
               style={styles.trashBtn}
             >

@@ -9,7 +9,7 @@ import {
   isValidLocalGalleryMetadata,
 } from "./localLibrary";
 import { base64ToBytes, bytesToBase64, buildZipStore, type ZipStoreEntry } from "./zipStore";
-import { getHistory } from "./historyStore";
+import { findHistoryEntry, initHistory } from "./historyStore";
 import { makeGlobalId } from "./sources/types";
 
 const PAGE_FILE_RE = /^Image(\d+)\.(jpg|jpeg|png|webp|gif)$/i;
@@ -82,7 +82,7 @@ export async function exportLocalGalleryToCbz(
   }
 
   try {
-    const history = getHistory();
+    await initHistory();
     const anyGallery = gallery as Gallery & {
       globalId?: string;
       origin?: string;
@@ -90,17 +90,7 @@ export async function exportLocalGalleryToCbz(
     const globalId =
       anyGallery.globalId ||
       makeGlobalId("nhentai", gallery.id);
-    const hist = history.find((entry) => {
-      const entryGid =
-        entry.source && entry.gallery?.id != null
-          ? `${entry.source}:${entry.gallery.id}`
-          : makeGlobalId("nhentai", entry.gallery.id);
-      return (
-        entryGid === globalId ||
-        entry.localId === localId ||
-        Number(entry.gallery?.id) === Number(gallery.id)
-      );
-    });
+    const hist = findHistoryEntry({ localId, id: gallery.id, source: globalId.split(":")[0] });
     // ComicInfo Bookmark is 1-based; history lastPage is 0-based.
     const bookmarkPage =
       hist && hist.lastPage >= 0 ? hist.lastPage + 1 : undefined;
@@ -151,7 +141,7 @@ export async function shareLocalGalleryCbz(localId: string): Promise<CbzExportRe
   try {
     const available = await Sharing.isAvailableAsync();
     if (!available) {
-      return { ...exported, error: "Partage système indisponible" };
+      return { ...exported, success: false, error: "Partage système indisponible. Installez une application permettant d'enregistrer ou de partager des fichiers." };
     }
     await Sharing.shareAsync(exported.path, {
       mimeType: "application/vnd.comicbook+zip",

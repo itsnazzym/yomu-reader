@@ -117,7 +117,7 @@ export function RelatedRow({ items, loading, excludeId }: RelatedRowProps) {
                 ]}
               >
                 <View style={styles.cover}>
-                  <SmartImage
+                  <SmartImage sensitive
                     uri={item.coverUrl}
                     style={styles.coverImage}
                     contentFit="cover"

@@ -162,7 +162,22 @@ function patchMainApplicationKt(contents) {
     }
   }
 
-  return source;
+  // Expo Image otherwise bypasses the DNS policy used by fetch.
+  if (!source.includes("private fun installDohImageNetworking")) {
+    const support = `
+private fun installDohImageNetworking(context: android.content.Context) {
+  val client = createDohNetworkClient()
+  val registry = com.bumptech.glide.Glide.get(context).registry
+  registry.replace(com.bumptech.glide.load.model.GlideUrl::class.java, java.io.InputStream::class.java,
+    com.bumptech.glide.integration.okhttp3.OkHttpUrlLoader.Factory(client))
+  registry.prepend(expo.modules.image.okhttp.GlideUrlWrapper::class.java, java.io.InputStream::class.java,
+    expo.modules.image.okhttp.GlideUrlWrapperLoader.Factory(client))
+}
+`;
+    source = source.replace(CLASS_MARKER, `${support}\n${CLASS_MARKER}`);
+    source = source.replace(ON_CREATE_MARKER, `${ON_CREATE_MARKER}\n    installDohImageNetworking(this)\n`);
+  }
+  return source.replace(/\n{3,}/g, "\n\n");
 }
 
 function withAndroidDoh(config) {

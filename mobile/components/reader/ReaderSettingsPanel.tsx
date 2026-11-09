@@ -2,11 +2,13 @@ import React, { useEffect, useRef } from "react";
 import {
   Animated,
   Modal,
+  ScrollView,
   StyleSheet,
   Switch,
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
 import {
   IconBook2,
@@ -42,6 +44,7 @@ export function ReaderSettingsPanel({
   onDirectionChange,
 }: ReaderSettingsPanelProps) {
   const insets = useSafeAreaInsets();
+  const { fontScale } = useWindowDimensions();
   const { colors } = useTheme();
   const { settings, updateSettings } = useReaderSettings();
   const reduceMotion = useReduceMotion();
@@ -63,15 +66,16 @@ export function ReaderSettingsPanel({
 
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
+      <View style={[styles.backdrop, { paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right, paddingBottom: insets.bottom }]}>
         <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
         <Animated.View
+          key={fontScale}
           style={[
             styles.sheet,
             {
               backgroundColor: colors.bg,
               borderColor: colors.tagBg,
-              paddingBottom: Math.max(insets.bottom, 16),
+              paddingBottom: 12,
               transform: [
                 {
                   translateY: slide.interpolate({
@@ -98,7 +102,7 @@ export function ReaderSettingsPanel({
               <IconX size={20} color={colors.sub} strokeWidth={2} />
             </TouchableOpacity>
           </View>
-
+          <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer} keyboardShouldPersistTaps="handled">
           <Text style={[styles.section, { color: colors.sub }]}>Lecture</Text>
           <View style={styles.row}>
             <Chip
@@ -200,12 +204,12 @@ export function ReaderSettingsPanel({
 
           <Text style={[styles.section, { color: colors.sub }]}>Zoom</Text>
           <Toggle
-            title="Pinch-to-zoom"
+            title="Zoom à deux doigts"
             value={settings.pinchToZoom}
             onValueChange={(value) => updateSettings({ pinchToZoom: value })}
           />
           <Toggle
-            title="Reset zoom au changement de page"
+            title="Réinitialiser le zoom à chaque page"
             value={settings.resetZoomOnPageChange}
             onValueChange={(value) => updateSettings({ resetZoomOnPageChange: value })}
           />
@@ -213,7 +217,7 @@ export function ReaderSettingsPanel({
             <View style={styles.sliderHeader}>
               <IconZoomIn size={14} color={colors.accent} strokeWidth={2} />
               <Text style={[styles.toggleTitle, { color: colors.txt }]}>
-                Zoom double-tap · {settings.doubleTapZoom.toFixed(1)}×
+                Zoom au double toucher · {settings.doubleTapZoom.toFixed(1)}×
               </Text>
             </View>
             <SmoothSlider
@@ -232,7 +236,7 @@ export function ReaderSettingsPanel({
             {(["none", "sepia", "night", "invert"] as const).map((filter) => (
               <Chip
                 key={filter}
-                label={filter === "none" ? "Normal" : filter}
+                label={{ none: "Normal", sepia: "Sépia", night: "Nuit", invert: "Inversé" }[filter]}
                 icon={<IconEye size={13} color={settings.colorFilter === filter ? "#fff" : colors.sub} strokeWidth={2} />}
                 active={settings.colorFilter === filter}
                 onPress={() => {
@@ -259,6 +263,7 @@ export function ReaderSettingsPanel({
               thumbColor={colors.accent}
             />
           </View>
+          </ScrollView>
         </Animated.View>
       </View>
     </Modal>
@@ -281,6 +286,8 @@ function Chip({
     <TouchableOpacity
       activeOpacity={0.8}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
       style={[
         styles.chip,
         {
@@ -314,6 +321,7 @@ function Toggle({
         {subtitle ? <Text style={[styles.toggleSub, { color: colors.sub }]}>{subtitle}</Text> : null}
       </View>
       <Switch
+        accessibilityLabel={title}
         value={value}
         onValueChange={onValueChange}
         trackColor={{ false: colors.tagBg, true: colors.accent }}
@@ -343,8 +351,10 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 10,
   },
-  headerLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
-  title: { fontSize: 16, fontWeight: "800" },
+  content: { flexShrink: 1 },
+  contentContainer: { paddingBottom: 16 },
+  headerLeft: { flexDirection: "row", alignItems: "center", gap: 8, flex: 1, paddingRight: 12 },
+  title: { fontSize: 16, fontWeight: "800", flexShrink: 1 },
   section: {
     fontSize: 11,
     fontWeight: "800",

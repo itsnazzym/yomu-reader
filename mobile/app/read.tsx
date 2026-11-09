@@ -70,7 +70,7 @@ export default function ReaderScreen() {
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
+  const { width, height, fontScale } = useWindowDimensions();
   const { colors } = useTheme();
   const { settings: readerSettings, updateSettings } = useReaderSettings();
   const { setSwipeEnabled } = useDrawer();
@@ -185,8 +185,10 @@ export default function ReaderScreen() {
   }, [src, local, localId, gallery?.scanlator]);
 
   useEffect(() => {
+    // Keep the requested position until the real page count is available.
+    if (!gallery) return;
     setCurrentPage((page) => Math.max(0, Math.min(page, totalPages - 1)));
-  }, [totalPages]);
+  }, [gallery, totalPages]);
 
   // Historique à l'ouverture (pas seulement au flip).
   useEffect(() => {
@@ -459,7 +461,7 @@ export default function ReaderScreen() {
     `Manga #${gallery?.id || id || ""}`;
 
   return (
-    <View style={[styles.container, { backgroundColor: "#000" }]}>
+    <View key={fontScale} style={[styles.container, { backgroundColor: "#000" }]}>
       <StatusBar hidden={isImmersive} animated />
 
       {/* Reader Main Content */}
@@ -637,11 +639,13 @@ export default function ReaderScreen() {
             styles.topOverlay,
             {
               paddingTop: Math.max(insets.top, 12),
+              paddingLeft: Math.max(insets.left, 16),
+              paddingRight: Math.max(insets.right, 16),
               backgroundColor: "rgba(0,0,0,0.88)",
             },
           ]}
         >
-          <IconBtn onPress={() => router.back()} size={40}>
+          <IconBtn onPress={() => router.back()} size={40} accessibilityLabel="Retour à la fiche">
             <IconArrowLeft size={22} color="#fff" strokeWidth={2} />
           </IconBtn>
 
@@ -656,7 +660,7 @@ export default function ReaderScreen() {
 
           <View style={styles.topActions}>
             {/* Filter Toggle (None / Sepia / Night / Invert) */}
-            <IconBtn onPress={cycleFilter} size={40}>
+            <IconBtn onPress={cycleFilter} size={40} accessibilityLabel="Changer le filtre de couleur">
               <IconEye
                 size={20}
                 color={readerSettings.colorFilter !== "none" ? colors.accent : "#fff"}
@@ -666,7 +670,7 @@ export default function ReaderScreen() {
 
             {/* Dual Page Toggle in landscape / tablet */}
             {(isLandscape || width >= 600) && (
-              <IconBtn onPress={toggleDualPage} size={40}>
+              <IconBtn onPress={toggleDualPage} size={40} accessibilityLabel="Activer ou désactiver la double page">
                 <IconColumns
                   size={20}
                   color={readerSettings.dualPageMode ? colors.accent : "#9ca3af"}
@@ -677,6 +681,7 @@ export default function ReaderScreen() {
 
             {/* Mode Switch: Webtoon / Manga */}
             <IconBtn
+              accessibilityLabel="Changer le mode de lecture"
               onPress={() =>
                 setReadMode((m) => (m === "webtoon" ? "pager" : "webtoon"))
               }
@@ -692,6 +697,7 @@ export default function ReaderScreen() {
             {/* Reading Direction */}
             {readMode === "pager" && (
               <IconBtn
+                accessibilityLabel="Inverser le sens de lecture"
                 onPress={() =>
                   setReadingDirection((d) => (d === "rtl" ? "ltr" : "rtl"))
                 }
@@ -714,7 +720,7 @@ export default function ReaderScreen() {
             </IconBtn>
 
             {/* Share */}
-            <IconBtn onPress={() => setIsShareOpen(true)} size={40}>
+            <IconBtn onPress={() => setIsShareOpen(true)} size={40} accessibilityLabel="Partager ce titre">
               <IconShare size={20} color={colors.txt} strokeWidth={2} />
             </IconBtn>
           </View>

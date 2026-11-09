@@ -7,6 +7,12 @@
 import type { Gallery, TagType } from "../api/types";
 import type { SourceGallery, SourceId } from "./types";
 
+function unixSeconds(value: number | undefined): number {
+  if (!value || !Number.isFinite(value) || value < 0) return 0;
+  const seconds = Math.floor(value > 100_000_000_000 ? value / 1000 : value);
+  return seconds <= 4_102_444_800 ? seconds : 0;
+}
+
 export function sourceGalleryToGallery(
   sg: SourceGallery,
   sourceId: SourceId
@@ -26,7 +32,7 @@ export function sourceGalleryToGallery(
       thumbnail: { t: "j", w: 0, h: 0, url: sg.coverUrl },
     },
     scanlator: sourceId,
-    upload_date: sg.uploadDate || 0,
+    upload_date: unixSeconds(sg.uploadDate),
     tags: sg.tags.map((t, i) => ({
       id: i,
       type: (t.type || "tag") as TagType,

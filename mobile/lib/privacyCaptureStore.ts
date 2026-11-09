@@ -13,23 +13,27 @@ const PRIVACY_CAPTURE_KEY = "@nhentai_privacy_screen_capture_v1";
 
 let preventCapture = true;
 let loaded = false;
+let initialization: Promise<void> | null = null;
+let nativeUpdate: Promise<void> = Promise.resolve();
 const listeners = new Set<() => void>();
 
 function notify(): void {
   for (const l of listeners) l();
 }
 
-export async function initPrivacyCaptureStore(): Promise<void> {
-  if (loaded) return;
-  loaded = true;
-  try {
-    const raw = await AsyncStorage.getItem(PRIVACY_CAPTURE_KEY);
-    if (raw === "false") preventCapture = false;
-    else if (raw === "true") preventCapture = true;
-  } catch {
-    // Défaut ON si le stockage est indisponible.
+export function initPrivacyCaptureStore(): Promise<void> {
+  if (!initialization) {
+    initialization = (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(PRIVACY_CAPTURE_KEY);
+        preventCapture = raw !== "false";
+      } finally {
+        loaded = true;
+        notify();
+      }
+    })().catch(() => {});
   }
-  notify();
+  return initialization;
 }
 
 export function setPreventScreenCapture(value: boolean): void {
@@ -62,21 +66,22 @@ export function usePrivacyGuard(): void {
   const enabled = usePreventScreenCapture();
   const [ready, setReady] = useState(loaded);
   useEffect(() => {
-    if (!loaded) {
-      void initPrivacyCaptureStore().then(() => setReady(true));
-    }
+    let mounted = true;
+    void initPrivacyCaptureStore().then(() => { if (mounted) setReady(true); });
+    return () => { mounted = false; };
   }, []);
   useEffect(() => {
-    if (!ready || !enabled) return;
-    let cancelled = false;
-    void import("expo-screen-capture").then(({ preventScreenCaptureAsync }) => {
-      if (!cancelled) void preventScreenCaptureAsync("privacy-guard");
-    });
+    if (!ready) return;
+    const apply = (prevent: boolean) => {
+      nativeUpdate = nativeUpdate.catch(() => {}).then(async () => {
+        const capture = await import("expo-screen-capture");
+        if (prevent) await capture.preventScreenCaptureAsync("privacy-guard");
+        else await capture.allowScreenCaptureAsync("privacy-guard");
+      }).catch((error) => console.warn("[privacy] Protection des captures indisponible", error));
+    };
+    apply(enabled);
     return () => {
-      cancelled = true;
-      void import("expo-screen-capture").then(({ allowScreenCaptureAsync }) => {
-        void allowScreenCaptureAsync("privacy-guard");
-      });
+      apply(false);
     };
   }, [ready, enabled]);
 }

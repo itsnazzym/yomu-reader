@@ -81,7 +81,7 @@ export function ThumbRail({
                 },
               ]}
             >
-              <SmartImage
+              <SmartImage sensitive
                 uri={uri}
                 style={styles.thumbImg}
                 contentFit="cover"

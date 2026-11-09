@@ -8,7 +8,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "eslint .",
-    "test": "node test/bundle.mjs && node --test test/engine.test.cjs test/resumable.test.cjs test/sourcesHtml.test.cjs test/sources.test.cjs test/cloudSync.test.cjs test/tablerIcons.test.cjs test/withAndroidDoh.test.cjs",
+    "test": "node test/bundle.mjs && node --test test/engine.test.cjs test/resumable.test.cjs test/sourcesHtml.test.cjs test/sources.test.cjs test/cloudSync.test.cjs test/tablerIcons.test.cjs test/withAndroidDoh.test.cjs test/stabilization.test.cjs test/privacyNative.test.cjs",
     "doctor": "npx expo-doctor",
     "prebuild:android": "npx expo prebuild --platform android",
     "setup:signing": "node scripts/setup-release-signing.cjs --apply",
@@ -17,7 +17,7 @@
     "build:apk:unsigned": "cd android && gradlew.bat assembleRelease",
     "build:apk:debug": "cd android && gradlew.bat assembleDebug",
     "ui:check": "node scripts/ui-audit.cjs",
-    "lint:android": "cd android && gradlew.bat lintRelease",
+    "lint:android": "node scripts/android-gradle.cjs lintRelease",
     "release:check": "npx tsc --noEmit && npm run lint && npm run ui:check && npm test && npm run doctor && npm run lint:android"
   },
   "dependencies": {

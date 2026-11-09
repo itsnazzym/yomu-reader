@@ -7,6 +7,7 @@ import "react-native-url-polyfill/auto";
 import { createBackupPayload, restoreBackupFromJson, type BackupData } from "../backupStore";
 import { decryptVault, encryptVault, generateRecoveryKey, vaultRecordKey } from "./crypto";
 import type { CloudSyncState } from "./types";
+import { mergeBackups as mergeBackup, createSyncBaseline, backupsEqual, type SyncBaseline } from "./merge";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -17,7 +18,12 @@ const VAULT_SCHEMA = 1;
 const MAX_VAULT_BYTES = 4 * 1024 * 1024;
 
 type VaultRow = { nonce: string; ciphertext: string; schema_version: number; revision: number; updated_at: string };
-type Meta = { revision: number; lastSyncedAt?: string };
+type Meta = { revision: number; lastSyncedAt?: string; baseline?: SyncBaseline };
+class VaultConflictError extends Error {}
+let syncGeneration = 0;
+let applyingRemote = false;
+let creation: Promise<string> | null = null;
+const authStorageKeys = new Set<string>();
 
 let client: SupabaseClient | null = null;
 let syncTimer: ReturnType<typeof setTimeout> | null = null;
@@ -44,8 +50,8 @@ export function isCloudSyncConfigured(): boolean {
 }
 
 const authStorage = {
-  getItem: (key: string) => SecureStore.getItemAsync(`yomu.supabase.${key}`),
-  setItem: (key: string, value: string) => SecureStore.setItemAsync(`yomu.supabase.${key}`, value),
+  getItem: (key: string) => { authStorageKeys.add(key); return SecureStore.getItemAsync(`yomu.supabase.${key}`); },
+  setItem: (key: string, value: string) => { authStorageKeys.add(key); return SecureStore.setItemAsync(`yomu.supabase.${key}`, value); },
   removeItem: (key: string) => SecureStore.deleteItemAsync(`yomu.supabase.${key}`),
 };
 
@@ -63,47 +69,49 @@ function aad(userId: string): string {
   return `yomu-cloud:v${VAULT_SCHEMA}:${userId}`;
 }
 
-async function loadMeta(): Promise<Meta> {
-  try { return JSON.parse((await AsyncStorage.getItem(META_KEY)) || "{\"revision\":0}") as Meta; } catch { return { revision: 0 }; }
-}
+function recoveryStorageKey(userId: string): string { return `${RECOVERY_KEY}.${userId}`; }
+function pendingStorageKey(userId: string): string { return `${recoveryStorageKey(userId)}.pending`; }
+function metaStorageKey(userId: string, key: string): string { return `${META_KEY}:${userId}:${vaultRecordKey(key)}`; }
 
-async function saveMeta(meta: Meta): Promise<void> {
-  await AsyncStorage.setItem(META_KEY, JSON.stringify(meta));
+async function loadMeta(userId: string, key: string): Promise<Meta> {
+  try { return JSON.parse((await AsyncStorage.getItem(metaStorageKey(userId, key))) || "{\"revision\":0}") as Meta; }
+  catch { return { revision: 0 }; }
 }
-
-async function getRecoveryKey(): Promise<string | null> {
-  return SecureStore.getItemAsync(RECOVERY_KEY);
+async function saveMeta(userId: string, key: string, meta: Meta): Promise<void> {
+  await AsyncStorage.setItem(metaStorageKey(userId, key), JSON.stringify(meta));
 }
-
+async function getRecoveryKey(userId: string): Promise<string | null> {
+  const scoped = await SecureStore.getItemAsync(recoveryStorageKey(userId));
+  if (scoped) return scoped;
+  const legacy = await SecureStore.getItemAsync(RECOVERY_KEY);
+  if (!legacy) return null;
+  // A legacy unscoped key belongs to this account only if its vault decrypts
+  // with this authenticated user's associated data. Never assign it blindly.
+  const vault = await readVault(userId, legacy);
+  if (!vault) return null;
+  await SecureStore.setItemAsync(recoveryStorageKey(userId), legacy);
+  await SecureStore.deleteItemAsync(RECOVERY_KEY);
+  return legacy;
+}
+const DEVICE_DOWNLOAD_KEYS = ["treeUri", "folderUri", "directoryUri", "downloadDirectory", "safUri", "safDirectoryUri", "folderPrompted"];
 function portableBackup(data: BackupData): BackupData {
   const downloadSettings = { ...(data.downloadSettings || {}) };
-  for (const key of ["treeUri", "folderUri", "directoryUri", "downloadDirectory", "safUri"]) delete downloadSettings[key];
+  for (const key of DEVICE_DOWNLOAD_KEYS) delete downloadSettings[key];
   return { ...data, version: VAULT_SCHEMA, downloadSettings };
 }
-
-function mergeArrays(remote: Record<string, unknown>[] | undefined, local: Record<string, unknown>[] | undefined): Record<string, unknown>[] {
-  const identity = (item: Record<string, unknown>) => String(item.globalId || item.id || item.galleryId || JSON.stringify(item));
-  const merged = new Map((remote || []).map((item) => [identity(item), item]));
-  for (const item of local || []) merged.set(identity(item), item);
-  return [...merged.values()];
+async function applyBackup(data: BackupData, device: BackupData): Promise<void> {
+  const downloadSettings = { ...(data.downloadSettings || {}) };
+  for (const key of DEVICE_DOWNLOAD_KEYS) if (Object.hasOwn(device.downloadSettings || {}, key)) downloadSettings[key] = device.downloadSettings![key];
+  applyingRemote = true;
+  try {
+    const restored = await restoreBackupFromJson(JSON.stringify({ ...data, downloadSettings }));
+    if (!restored.success) throw new Error(restored.error || "Restauration impossible.");
+  } finally { applyingRemote = false; }
 }
-
-function mergeBackup(remote: BackupData, local: BackupData): BackupData {
-  return {
-    ...remote,
-    ...local,
-    exportedAt: new Date().toISOString(),
-    favorites: mergeArrays(remote.favorites, local.favorites),
-    history: mergeArrays(remote.history, local.history),
-    tagCollections: mergeArrays(remote.tagCollections, local.tagCollections),
-    libraryCollections: mergeArrays(remote.libraryCollections, local.libraryCollections),
-    tagFavorites: { ...(remote.tagFavorites || {}), ...(local.tagFavorites || {}) },
-    readerSettings: { ...(remote.readerSettings || {}), ...(local.readerSettings || {}) },
-    privacy: { ...(remote.privacy || {}), ...(local.privacy || {}) },
-    followsFeed: { ...(remote.followsFeed || {}), ...(local.followsFeed || {}) },
-    blacklistTags: [...new Set([...(remote.blacklistTags || []), ...(local.blacklistTags || [])])],
-    searchHistory: [...new Set([...(local.searchHistory || []), ...(remote.searchHistory || [])])].slice(0, 200),
-  };
+async function requireUser(userId: string, generation = syncGeneration): Promise<Session> {
+  const session = await currentSession();
+  if (!session || session.user.id !== userId || generation !== syncGeneration) throw new Error("La session Yomu Cloud a changé. Réessayez.");
+  return session;
 }
 
 function hasMeaningfulLocalData(data: BackupData): boolean {
@@ -120,8 +128,9 @@ async function currentSession(): Promise<Session | null> {
 }
 
 async function readVault(userId: string, recoveryKey: string): Promise<{ row: VaultRow; data: BackupData } | null> {
+  const session = await requireUser(userId);
   const { data, error } = await getClient().from("sync_records").select("nonce,ciphertext,schema_version,revision,updated_at")
-    .eq("kind", VAULT_KIND).eq("record_key", vaultRecordKey(recoveryKey)).maybeSingle();
+    .eq("kind", VAULT_KIND).eq("record_key", vaultRecordKey(recoveryKey)).maybeSingle().setHeader("Authorization", `Bearer ${session.access_token}`);
   if (error) throw error;
   if (!data) return null;
   const row = data as VaultRow;
@@ -129,16 +138,17 @@ async function readVault(userId: string, recoveryKey: string): Promise<{ row: Va
 }
 
 async function writeVault(userId: string, recoveryKey: string, data: BackupData, expectedRevision: number): Promise<number> {
+  const session = await requireUser(userId);
   const serialized = JSON.stringify(data);
-  if (serialized.length > MAX_VAULT_BYTES) throw new Error("Le coffre Yomu dépasse 4 Mio. Exportez manuellement vos données.");
+  if (new TextEncoder().encode(serialized).byteLength > MAX_VAULT_BYTES) throw new Error("Le coffre Yomu dépasse 4 Mio. Exportez manuellement vos données.");
   const encrypted = await encryptVault(data, recoveryKey, aad(userId));
   const { data: result, error } = await getClient().rpc("save_yomu_vault", {
     p_record_key: vaultRecordKey(recoveryKey), p_nonce: encrypted.nonce, p_ciphertext: encrypted.ciphertext,
     p_schema_version: encrypted.schemaVersion, p_expected_revision: expectedRevision,
-  });
+  }).setHeader("Authorization", `Bearer ${session.access_token}`);
   if (error) throw error;
   const row = Array.isArray(result) ? result[0] : result;
-  if (!row?.applied) throw new Error("Conflit de synchronisation. Réessayez.");
+  if (!row?.applied) throw new VaultConflictError("Conflit de synchronisation. Réessayez.");
   return Number(row.revision);
 }
 
@@ -147,8 +157,8 @@ export async function refreshCloudSyncState(): Promise<void> {
   try {
     const session = await currentSession();
     if (!session) return emit({ status: "signed_out" });
-    const key = await getRecoveryKey();
-    const meta = await loadMeta();
+    const key = await getRecoveryKey(session.user.id);
+    const meta = key ? await loadMeta(session.user.id, key) : { revision: 0 };
     emit({ status: key ? "idle" : "locked", email: session.user.email, lastSyncedAt: meta.lastSyncedAt });
   } catch (error) {
     emit({ status: "error", message: error instanceof Error ? error.message : "Yomu Cloud indisponible." });
@@ -175,72 +185,127 @@ export async function connectWithGoogle(): Promise<void> {
   await refreshCloudSyncState();
 }
 
-export async function createVault(): Promise<string> {
-  const session = await currentSession();
-  if (!session) throw new Error("Connectez-vous à Google d'abord.");
-  const key = await generateRecoveryKey();
-  await SecureStore.setItemAsync(RECOVERY_KEY, key);
-  const payload = portableBackup(await createBackupPayload());
-  const revision = await writeVault(session.user.id, key, payload, 0);
-  await saveMeta({ revision, lastSyncedAt: new Date().toISOString() });
-  await refreshCloudSyncState();
-  return key;
+export function createVault(): Promise<string> {
+  if (creation) return creation;
+  const generation = syncGeneration;
+  creation = (async () => {
+    const session = await currentSession();
+    if (!session) throw new Error("Connectez-vous à Google d'abord.");
+    const userId = session.user.id;
+    if (await getRecoveryKey(userId)) throw new Error("Un coffre est déjà configuré sur cet appareil.");
+    const key = await SecureStore.getItemAsync(pendingStorageKey(userId)) || await generateRecoveryKey();
+    await requireUser(userId, generation);
+    // Keep the key across a timeout: the server may have accepted the write.
+    await SecureStore.setItemAsync(pendingStorageKey(userId), key);
+    const existing = await readVault(userId, key);
+    const payload = existing?.data || portableBackup(await createBackupPayload());
+    const revision = existing?.row.revision || await writeVault(userId, key, payload, 0);
+    await requireUser(userId, generation);
+    await SecureStore.setItemAsync(recoveryStorageKey(userId), key);
+    await saveMeta(userId, key, { revision, baseline: createSyncBaseline(payload), lastSyncedAt: new Date().toISOString() });
+    await SecureStore.deleteItemAsync(pendingStorageKey(userId));
+    await refreshCloudSyncState();
+    return key;
+  })().finally(() => { creation = null; });
+  return creation;
 }
 
 export async function unlockVault(recoveryKey: string): Promise<void> {
+  const generation = syncGeneration;
   const session = await currentSession();
   if (!session) throw new Error("Connectez-vous à Google d'abord.");
-  const vault = await readVault(session.user.id, recoveryKey.trim());
+  const key = recoveryKey.trim(), userId = session.user.id;
+  const vault = await readVault(userId, key);
   if (!vault) throw new Error("Aucun coffre ne correspond à cette clé.");
-  const local = portableBackup(await createBackupPayload());
-  // Une installation fraîche contient des réglages par défaut : ils ne doivent
-  // jamais écraser les préférences restaurées du coffre distant.
-  const restoredData = hasMeaningfulLocalData(local) ? mergeBackup(vault.data, local) : vault.data;
-  const restored = await restoreBackupFromJson(JSON.stringify(restoredData));
-  if (!restored.success) throw new Error(restored.error || "Restauration impossible.");
-  await SecureStore.setItemAsync(RECOVERY_KEY, recoveryKey.trim());
-  await saveMeta({ revision: vault.row.revision, lastSyncedAt: vault.row.updated_at });
+  const device = await createBackupPayload();
+  const local = portableBackup(device);
+  const restored = hasMeaningfulLocalData(local) ? mergeBackup(vault.data, local) : vault.data;
+  await requireUser(userId, generation);
+  await applyBackup(restored, device);
+  await requireUser(userId, generation);
+  await SecureStore.setItemAsync(recoveryStorageKey(userId), key);
+  await saveMeta(userId, key, { revision: vault.row.revision, baseline: createSyncBaseline(vault.data), lastSyncedAt: vault.row.updated_at });
   await refreshCloudSyncState();
+  scheduleCloudSync();
 }
 
 export async function syncNow(): Promise<void> {
+  if (!isCloudSyncConfigured()) { await refreshCloudSyncState(); return; }
   if (inFlight) return inFlight;
-  inFlight = (async () => {
+  const generation = syncGeneration;
+  const request = (async () => {
     const session = await currentSession();
-    const key = await getRecoveryKey();
-    if (!session || !key) { await refreshCloudSyncState(); return; }
+    if (!session) { await refreshCloudSyncState(); return; }
+    const userId = session.user.id;
+    const key = await getRecoveryKey(userId);
+    if (!key) { await refreshCloudSyncState(); return; }
     emit({ status: "syncing", email: session.user.email });
     try {
-      const meta = await loadMeta();
+      const meta = await loadMeta(userId, key);
       const local = portableBackup(await createBackupPayload());
-      let revision = meta.revision;
-      try {
-        revision = await writeVault(session.user.id, key, local, revision);
-      } catch (error) {
-        if (!(error instanceof Error) || !error.message.includes("Conflit")) throw error;
-        const remote = await readVault(session.user.id, key);
-        if (!remote) throw error;
-        const merged = mergeBackup(remote.data, local);
-        revision = await writeVault(session.user.id, key, merged, remote.row.revision);
+      let synced: BackupData | null = null, revision = 0;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await requireUser(userId, generation);
+        const remote = await readVault(userId, key);
+        const merged = remote
+          ? (!meta.baseline && !hasMeaningfulLocalData(local) ? remote.data : mergeBackup(remote.data, local, meta.baseline))
+          : local;
+        try {
+          revision = remote && backupsEqual(remote.data, merged) ? remote.row.revision : await writeVault(userId, key, merged, remote?.row.revision || 0);
+          synced = merged;
+          break;
+        } catch (error) { if (!(error instanceof VaultConflictError) || attempt === 2) throw error; }
       }
+      if (!synced) throw new Error("Conflit de synchronisation. Réessayez.");
+      await requireUser(userId, generation);
+      // Preserve edits made while the network request was in flight.
+      const device = await createBackupPayload();
+      const fresh = portableBackup(device);
+      const applied = mergeBackup(synced, fresh, createSyncBaseline(local));
+      if (!backupsEqual(fresh, applied)) await applyBackup(applied, device);
+      await requireUser(userId, generation);
       const lastSyncedAt = new Date().toISOString();
-      await saveMeta({ revision, lastSyncedAt });
+      await saveMeta(userId, key, { revision, baseline: createSyncBaseline(synced), lastSyncedAt });
       emit({ status: "idle", email: session.user.email, lastSyncedAt });
+      if (!backupsEqual(applied, synced)) scheduleCloudSync();
     } catch (error) {
+      if (generation !== syncGeneration) return;
       const message = error instanceof Error ? error.message : "Échec de synchronisation.";
       emit({ status: /network|fetch|offline|timeout/i.test(message) ? "offline" : "error", email: session.user.email, message });
-    } finally { inFlight = null; }
-  })();
-  return inFlight;
+    }
+  })().catch((error) => {
+    if (generation === syncGeneration) emit({ status: "error", message: error instanceof Error ? error.message : "Yomu Cloud indisponible." });
+  }).finally(() => { if (inFlight === request) inFlight = null; });
+  inFlight = request;
+  return request;
 }
 
 export function scheduleCloudSync(): void {
+  if (applyingRemote) return;
   if (syncTimer) clearTimeout(syncTimer);
   syncTimer = setTimeout(() => { syncTimer = null; void syncNow(); }, 800);
 }
 
 export async function disconnectCloud(): Promise<void> {
-  if (isCloudSyncConfigured()) await getClient().auth.signOut();
-  await Promise.all([SecureStore.deleteItemAsync(RECOVERY_KEY), AsyncStorage.removeItem(META_KEY)]);
-  await refreshCloudSyncState();
+  syncGeneration++;
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = null;
+  const session = isCloudSyncConfigured() ? await currentSession() : null;
+  const userId = session?.user.id;
+  const key = userId ? await SecureStore.getItemAsync(recoveryStorageKey(userId)) : null;
+  try {
+    if (client) {
+      client.auth.stopAutoRefresh();
+      await client.auth.signOut({ scope: "local" });
+    }
+  } finally {
+    await Promise.all([...authStorageKeys].map((name) => authStorage.removeItem(name)));
+    client = null;
+    if (userId) await Promise.all([
+      SecureStore.deleteItemAsync(recoveryStorageKey(userId)),
+      SecureStore.deleteItemAsync(pendingStorageKey(userId)),
+      ...(key ? [AsyncStorage.removeItem(metaStorageKey(userId, key))] : []),
+    ]);
+    emit({ status: "signed_out" });
+  }
 }

@@ -197,7 +197,7 @@ export class ThreeHentaiSource implements SourceAdapter {
     const numPages = pageLinks.reduce((max, p) => Math.max(max, parseInt(p[1], 10)), 0);
 
     const dateM = html.match(/<time datetime="([^"]+)"/);
-    const uploadDate = dateM ? Date.parse(dateM[1]) || undefined : undefined;
+    const uploadDate = dateM ? Math.floor(Date.parse(dateM[1]) / 1000) || undefined : undefined;
 
     // CDN observé : s1.3hentai.xyz (on réutilise celui de la couverture).
     const cdn = coverM[1].match(/https:\/\/(s[0-9]+\.3hentai\.xyz)/)?.[1] || "s1.3hentai.xyz";

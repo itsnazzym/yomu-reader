@@ -1,11 +1,36 @@
 name: CI
 
 on:
-  push:
-    branches: [main, master]
+  workflow_call:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
+  vault:
+    name: Cloud vault permissions
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432/tcp
+        options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: ${{ job.services.postgres.ports[5432] }}
+      PGUSER: postgres
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/bootstrap.sql
+          for migration in supabase/migrations/*.sql; do psql -v ON_ERROR_STOP=1 -f "$migration"; done
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/vault_permissions.sql
+
   desktop:
     name: Desktop Electron
     runs-on: ubuntu-latest
@@ -39,6 +64,12 @@ jobs:
       - run: npm run lint
       - run: npm run ui:check
       - run: npx expo-doctor
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - run: npx expo prebuild --platform android --no-install
       - run: npm run lint:android
 
   web:

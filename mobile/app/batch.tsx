@@ -1,4 +1,5 @@
 import React, { useState, useSyncExternalStore, useMemo } from "react";
+import { userFacingError } from "@/lib/userFacingError";
 import {
   View,
   Text,
@@ -333,14 +334,14 @@ export default function BatchScreen() {
       : isCompleted
       ? "Téléchargé"
       : isError
-      ? (item.errorMessage || "Erreur")
+      ? userFacingError(item.errorMessage)
       : "En attente";
 
     return (
       <View style={[styles.card, { backgroundColor: colors.page, borderColor: colors.tagBg }]}>
         <View style={styles.cardCoverContainer}>
           {item.cover ? (
-            <SmartImage uri={item.cover} style={styles.cardCover} contentFit="cover" />
+            <SmartImage sensitive uri={item.cover} style={styles.cardCover} contentFit="cover" />
           ) : (
             <View style={[styles.cardCoverPlaceholder, { backgroundColor: colors.tagBg }]}>
               <IconPhoto size={22} color={colors.sub} strokeWidth={1.8} />

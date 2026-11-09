@@ -1110,6 +1110,14 @@ export default function HomeScreen() {
           >
             <ButtonLabel style={styles.retryBtnText}>Réessayer</ButtonLabel>
           </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => router.push("/downloaded")}
+            style={[styles.retryBtn, { marginTop: 12, backgroundColor: colors.page }]}
+            accessibilityRole="button"
+            accessibilityLabel="Ouvrir la bibliothèque hors ligne"
+          >
+            <ButtonLabel style={[styles.retryBtnText, { color: colors.txt }]}>Lire mes téléchargements</ButtonLabel>
+          </TouchableOpacity>
         </View>
       ) : filteredGalleries.length === 0 ? (
         <View style={styles.centerContainer}>

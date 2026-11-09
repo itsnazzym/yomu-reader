@@ -39,13 +39,24 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  EXPO_PUBLIC_SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL }}
+  EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+  EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ vars.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}
+  EXPO_PUBLIC_DISCORD_INVITE_URL: ${{ vars.EXPO_PUBLIC_DISCORD_INVITE_URL }}
   GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4096m -Dorg.gradle.parallel=true -Dorg.gradle.caching=true"
 
 jobs:
+  quality:
+    name: Validate the release commit
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   # ─────────────────────────────────────────────────────────────────────────────
   # 0. Calcul de la prochaine version (tag + app + release)
   # ─────────────────────────────────────────────────────────────────────────────
   prepare-version:
+    needs: quality
     name: 🏷️ Prepare next version
     runs-on: ubuntu-latest
     outputs:
@@ -132,35 +143,30 @@ jobs:
           APP_VERSION_CODE: ${{ needs.prepare-version.outputs.version_code }}
         run: node .github/scripts/apply-release-version.cjs
 
-      - name: Restore production release keystore for prebuild
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-        run: |
-          set -euo pipefail
-          if [ -z "${KEYSTORE_BASE64:-}" ]; then
-            echo "::error::Secret KEYSTORE_BASE64 is not set. Add it in repo Settings > Secrets > Actions." >&2
-            exit 1
-          fi
-          mkdir -p mobile/keys mobile/android/app
-          echo "${KEYSTORE_BASE64}" | base64 -d > mobile/keys/release-key.keystore
-          cp mobile/keys/release-key.keystore mobile/android/app/release-key.keystore
-          echo "Keystore ready for expo prebuild ($(wc -c < mobile/keys/release-key.keystore) bytes)"
-
-      - name: Install dependencies & prebuild Android once
+      - name: Install dependencies and prepare Android without signing secrets
         working-directory: mobile
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           npm ci
           npx expo prebuild --platform android --no-install
+
+      - name: Verify shared tree contains no release signing material
+        run: |
+          if find mobile/android -type f \( -iname '*.keystore' -o -iname '*.jks' \) ! -name debug.keystore | grep -q .; then
+            echo "::error::Signing material must not be uploaded"; exit 1
+          fi
+          if grep -RqE 'MYAPP_UPLOAD_.*(PASSWORD|KEY_ALIAS)' mobile/android; then
+            echo "::error::Signing properties must not be uploaded"; exit 1
+          fi
 
       - name: Upload prebuilt android/ tree
         uses: actions/upload-artifact@v4
         with:
           name: android-prebuild
-          path: mobile/android/
+          path: |
+            mobile/android/
+            !mobile/android/**/release-key.keystore
+            !mobile/android/**/*.jks
+            !mobile/android/**/local.properties
           retention-days: 1
           compression-level: 6
 

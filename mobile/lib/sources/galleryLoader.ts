@@ -67,7 +67,7 @@ export function loadSourceGallery(
       remember(
         key,
         gallery,
-        source === "doujins" ? SIGNED_URL_TTL_MS : DEFAULT_TTL_MS
+        source === "doujins" || source === "hitomi" ? SIGNED_URL_TTL_MS : DEFAULT_TTL_MS
       );
       return gallery;
     })
