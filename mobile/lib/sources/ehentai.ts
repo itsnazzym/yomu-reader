@@ -1,3 +1,4 @@
+import { fetchEhTagDatabase } from "./tagCatalogFetchers";
 /**
  * Adaptateur E-Hentai & ExHentai (JHenTai style).
  *
@@ -31,7 +32,6 @@ import {
 } from "./authStore";
 import {
   getEhentaiCategoryInfo,
-  EHENTAI_CATEGORY_LIST,
 } from "./ehentaiCategories";
 
 const BASE_EHENTAI = "https://e-hentai.org";
@@ -469,10 +469,7 @@ export class EhentaiSource implements SourceAdapter {
   }
 
   async getTags(): Promise<SourceTaxonomyItem[]> {
-    return EHENTAI_CATEGORY_LIST.map((c) => ({
-      name: c.name,
-      id: c.id,
-    }));
+    return fetchEhTagDatabase();
   }
 
   async healthCheck(): Promise<{ ok: boolean; latencyMs: number; error?: string }> {

@@ -1,1276 +1,221 @@
-import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import {
-  StyleSheet,
-  View,
-  Text,
-  TextInput,
-  Pressable,
-  Modal,
-  ScrollView,
-  ActivityIndicator,
-  Animated,
-  Easing,
-} from "react-native";
+import React, { useState, useMemo, useCallback, useEffect, useRef, useDeferredValue } from "react";
+import { StyleSheet, View, Text, TextInput, Pressable, Modal, ScrollView, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Linking } from "react-native";
+import Animated from "react-native-reanimated";
 import { FlashList } from "@shopify/flash-list";
-import {
-  IconArrowLeft,
-  IconSearch,
-  IconX,
-  IconHeart,
-  IconPlus,
-  IconMinus,
-  IconSparkles,
-  IconSearchOff,
-  IconTag,
-  IconFeather,
-  IconDeviceTv,
-  IconUser,
-  IconUsers,
-  IconWorld,
-  IconFolder,
-  IconTrash,
-  IconCheck,
-} from "@tabler/icons-react-native";
+import { IconArrowLeft, IconSearch, IconX, IconHeart, IconPlus, IconMinus, IconWorld, IconFolder, IconTrash, IconCheck, IconRefresh, IconChevronDown } from "@tabler/icons-react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "@/lib/ThemeContext";
 import { CardPressable } from "@/components/ui/CardPressable";
-import { IconBtn } from "@/components/ui/IconBtn";
 import { ButtonLabel } from "@/components/ui/ButtonLabel";
-import { lightTap } from "@/lib/haptics";
 import { TagLabel } from "@/components/ui/TagLabel";
-import {
-  getAllTaxonomies,
-  CATEGORY_META,
-} from "@/lib/taxonomyData";
+import { useModalMotion } from "@/components/motion/useModalMotion";
+import { SourceAuthModal } from "@/components/modals/SourceAuthModal";
+import { useSourceAuth } from "@/lib/sources/authStore";
 import { useTagFavs } from "@/lib/tagFavoritesStore";
-import { useTagCollections, TagCollection } from "@/lib/tagCollectionsStore";
+import { useTagCollections, type TagCollection } from "@/lib/tagCollectionsStore";
 import { useHomeSearch } from "@/lib/homeSearchStore";
-import { queryContainsTerm } from "@/lib/searchQuery";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import {
-  getSourceTags,
-} from "@/lib/sourceTaxonomyStore";
-import {
-  getSource,
-  listSources,
-} from "@/lib/sources/registry";
-import type { SourceId } from "@/lib/sources/types";
-import type { TaxonomyItem } from "@/lib/taxonomyData";
+import { queryContainsTerm, normalizeTagType } from "@/lib/searchQuery";
+import { useTagCatalog } from "@/lib/useTagCatalog";
+import { catalogTagKey, categoryForType, isTagSource, tagSearchTarget, type CatalogTag, type TagSource, type CatalogCategory } from "@/lib/tagCatalog";
+import { listSources } from "@/lib/sources/registry";
+import { lightTap } from "@/lib/haptics";
 
-type ActiveTab =
-  | "all"
-  | "favs"
-  | "collections"
-  | "tags"
-  | "artists"
-  | "parodies"
-  | "characters"
-  | "groups"
-  | "languages";
+const SOURCE_KEY = "@tags_screen_source";
+const SOURCES = listSources();
+const sourceLabel = (source: TagSource) => source === "all" ? "Toutes les sources" : SOURCES.find(item => item.id === source)?.label || source;
+const CATEGORIES: [CatalogCategory | "all", string][] = [["all", "Tous les types"], ["tags", "Tags"], ["artists", "Artistes"], ["parodies", "Séries"], ["characters", "Personnages"], ["groups", "Groupes"], ["languages", "Langues"], ["categories", "Catégories"]];
 
-const CATEGORY_TYPE_MAP: Record<string, string> = {
-  tags: "tag",
-  parodies: "parody",
-  characters: "character",
-  artists: "artist",
-  groups: "group",
-  languages: "language",
-  tag: "tag",
-  parody: "parody",
-  character: "character",
-  artist: "artist",
-  group: "group",
-  language: "language",
-};
+function TagSheet({ visible, title, onClose, children }: { visible: boolean; title: string; onClose: () => void; children: React.ReactNode }) {
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const motion = useModalMotion(visible);
+  return <Modal visible={motion.presented} transparent animationType="none" onRequestClose={onClose}>
+    <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: "rgba(0,0,0,0.65)" }, motion.backdropStyle]} />
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={[styles.sheetBackdrop, { paddingTop: Math.max(insets.top, 12), paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <Animated.View style={[styles.sheet, { backgroundColor: colors.page, borderColor: colors.tagBg }, motion.cardStyle]}>
+        <View style={[styles.sheetHeader, { borderColor: colors.tagBg }]}>
+          <Text accessibilityRole="header" style={[styles.sectionTitle, { color: colors.txt, flex: 1 }]}>{title}</Text>
+          <Pressable onPress={onClose} style={styles.iconButton} accessibilityRole="button" accessibilityLabel="Fermer le menu"><IconX size={22} color={colors.txt} /></Pressable>
+        </View>
+        <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets contentContainerStyle={styles.sheetContent}>{children}</ScrollView>
+      </Animated.View>
+    </KeyboardAvoidingView>
+  </Modal>;
+}
 
 export default function TagsScreen() {
   const { colors } = useTheme();
-  const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { isFav, toggleFav, favoriteList, favCount } = useTagFavs();
-  const {
-    collections,
-    createCollection,
-    deleteCollection,
-    formatQuery: formatColQuery,
-  } = useTagCollections();
-
-  const [activeTab, setActiveTab] = useState<ActiveTab>("all");
-  const [searchFilter, setSearchFilter] = useState("");
-
-  // ── Sélecteur de source pour les tags réels ────────────────────────────
-  // "all" = DB statique nhentai (comportement historique) ; sinon la liste
-  // réelle du site via l'adaptateur + cache local.
-  const TAGS_SOURCE_KEY = "@tags_screen_source";
-  const [tagSource, setTagSourceState] = useState<SourceId | "all">("all");
-  const setTagSource = useCallback((s: SourceId | "all") => {
-    setTagSourceState(s);
-    AsyncStorage.setItem(TAGS_SOURCE_KEY, s).catch(() => {});
-  }, []);
+  const router = useRouter();
+  const favorites = useTagFavs();
+  const packs = useTagCollections();
+  const { query: homeQuery, setQuery: setHomeQuery, toggleTerm } = useHomeSearch();
+  const { toggleFav, favoriteList } = favorites;
+  const ruleAuth = useSourceAuth("rule34");
+  const [source, setSource] = useState<TagSource>("all");
+  const sourceChosen = useRef(false);
+  const [mode, setMode] = useState<"browse" | "favs" | "packs">("browse");
+  const [category, setCategory] = useState<CatalogCategory | "all">("all");
+  const [search, setSearch] = useState("");
+  const filter = useDeferredValue(search.trim().toLowerCase().replace(/_/g, " "));
+  const catalog = useTagCatalog(source, ruleAuth.updatedAt || 0);
+  const [sourceMenu, setSourceMenu] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [packName, setPackName] = useState("");
+  const [packDescription, setPackDescription] = useState("");
+  const [chosen, setChosen] = useState<string[]>([]);
+  const [packColor, setPackColor] = useState("#91a8c1");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [notice, setNotice] = useState("");
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    AsyncStorage.getItem(TAGS_SOURCE_KEY)
-      .then((v) => {
-        if (v === "nhentai" || v === "3hentai" || v === "doujins") {
-          setTagSourceState(v);
-        }
-      })
-      .catch(() => {});
-
-    return () => {};
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let active = true;
+    void AsyncStorage.getItem(SOURCE_KEY).then(value => { if (active && !sourceChosen.current && isTagSource(value)) setSource(value); }).catch(() => {});
+    return () => { active = false; if (noticeTimer.current) clearTimeout(noticeTimer.current); };
   }, []);
-
-  const sourceMetas = useMemo(() => listSources(), []);
-  const [liveTags, setLiveTags] = useState<TaxonomyItem[]>([]);
-  const [taxLoading, setTaxLoading] = useState(false);
-  const [taxError, setTaxError] = useState<string | null>(null);
-  const taxTrackWidth = useRef(new Animated.Value(0)).current;
-  const [taxTrackW, setTaxTrackW] = useState(0);
-  const [taxRetry, setTaxRetry] = useState(0);
-  const taxReqRef = useRef(0);
-
-  const isLiveSource = tagSource === "3hentai" || tagSource === "doujins";
-
-  useEffect(() => {
-    if (!isLiveSource) {
-      setTaxError(null);
-      setTaxLoading(false);
-      return;
-    }
-    const reqId = ++taxReqRef.current;
-    setTaxLoading(true);
-    setTaxError(null);
-    getSourceTags(tagSource, () => getSource(tagSource).getTags())
-      .then((items) => {
-        if (reqId !== taxReqRef.current) return;
-        setLiveTags(
-          items.map((t, idx) => ({
-            id: 500000 + idx,
-            name: t.name,
-            category: "tags" as const,
-            count: t.count || 0,
-          }))
-        );
-      })
-      .catch((err) => {
-        if (reqId !== taxReqRef.current) return;
-        setTaxError(err instanceof Error ? err.message : String(err));
-      })
-      .finally(() => {
-        if (reqId === taxReqRef.current) setTaxLoading(false);
-      });
-  }, [isLiveSource, tagSource, taxRetry]);
-
-  // Barre de progression indéterminée de la bannière de chargement.
-  useEffect(() => {
-    if (!taxLoading || taxTrackW <= 0) return;
-    taxTrackWidth.setValue(0);
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(taxTrackWidth, {
-          toValue: 1,
-          duration: 850,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(taxTrackWidth, {
-          toValue: 0,
-          duration: 850,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [taxLoading, taxTrackW, taxTrackWidth]);
-  const taxBarX = taxTrackWidth.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-taxTrackW * 0.4, taxTrackW],
-  });
-
-  // Create Collection Modal state
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [newColName, setNewColName] = useState("");
-  const [newColDesc, setNewColDesc] = useState("");
-  const [newColColor, setNewColColor] = useState("#ec4899");
-  const [selectedTagsForCol, setSelectedTagsForCol] = useState<
-    { type: string; name: string }[]
-  >([]);
-
-  const categories: { key: ActiveTab; label: string; icon: any }[] = useMemo(
-    () => [
-      { key: "all", label: "Tous", icon: IconSparkles },
-      {
-        key: "collections",
-        label: `Packs (${collections.length})`,
-        icon: IconFolder,
-      },
-      {
-        key: "favs",
-        label: favCount > 0 ? `Favoris (${favCount})` : "Favoris",
-        icon: IconHeart,
-      },
-      { key: "tags", label: "Tags", icon: IconTag },
-      { key: "artists", label: "Artistes", icon: IconFeather },
-      { key: "parodies", label: "Séries", icon: IconDeviceTv },
-      { key: "characters", label: "Personnages", icon: IconUser },
-      { key: "groups", label: "Groupes", icon: IconUsers },
-      { key: "languages", label: "Langues", icon: IconWorld },
-    ],
-    [collections.length, favCount]
-  );
-
-  // Onglets proposés : pour une source live, seuls les onglets alimentés
-  // (tags) + les onglets globaux (packs, favoris) sont pertinents.
-  const visibleCategories = useMemo(() => {
-    if (!isLiveSource) return categories;
-    return categories.filter(
-      (c) =>
-        c.key === "all" ||
-        c.key === "collections" ||
-        c.key === "favs" ||
-        c.key === "tags"
-    );
-  }, [categories, isLiveSource]);
-
-  const filteredItems = useMemo(() => {
-    let baseList: TaxonomyItem[] = [];
-
-    if (activeTab === "favs") {
-      baseList = favoriteList.map((f, idx) => {
-        let cat: any = "tags";
-        const t = (f.type || "").toLowerCase();
-        if (t === "artist") cat = "artists";
-        else if (t === "parody") cat = "parodies";
-        else if (t === "character") cat = "characters";
-        else if (t === "group") cat = "groups";
-        else if (t === "language") cat = "languages";
-        else if (f.category) cat = f.category;
-
-        return {
-          id: 90000 + idx,
-          name: f.name || "",
-          category: cat,
-          count: f.count || 0,
-        };
-      });
-      if (searchFilter.trim()) {
-        const q = searchFilter.toLowerCase();
-        baseList = baseList.filter((t) => (t.name || "").toLowerCase().includes(q));
-      }
-    } else if (isLiveSource && (activeTab === "tags" || activeTab === "all")) {
-      // Liste réelle de la source, filtrage local sur la saisie.
-      baseList = liveTags;
-      if (searchFilter.trim()) {
-        const q = searchFilter.toLowerCase();
-        baseList = baseList.filter((t) => (t.name || "").toLowerCase().includes(q));
-      }
-    } else if (!isLiveSource && activeTab !== "collections") {
-      baseList = getAllTaxonomies(activeTab, searchFilter);
-    }
-
-    return baseList;
-  }, [activeTab, searchFilter, favoriteList, isLiveSource, liveTags]);
-
-  const { query: homeQuery, toggleTerm, replaceTerm } = useHomeSearch();
-  const [appendNotice, setAppendNotice] = useState<string | null>(null);
-  const appendNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => {
-    if (appendNoticeTimerRef.current) clearTimeout(appendNoticeTimerRef.current);
+  const chooseSource = (next: TagSource) => {
+    lightTap(); sourceChosen.current = true; setSource(next); setCategory("all"); setSourceMenu(false);
+    void AsyncStorage.setItem(SOURCE_KEY, next).catch(() => {});
+  };
+  const inform = useCallback((message: string) => {
+    setNotice(message); if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(() => setNotice(""), 1600);
   }, []);
-
-  // Clic sur le tag -> remplace la recherche, bascule l'accueil sur la
-  // source d'origine du tag et ouvre l'accueil.
-  const handleSelectTag = useCallback((tag: TaxonomyItem) => {
-    lightTap();
-    const type = CATEGORY_TYPE_MAP[tag.category] || "tag";
-    replaceTerm(type, tag.name);
-    router.push({
-      pathname: "/",
-      params: {
-        tag: tag.name,
-        type,
-        ...(isLiveSource ? { src: tagSource } : {}),
-      },
-    });
-  }, [replaceTerm, router, isLiveSource, tagSource]);
-
-  // Clic sur +/- : ajoute ou retire le tag de la recherche actuelle, sans quitter la page
-  const handleToggleSearchTag = useCallback((tag: TaxonomyItem) => {
-    lightTap();
-    const type = CATEGORY_TYPE_MAP[tag.category] || "tag";
-    const result = toggleTerm(type, tag.name);
-    setAppendNotice(`${tag.name} ${result.added ? "ajouté à" : "retiré de"} la recherche`);
-    if (appendNoticeTimerRef.current) clearTimeout(appendNoticeTimerRef.current);
-    appendNoticeTimerRef.current = setTimeout(() => setAppendNotice(null), 1200);
-  }, [toggleTerm]);
-
-  // Clic sur le cœur -> met en favoris instantanément
-  const handleToggleFavorite = useCallback((tag: TaxonomyItem) => {
-    lightTap();
-    const type = CATEGORY_TYPE_MAP[tag.category] || "tag";
-    toggleFav({
-      type,
-      name: tag.name,
-      category: tag.category,
-      count: tag.count,
-    });
-  }, [toggleFav]);
-
-  // Lancer une recherche combinant tous les favoris
-  const handleSearchAllFavorites = () => {
-    if (favoriteList.length === 0) return;
-    lightTap();
-    const combinedQuery = favoriteList
-      .map((f) => `${f.type || "tag"}:"${f.name}"`)
-      .join(" ");
-    router.push({
-      pathname: "/",
-      params: { query: combinedQuery },
-    });
+  const tagMap = useMemo(() => new Map(catalog.items.map(tag => [tag.key, tag])), [catalog.items]);
+  const favoritesByKey = useMemo(() => new Map(favoriteList.map(favorite => [catalogTagKey(favorite.type, favorite.name), favorite])), [favoriteList]);
+  const favoriteItems = useMemo(() => [...favoritesByKey.values()].flatMap(favorite => {
+    const type = normalizeTagType(favorite.type);
+    const key = catalogTagKey(type, favorite.name);
+    const match = tagMap.get(key);
+    if (match) return [match];
+    return source === "all" ? [{ key, name: favorite.name, type, category: categoryForType(type), sources: [], nativeNames: {} } as CatalogTag] : [];
+  }), [favoritesByKey, tagMap, source]);
+  const rows = useMemo(() => (mode === "favs" ? favoriteItems : catalog.items).filter(tag =>
+    (category === "all" || tag.category === category) && (!filter || `${tag.type}:${tag.name}`.toLowerCase().includes(filter))
+  ), [mode, favoriteItems, catalog.items, category, filter]);
+  const filteredPacks = useMemo(() => packs.collections.filter(pack => !filter || `${pack.name} ${pack.description || ""} ${pack.tags.map(tag => tag.name).join(" ")}`.toLowerCase().includes(filter)), [packs.collections, filter]);
+  const availableCategories = useMemo(() => new Set(catalog.items.map(tag => tag.category)), [catalog.items]);
+  const openTag = useCallback((tag: CatalogTag) => {
+    lightTap(); const target = tagSearchTarget(tag, source); setHomeQuery(target.query);
+    router.push({ pathname: "/", params: { query: target.query, src: target.source } });
+  }, [source, setHomeQuery, router]);
+  const toggleTag = useCallback((tag: CatalogTag) => {
+    lightTap(); const result = toggleTerm(tag.type, tag.name);
+    inform(`${tag.name} ${result.added ? "ajouté à" : "retiré de"} la recherche`);
+  }, [toggleTerm, inform]);
+  const toggleFavorite = useCallback((tag: CatalogTag) => {
+    lightTap(); void toggleFav(favoritesByKey.get(tag.key) || { type: tag.type, name: tag.name, category: tag.category });
+  }, [toggleFav, favoritesByKey]);
+  const renderRow = useCallback(({ item }: { item: CatalogTag }) => {
+    const inSearch = queryContainsTerm(homeQuery, item.type, item.name);
+    const favorited = favoritesByKey.has(item.key);
+    const label = CATEGORIES.find(([key]) => key === item.category)?.[1] || "Tag";
+    return <View style={[styles.tagRow, { borderColor: colors.tagBg, backgroundColor: colors.page }]}>
+      <CardPressable radius={0} onPress={() => openTag(item)} style={styles.tagMain} accessibilityRole="button" accessibilityLabel={`Rechercher ${item.name}`}>
+        <TagLabel name={item.name} prefix={!["tag", "artist", "parody", "character", "group", "language", "category"].includes(item.type) ? `${item.type}:` : undefined} variant="chip" style={[styles.tagName, { color: colors.txt }]} />
+        <Text style={[styles.rowMeta, { color: colors.sub }]}>{label} · {item.sources.length ? item.sources.map(sourceLabel).join(" / ") : "Favori enregistré"}</Text>
+      </CardPressable>
+      <Pressable onPress={() => toggleTag(item)} style={styles.iconButton} accessibilityRole="button" accessibilityState={{ selected: inSearch }} accessibilityLabel={`${inSearch ? "Retirer" : "Ajouter"} ${item.name} ${inSearch ? "de" : "à"} la recherche`}>
+        {inSearch ? <IconMinus size={20} color={colors.txt} /> : <IconPlus size={20} color={colors.metaText} />}
+      </Pressable>
+      <Pressable onPress={() => toggleFavorite(item)} style={styles.iconButton} accessibilityRole="button" accessibilityState={{ selected: favorited }} accessibilityLabel={`${favorited ? "Retirer" : "Ajouter"} ${item.name} ${favorited ? "des" : "aux"} favoris`}>
+        <IconHeart size={19} color={favorited ? "#e5a5b2" : colors.sub} fill={favorited ? "#e5a5b2" : "transparent"} />
+      </Pressable>
+    </View>;
+  }, [colors, homeQuery, favoritesByKey, openTag, toggleTag, toggleFavorite]);
+  const launchPack = (pack: TagCollection) => {
+    const query = source === "rule34" ? [...pack.tags.map(tag => tagMap.get(catalogTagKey(tag.type, tag.name))?.nativeNames.rule34 || tag.name.replace(/ /g, "_")), ...(pack.excludeTags || []).map(tag => `-${tag.name.replace(/ /g, "_")}`)].join(" ") : packs.formatQuery(pack);
+    setHomeQuery(query); router.push({ pathname: "/", params: { query, src: source } });
+  };
+  const createPack = async () => {
+    if (!packName.trim() || !chosen.length || saving) return;
+    setSaving(true); setSaveError(null);
+    try {
+      await packs.createCollection(packName, favoriteItems.filter(tag => chosen.includes(tag.key)).map(tag => ({ type: tag.type, name: tag.name })), { description: packDescription, color: packColor });
+      setCreateOpen(false); setPackName(""); setPackDescription(""); setChosen([]); inform("Pack créé");
+    } catch { setSaveError("Impossible d’enregistrer le pack. Réessayez."); } finally { setSaving(false); }
   };
 
-  // Lancer la recherche d'une collection
-  const handleSearchCollection = (col: TagCollection) => {
-    lightTap();
-    const q = formatColQuery(col);
-    router.push({
-      pathname: "/",
-      params: { query: q },
-    });
-  };
-
-  const handleCreateCollectionSubmit = async () => {
-    if (!newColName.trim()) return;
-    lightTap();
-    await createCollection(newColName.trim(), selectedTagsForCol, {
-      description: newColDesc.trim(),
-      color: newColColor,
-    });
-    setNewColName("");
-    setNewColDesc("");
-    setSelectedTagsForCol([]);
-    setIsCreateModalOpen(false);
-  };
-
-  const toggleTagSelectionForCol = (tag: TaxonomyItem) => {
-    lightTap();
-    const type = CATEGORY_TYPE_MAP[tag.category] || "tag";
-    const exists = selectedTagsForCol.some((t) => t.name === tag.name && t.type === type);
-    if (exists) {
-      setSelectedTagsForCol((prev) => prev.filter((t) => !(t.name === tag.name && t.type === type)));
-    } else {
-      setSelectedTagsForCol((prev) => [...prev, { type, name: tag.name }]);
-    }
-  };
-
-  const renderItem = useCallback(
-    ({ item }: { item: TaxonomyItem }) => {
-      const meta = CATEGORY_META[item.category] || CATEGORY_META.tags || {
-        icon: IconTag,
-        color: "#60a5fa",
-        label: "Tag",
-        type: "tag",
-      };
-      const IconComp = meta.icon || IconTag;
-      const itemType = CATEGORY_TYPE_MAP[item.category] || "tag";
-      const favorited = isFav(itemType, item.name);
-      const inSearch = queryContainsTerm(homeQuery, itemType, item.name);
-
-      return (
-        <View
-          style={[
-            styles.tagCard,
-            {
-              backgroundColor: "#14141e",
-              borderColor: inSearch
-                ? colors.accent
-                : favorited
-                  ? "rgba(244,63,94,0.4)"
-                  : "#232332",
-            },
-          ]}
-        >
-          {/* Main row press -> open single search */}
-          <Pressable
-            onPress={() => handleSelectTag(item)}
-            android_ripple={{ color: "#ffffff15" }}
-            style={styles.tagCardInner}
-          >
-            <View
-              style={[
-                styles.tagIconWrap,
-                { backgroundColor: meta.color + "18", borderColor: meta.color + "30" },
-              ]}
-            >
-              <IconComp size={15} color={meta.color} strokeWidth={1.8} />
-            </View>
-
-            <View style={styles.tagTextCol}>
-              <TagLabel name={item.name} variant="list" />
-              <Text style={styles.tagSubMeta}>
-                {meta.label} {item.count > 0 ? `• ${item.count.toLocaleString("fr-FR")}` : ""}
-              </Text>
-            </View>
-          </Pressable>
-
-          {/* Bouton +/- pour ajouter/retirer de la recherche */}
-          <Pressable
-            onPress={() => handleToggleSearchTag(item)}
-            hitSlop={6}
-            style={[
-              styles.tagActionBtn,
-              { borderLeftColor: "#232332", backgroundColor: inSearch ? colors.accent + "22" : "transparent" },
-            ]}
-            accessibilityRole="button"
-            accessibilityState={{ selected: inSearch }}
-            accessibilityLabel={inSearch ? `Retirer ${item.name} de la recherche` : `Ajouter ${item.name}`}
-          >
-            {inSearch ? (
-              <IconMinus size={16} color="#fff" strokeWidth={2.5} />
-            ) : (
-              <IconPlus size={16} color={colors.accent} strokeWidth={2.5} />
-            )}
-          </Pressable>
-
-          {/* Bouton Cœur Favori */}
-          <Pressable
-            onPress={() => handleToggleFavorite(item)}
-            hitSlop={6}
-            style={[styles.tagActionBtn, { borderLeftColor: "#232332" }]}
-            accessibilityRole="button"
-            accessibilityState={{ selected: favorited }}
-            accessibilityLabel={`${favorited ? "Retirer" : "Ajouter"} ${item.name} ${favorited ? "des" : "aux"} favoris tags`}
-          >
-            <IconHeart
-              size={16}
-              color={favorited ? "#f43f5e" : "#9ca3af"}
-              fill={favorited ? "#f43f5e" : "transparent"}
-              strokeWidth={1.8}
-            />
-          </Pressable>
-        </View>
-      );
-    },
-    [
-      colors.accent,
-      handleToggleSearchTag,
-      handleSelectTag,
-      handleToggleFavorite,
-      homeQuery,
-      isFav,
-    ]
-  );
-
-  return (
-    <View
-      style={[
-        styles.container,
-        {
-          paddingTop: Math.max(insets.top, 12),
-          backgroundColor: colors.bg,
-        },
-      ]}
-    >
-      {/* Header */}
-      <View style={[styles.header, { borderBottomColor: "#222232" }]}>
-        <IconBtn onPress={() => router.back()} size={36} style={styles.backBtn}>
-          <IconArrowLeft size={18} color="#f3f4f6" strokeWidth={2} />
-        </IconBtn>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>Tags & Packs</Text>
-          <Text style={styles.headerSub}>
-            {activeTab === "collections"
-              ? `${collections.length} pack${collections.length > 1 ? "s" : ""} disponible${collections.length > 1 ? "s" : ""}`
-              : activeTab === "favs"
-              ? `${favoriteList.length} tag${favoriteList.length > 1 ? "s" : ""} favori${favoriteList.length > 1 ? "s" : ""}`
-              : `${filteredItems.length.toLocaleString("fr-FR")} résultat${filteredItems.length > 1 ? "s" : ""}`}
-          </Text>
-        </View>
-
-        {activeTab === "collections" && (
-          <Pressable
-            onPress={() => setIsCreateModalOpen(true)}
-            style={[styles.headerActionBtn, { backgroundColor: colors.accent }]}
-          >
-            <IconPlus size={15} color="#fff" strokeWidth={2.5} />
-            <ButtonLabel style={styles.headerActionText}>Créer</ButtonLabel>
-          </Pressable>
-        )}
-      </View>
-
-      {/* Sélecteur de source : DB statique nhentai ou tags réels du site */}
-      <View style={styles.sourceChipsRow}>
-        {([["all", "Tout"]] as [SourceId | "all", string][])
-          .concat(sourceMetas.map((m) => [m.id, m.label] as [SourceId, string]))
-          .map(([sid, label]) => {
-            const isActive = tagSource === sid;
-            const meta = sid === "all" ? undefined : sourceMetas.find((m2) => m2.id === sid);
-            return (
-              <Pressable
-                key={sid}
-                onPress={() => {
-                  lightTap();
-                  setTagSource(sid);
-                }}
-                style={[
-                  styles.sourceChip,
-                  {
-                    borderColor: isActive ? colors.accent : colors.tagBg,
-                    backgroundColor: isActive ? colors.accent + "26" : "transparent",
-                  },
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={`Tags de la source ${label}`}
-                accessibilityState={{ selected: isActive }}
-              >
-                {meta && (
-                  <View
-                    style={[styles.sourceChipDot, { backgroundColor: meta.accentColor }]}
-                  />
-                )}
-                <Text
-                  style={[
-                    styles.sourceChipText,
-                    { color: isActive ? colors.accent : colors.sub },
-                  ]}
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
-                >
-                  {label}
-                </Text>
-              </Pressable>
-            );
-          })}
-      </View>
-
-      {/* Bannière de chargement des tags réels (liste live) */}
-      {taxLoading ? (
-        <View style={[styles.taxBanner, { backgroundColor: colors.searchBg }]}>
-          <View style={styles.taxBannerRow}>
-            <ActivityIndicator size="small" color={colors.accent} />
-            <Text style={[styles.taxBannerText, { color: colors.sub }]}>
-              Chargement des tags{" "}
-              {sourceMetas.find((m) => m.id === tagSource)?.label ?? tagSource}…
-            </Text>
-          </View>
-          <View
-            style={[styles.taxTrack, { backgroundColor: colors.tagBg }]}
-            onLayout={(e) => setTaxTrackW(e.nativeEvent.layout.width)}
-          >
-            <Animated.View
-              style={[
-                styles.taxBar,
-                { backgroundColor: colors.accent, transform: [{ translateX: taxBarX }] },
-              ]}
-            />
-          </View>
-        </View>
-      ) : null}
-
-      {/* Échec du chargement des tags réels : notice inline + Réessayer */}
-      {!taxLoading && taxError ? (
-        <View style={[styles.taxBanner, { backgroundColor: "#ff475722" }]}>
-          <View style={styles.taxBannerRow}>
-            <IconX size={14} color="#ff4757" strokeWidth={2.5} />
-            <Text style={[styles.taxBannerText, { color: "#ff4757" }]} numberOfLines={2}>
-              Impossible de charger les tags — {taxError}
-            </Text>
-            <Pressable onPress={() => setTaxRetry((r) => r + 1)} hitSlop={6}>
-              <Text style={[styles.taxBannerText, { color: colors.accent }]}>Réessayer</Text>
-            </Pressable>
-          </View>
-        </View>
-      ) : null}
-
-      {appendNotice ? (
-        <View pointerEvents="none" style={[styles.appendNotice, { top: Math.max(insets.top, 12) + 56, backgroundColor: colors.page, borderColor: colors.accent }]}>
-          <Text accessibilityLiveRegion="polite" style={[styles.appendNoticeText, { color: colors.txt }]}>{appendNotice}</Text>
-        </View>
-      ) : null}
-
-      {/* Search Input Bar */}
-      {activeTab !== "collections" && (
-        <View style={styles.searchBarWrapper}>
-          <View style={[styles.searchBarBox, { backgroundColor: "#14141e", borderColor: "#232332" }]}>
-            <IconSearch size={16} color="#9ca3af" strokeWidth={2} />
-            <TextInput
-              value={searchFilter}
-              onChangeText={setSearchFilter}
-              placeholder="Filtrer parmi les tags, artistes, séries..."
-              placeholderTextColor="#6b7280"
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="search"
-              style={styles.searchInput}
-            />
-            {searchFilter.length > 0 && (
-              <Pressable onPress={() => setSearchFilter("")} hitSlop={6}>
-                <IconX size={15} color="#9ca3af" strokeWidth={2} />
-              </Pressable>
-            )}
-          </View>
-        </View>
-      )}
-
-      {/* Category Tabs Scroll (Using standard ScrollView for rock-solid stability) */}
-      <View style={styles.tabsContainer}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 16 }}
-        >
-          {visibleCategories.map((item) => {
-            const isActive = activeTab === item.key;
-            const TabIcon = item.icon;
-            return (
-              <Pressable
-                key={item.key}
-                onPress={() => {
-                  lightTap();
-                  setActiveTab(item.key);
-                }}
-                style={[
-                  styles.tabChip,
-                  {
-                    backgroundColor: isActive ? colors.accent : "#14141e",
-                    borderColor: isActive ? colors.accent : "#232332",
-                  },
-                ]}
-              >
-                <TabIcon
-                  size={14}
-                  color={isActive ? "#ffffff" : "#9ca3af"}
-                  strokeWidth={2}
-                  fill={item.key === "favs" && isActive ? "#ffffff" : "transparent"}
-                />
-                <Text
-                  style={[
-                    styles.tabChipText,
-                    {
-                      color: isActive ? "#ffffff" : "#9ca3af",
-                      fontWeight: isActive ? "800" : "600",
-                    },
-                  ]}
-                >
-                  {item.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      </View>
-
-      {/* Bannière d'action si onglet Favoris actif avec éléments */}
-      {activeTab === "favs" && favoriteList.length > 0 && (
-        <View style={styles.favActionBanner}>
-          <CardPressable
-            radius={10}
-            onPress={handleSearchAllFavorites}
-            style={[styles.searchAllFavsBtn, { backgroundColor: colors.accent }]}
-          >
-            <IconSearch size={15} color="#fff" strokeWidth={2.5} />
-            <Text style={styles.searchAllFavsText}>
-              Rechercher les favoris ({favoriteList.length})
-            </Text>
-          </CardPressable>
-        </View>
-      )}
-
-      {/* Collections Tab Content */}
-      {activeTab === "collections" ? (
-        collections.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <IconFolder size={44} color="#6b7280" strokeWidth={1.5} style={{ opacity: 0.6 }} />
-            <Text style={styles.emptyTitle}>Aucun pack de tags</Text>
-            <Text style={styles.emptySub}>
-              Appuyez sur « Créer » ci-dessus pour regrouper vos tags favoris en pack de recherche personnalisé.
-            </Text>
-          </View>
-        ) : (
-          <ScrollView
-            contentContainerStyle={[
-              styles.collectionsContainer,
-              { paddingBottom: insets.bottom + 40 },
-            ]}
-            showsVerticalScrollIndicator={false}
-          >
-            {collections.map((col) => (
-              <View
-                key={col.id}
-                style={[
-                  styles.colCard,
-                  { backgroundColor: "#14141e", borderColor: col.color + "50" },
-                ]}
-              >
-                <View style={styles.colHeader}>
-                  <View style={styles.colTitleRow}>
-                    <View style={[styles.colColorDot, { backgroundColor: col.color }]} />
-                    <Text style={styles.colName}>{col.name}</Text>
-                  </View>
-
-                  <Pressable
-                    onPress={() => {
-                      lightTap();
-                      deleteCollection(col.id);
-                    }}
-                    hitSlop={8}
-                  >
-                    <IconTrash size={16} color="#ef4444" strokeWidth={1.8} />
-                  </Pressable>
-                </View>
-
-                {col.description ? (
-                  <Text style={styles.colDesc}>{col.description}</Text>
-                ) : null}
-
-                {/* Tags included */}
-                <View style={styles.colTagsWrap}>
-                  {col.tags.map((t, idx) => (
-                    <View key={idx} style={[styles.colTagBadge, { backgroundColor: col.color + "20" }]}>
-                      <TagLabel name={t.name} color={col.color} variant="inline" prefix="+" />
-                    </View>
-                  ))}
-                  {col.excludeTags?.map((t, idx) => (
-                    <View key={`ex_${idx}`} style={[styles.colTagBadge, { backgroundColor: "rgba(239, 68, 68, 0.15)" }]}>
-                      <TagLabel name={t.name} color="#ef4444" variant="inline" prefix="-" />
-                    </View>
-                  ))}
-                </View>
-
-                {/* Launch Search Button */}
-                <Pressable
-                  onPress={() => handleSearchCollection(col)}
-                  style={[styles.colSearchBtn, { backgroundColor: col.color }]}
-                >
-                  <IconSearch size={14} color="#fff" strokeWidth={2.5} />
-                  <ButtonLabel style={styles.colSearchBtnText}>Rechercher le pack</ButtonLabel>
-                </Pressable>
-              </View>
-            ))}
-          </ScrollView>
-        )
-      ) : filteredItems.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <IconSearchOff size={44} color="#6b7280" strokeWidth={1.5} style={{ opacity: 0.6 }} />
-          <Text style={styles.emptyTitle}>
-            {activeTab === "favs" ? "Aucun favori" : "Aucun résultat"}
-          </Text>
-          <Text style={styles.emptySub}>
-            {activeTab === "favs"
-              ? "Touchez l'icône cœur sur n'importe quel tag pour le conserver ici."
-              : "Essayez avec d'autres termes de recherche."}
-          </Text>
-        </View>
-      ) : (
-        <FlashList
-          data={filteredItems}
-          renderItem={renderItem}
-          drawDistance={400}
-          keyExtractor={(item) => `${item.category}_${item.name}`}
-          contentContainerStyle={{
-            paddingHorizontal: 16,
-            paddingTop: 6,
-            paddingBottom: insets.bottom + 40,
-          }}
-        />
-      )}
-
-      {/* Modal Créer une Collection */}
-      <Modal
-        visible={isCreateModalOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setIsCreateModalOpen(false)}
-      >
-        <Pressable style={styles.modalBackdrop} onPress={() => setIsCreateModalOpen(false)}>
-          <Pressable
-            style={[styles.modalCard, { backgroundColor: "#13131e", borderColor: "#28283a" }]}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Nouveau pack</Text>
-              <Pressable onPress={() => setIsCreateModalOpen(false)} hitSlop={6}>
-                <IconX size={18} color="#9ca3af" strokeWidth={2} />
-              </Pressable>
-            </View>
-
-            <TextInput
-              value={newColName}
-              onChangeText={setNewColName}
-              placeholder="Nom du pack (ex: Romance Vanilla, FGO...)"
-              placeholderTextColor="#6b7280"
-              style={[styles.modalInput, { backgroundColor: "#181826", borderColor: "#2c2c3e" }]}
-            />
-
-            <TextInput
-              value={newColDesc}
-              onChangeText={setNewColDesc}
-              placeholder="Description courte (optionnel)"
-              placeholderTextColor="#6b7280"
-              style={[styles.modalInput, { backgroundColor: "#181826", borderColor: "#2c2c3e" }]}
-            />
-
-            {/* Color Palette Selector */}
-            <Text style={styles.paletteTitle}>Couleur :</Text>
-            <View style={styles.paletteRow}>
-              {["#ec4899", "#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ef4444"].map((c) => (
-                <Pressable
-                  key={c}
-                  onPress={() => setNewColColor(c)}
-                  style={[
-                    styles.paletteDot,
-                    { backgroundColor: c },
-                    newColColor === c && styles.paletteDotSelected,
-                  ]}
-                >
-                  {newColColor === c && <IconCheck size={14} color="#fff" strokeWidth={3} />}
-                </Pressable>
-              ))}
-            </View>
-
-            {/* Quick Tag Selector */}
-            <Text style={styles.paletteTitle}>
-              Tags favoris inclus ({selectedTagsForCol.length}) :
-            </Text>
-            <ScrollView style={{ maxHeight: 150 }} showsVerticalScrollIndicator={false}>
-              <View style={styles.tagsSelectionWrap}>
-                {favoriteList.map((f, idx) => {
-                  const isSelected = selectedTagsForCol.some((t) => t.name === f.name);
-                  return (
-                    <Pressable
-                      key={idx}
-                      onPress={() =>
-                        toggleTagSelectionForCol({
-                          id: idx,
-                          name: f.name,
-                          category: (f.category as any) || "tags",
-                          count: f.count || 0,
-                        })
-                      }
-                      style={[
-                        styles.selectTagChip,
-                        {
-                          backgroundColor: isSelected ? newColColor : "#181826",
-                          borderColor: isSelected ? newColColor : "#2c2c3e",
-                        },
-                      ]}
-                    >
-                      <TagLabel
-                        name={f.name}
-                        color={isSelected ? "#ffffff" : "#d1d5db"}
-                        variant="inline"
-                        style={styles.selectTagTextOverride}
-                      />
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </ScrollView>
-
-            <Pressable
-              onPress={handleCreateCollectionSubmit}
-              disabled={!newColName.trim()}
-              style={[
-                styles.modalSubmitBtn,
-                { backgroundColor: newColName.trim() ? newColColor : "#2d2d3e" },
-              ]}
-            >
-              <ButtonLabel style={styles.modalSubmitText}>Créer le pack</ButtonLabel>
-            </Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
+  return <View style={[styles.root, { paddingTop: Math.max(insets.top, 12), backgroundColor: colors.bg }]}>
+    <View style={styles.header}>
+      <Pressable onPress={() => router.back()} style={styles.iconButton} accessibilityRole="button" accessibilityLabel="Revenir en arrière"><IconArrowLeft size={22} color={colors.txt} /></Pressable>
+      <View style={{ flex: 1, minWidth: 0 }}><Text accessibilityRole="header" style={[styles.title, { color: colors.txt }]}>Tags & packs</Text><Text style={[styles.small, { color: colors.sub }]}>Explorez, composez, retrouvez.</Text></View>
+      {mode === "packs" && <CardPressable onPress={() => { setSaveError(null); setCreateOpen(true); }} style={[styles.createButton, { backgroundColor: colors.tagBg }]} accessibilityRole="button"><IconPlus size={18} color={colors.txt} /><ButtonLabel style={{ color: colors.txt, fontWeight: "600" }}>Créer</ButtonLabel></CardPressable>}
     </View>
-  );
+    <View style={[styles.segmented, { backgroundColor: colors.page }]}>
+      {([["browse", "Explorer"], ["favs", "Favoris"], ["packs", "Packs"]] as const).map(([id, label]) => <Pressable key={id} onPress={() => { lightTap(); setMode(id); setCategory("all"); setSearch(""); }} accessibilityRole="tab" accessibilityState={{ selected: mode === id }} style={[styles.segment, mode === id && { backgroundColor: colors.tagBg }]}><ButtonLabel style={{ color: mode === id ? colors.txt : colors.sub, fontWeight: "600", fontSize: 14 }}>{label}</ButtonLabel></Pressable>)}
+    </View>
+    <View style={styles.sourceRow}>
+      <Pressable onPress={() => setSourceMenu(true)} style={[styles.sourceButton, { borderColor: colors.tagBg, backgroundColor: colors.page }]} accessibilityRole="button" accessibilityLabel={`Choisir la source : ${sourceLabel(source)}`}>
+        <IconWorld size={18} color={colors.sub} /><Text style={[styles.sourceName, { color: colors.txt }]}>{sourceLabel(source)}</Text><IconChevronDown size={18} color={colors.sub} />
+      </Pressable>
+      <Pressable onPress={catalog.refresh} disabled={catalog.loading} accessibilityRole="button" accessibilityLabel="Actualiser les tags" style={styles.iconButton}>
+        {catalog.loading ? <ActivityIndicator color={colors.metaText} /> : <IconRefresh size={20} color={colors.metaText} />}
+      </Pressable>
+    </View>
+    <View style={[styles.searchBox, { backgroundColor: colors.page, borderColor: colors.tagBg }]}>
+      <IconSearch size={19} color={colors.sub} />
+      <TextInput accessibilityLabel={mode === "packs" ? "Rechercher un pack" : "Rechercher un tag"} value={search} onChangeText={setSearch} autoCapitalize="none" autoCorrect={false} placeholder={mode === "packs" ? "Rechercher un pack" : "Rechercher un tag, un artiste…"} placeholderTextColor={colors.sub} style={[styles.input, { color: colors.txt }]} />
+      {!!search && <Pressable onPress={() => setSearch("")} style={styles.iconButton} accessibilityRole="button" accessibilityLabel="Effacer le filtre"><IconX size={18} color={colors.sub} /></Pressable>}
+    </View>
+    {mode !== "packs" && <View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryList}>
+      {CATEGORIES.filter(([key]) => key === "all" || availableCategories.has(key)).map(([key, label]) => <Pressable key={key} accessibilityRole="tab" accessibilityState={{ selected: category === key }} onPress={() => setCategory(key)} style={[styles.category, { borderColor: category === key ? colors.sub : "transparent", backgroundColor: category === key ? colors.page : "transparent" }]}><ButtonLabel style={{ color: category === key ? colors.txt : colors.sub, fontSize: 13 }}>{label}</ButtonLabel></Pressable>)}
+    </ScrollView></View>}
+    <View style={styles.resultHeader}>
+      <Text accessibilityLiveRegion="polite" style={[styles.small, { color: colors.sub }]}>{(mode === "packs" ? filteredPacks.length : rows.length).toLocaleString("fr-FR")} {mode === "packs" ? "packs" : source === "all" ? "tags uniques" : "tags"}{catalog.loading && mode !== "packs" ? " · chargement…" : ""}</Text>
+      {!!catalog.errors.length && mode !== "packs" && <Pressable onPress={() => setSourceMenu(true)} accessibilityRole="button" style={styles.statusButton}><ButtonLabel style={{ color: "#e4b8aa", fontSize: 12 }}>{catalog.errors.length} source{catalog.errors.length > 1 ? "s" : ""} à vérifier</ButtonLabel></Pressable>}
+    </View>
+    {!!notice && <Text accessibilityLiveRegion="polite" style={[styles.notice, { color: colors.txt, backgroundColor: colors.tagBg }]}>{notice}</Text>}
+    {catalog.hasMore && mode !== "packs" && <Pressable onPress={catalog.loadMore} disabled={catalog.loading} style={[styles.moreButton, { backgroundColor: colors.page }]} accessibilityRole="button"><ButtonLabel style={{ color: colors.metaText }}>Charger la suite du répertoire Rule34</ButtonLabel></Pressable>}
+    {source === "rule34" && !!catalog.states.rule34?.error && <CardPressable onPress={() => setAuthOpen(true)} style={[styles.moreButton, { backgroundColor: colors.tagBg }]} accessibilityRole="button"><ButtonLabel style={{ color: colors.txt }}>Configurer la connexion Rule34</ButtonLabel></CardPressable>}
+    {mode === "packs" ? <FlashList data={filteredPacks} keyExtractor={pack => pack.id} contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24 }} ListEmptyComponent={<View style={styles.empty}><IconFolder size={32} color={colors.sub} /><Text style={[styles.sectionTitle, { color: colors.txt }]}>Vos recherches, en un pack</Text><Text style={[styles.body, { color: colors.sub }]}>Regroupez vos tags favoris pour lancer une recherche en un geste.</Text></View>} renderItem={({ item: pack }) => <View style={[styles.pack, { backgroundColor: colors.page, borderColor: colors.tagBg }]}>
+      <View style={styles.packHeader}><View style={[styles.colorDot, { backgroundColor: pack.color }]} /><Text style={[styles.packName, { color: colors.txt }]}>{pack.name}</Text><Pressable style={styles.iconButton} accessibilityRole="button" accessibilityLabel={`Supprimer le pack ${pack.name}`} onPress={() => Alert.alert("Supprimer le pack ?", pack.name, [{ text: "Annuler", style: "cancel" }, { text: "Supprimer", style: "destructive", onPress: () => { void packs.deleteCollection(pack.id).catch(() => inform("Suppression impossible. Réessayez.")); } }])}><IconTrash size={18} color={colors.sub} /></Pressable></View>
+      {!!pack.description && <Text style={[styles.body, { color: colors.sub }]}>{pack.description}</Text>}
+      <View style={styles.packTags}>{pack.tags.map(tag => <TagLabel key={`${tag.type}:${tag.name}`} name={tag.name} prefix="+ " variant="inline" color={colors.metaText} />)}{pack.excludeTags?.map(tag => <TagLabel key={`exclude:${tag.type}:${tag.name}`} name={tag.name} prefix="− " variant="inline" color="#e4b8aa" />)}</View>
+      <CardPressable onPress={() => launchPack(pack)} accessibilityRole="button" style={[styles.moreButton, { backgroundColor: colors.tagBg, marginHorizontal: 0 }]}><IconSearch size={17} color={colors.txt} /><ButtonLabel style={{ color: colors.txt }}>Rechercher ce pack</ButtonLabel></CardPressable>
+    </View>} /> : <FlashList key={`${mode}:${source}`} extraData={favoriteList} data={rows} renderItem={renderRow} keyExtractor={tag => tag.key} drawDistance={350} onEndReached={catalog.hasMore && !filter ? catalog.loadMore : undefined} onEndReachedThreshold={0.2} refreshing={catalog.loading} onRefresh={catalog.refresh} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 24 }} ListEmptyComponent={<View style={styles.empty}>
+      {catalog.loading ? <ActivityIndicator color={colors.metaText} /> : <IconSearch size={30} color={colors.sub} />}
+      <Text style={[styles.sectionTitle, { color: colors.txt }]}>{catalog.loading ? "Chargement du répertoire" : mode === "favs" ? "Aucun favori pour ce filtre" : catalog.errors.length ? "Ce répertoire est indisponible" : "Aucun tag trouvé"}</Text>
+      <Text style={[styles.body, { color: colors.sub }]}>{mode === "favs" ? "Utilisez le cœur à côté d’un tag pour le retrouver ici." : catalog.errors.length ? "Ouvrez le menu des sources pour réessayer. Les tags des autres sites restent séparés." : "Essayez un autre nom ou une autre catégorie."}</Text>
+    </View>} />}
+    {(source === "ehentai" || source === "all") && mode !== "packs" && <Pressable onPress={() => { void Linking.openURL("https://github.com/EhTagTranslation/Database"); }} style={styles.attribution} accessibilityRole="link"><Text style={[styles.small, { color: colors.sub }]}>Répertoire : EhTagTranslation · CC BY-NC-SA 3.0</Text></Pressable>}
+
+    <TagSheet visible={sourceMenu} title="Sources des tags" onClose={() => setSourceMenu(false)}>
+      <Text style={[styles.body, { color: colors.sub }]}>« Tout » réunit les répertoires chargés sans doublons. Le type de chaque tag reste visible.</Text>
+      {(["all", ...SOURCES.map(meta => meta.id)] as TagSource[]).map(id => <View key={id}>
+        <Pressable onPress={() => chooseSource(id)} style={[styles.sourceOption, { borderColor: colors.tagBg }]} accessibilityRole="radio" accessibilityState={{ selected: source === id }} accessibilityLabel={`Afficher les tags ${sourceLabel(id)}`}>
+          <View style={{ flex: 1, gap: 4 }}><Text style={[styles.sourceName, { color: colors.txt }]}>{id === "all" ? "Tout" : sourceLabel(id)}</Text><Text style={[styles.small, { color: colors.sub }]}>{id === "all" ? "Union des sources, tags dédupliqués" : catalog.states[id]?.loading ? "Chargement…" : catalog.states[id]?.error ? catalog.states[id]?.error : !catalog.states[id]?.loaded ? "Pas encore chargé" : `${(catalog.states[id]?.tags.length || 0).toLocaleString("fr-FR")} tags${catalog.states[id]?.hasMore ? " · suite disponible" : ""}`}</Text></View>
+          {source === id && <IconCheck size={20} color={colors.txt} />}
+        </Pressable>
+        {id !== "all" && catalog.states[id]?.error && <Pressable onPress={() => { if (id === "rule34" && !ruleAuth.isLoggedIn) { setSourceMenu(false); setAuthOpen(true); } else catalog.retry(id); }} accessibilityRole="button" style={styles.moreButton}><ButtonLabel style={{ color: colors.metaText }}>{id === "rule34" && !ruleAuth.isLoggedIn ? "Configurer Rule34" : `Réessayer ${sourceLabel(id)}`}</ButtonLabel></Pressable>}
+      </View>)}
+    </TagSheet>
+    <TagSheet visible={createOpen} title="Nouveau pack" onClose={() => { if (!saving) setCreateOpen(false); }}>
+      <Text style={[styles.label, { color: colors.txt }]}>Nom du pack</Text><TextInput accessibilityLabel="Nom du pack" value={packName} onChangeText={setPackName} editable={!saving} placeholder="Ex. Mes lectures du week-end" placeholderTextColor={colors.sub} style={[styles.formInput, { color: colors.txt, borderColor: colors.tagBg, backgroundColor: colors.bg }]} />
+      <Text style={[styles.label, { color: colors.txt }]}>Description (facultative)</Text><TextInput accessibilityLabel="Description du pack" value={packDescription} onChangeText={setPackDescription} editable={!saving} multiline placeholder="Ce que ce pack réunit" placeholderTextColor={colors.sub} style={[styles.formInput, { color: colors.txt, borderColor: colors.tagBg, backgroundColor: colors.bg }]} />
+      <Text style={[styles.label, { color: colors.txt }]}>Couleur</Text><View style={styles.palette}>{["#91a8c1", "#b2a1c7", "#92b6a3", "#c3ab89", "#c6969f"].map((color, index) => <Pressable key={color} disabled={saving} onPress={() => setPackColor(color)} accessibilityRole="radio" accessibilityLabel={`Couleur ${index + 1}`} accessibilityState={{ selected: packColor === color }} style={[styles.swatch, { backgroundColor: color }]}>{packColor === color && <IconCheck size={20} color="#18202a" />}</Pressable>)}</View>
+      <Text style={[styles.label, { color: colors.txt }]}>Tags favoris · {chosen.length} sélectionné{chosen.length > 1 ? "s" : ""}</Text>
+      {!favoriteItems.length && <Text style={[styles.body, { color: colors.sub }]}>Ajoutez d’abord des tags à vos favoris dans Explorer. Vous pourrez ensuite les réunir ici.</Text>}
+      <View style={styles.packTags}>{favoriteItems.map(tag => <Pressable key={tag.key} disabled={saving} onPress={() => setChosen(previous => previous.includes(tag.key) ? previous.filter(key => key !== tag.key) : [...previous, tag.key])} accessibilityRole="checkbox" accessibilityState={{ checked: chosen.includes(tag.key) }} style={[styles.selectionChip, { borderColor: chosen.includes(tag.key) ? colors.sub : colors.tagBg, backgroundColor: chosen.includes(tag.key) ? colors.tagBg : colors.bg }]}><TagLabel name={tag.name} variant="chip" color={colors.txt} /></Pressable>)}</View>
+      {!!saveError && <Text accessibilityRole="alert" style={{ color: "#e4b8aa" }}>{saveError}</Text>}
+      <CardPressable disabled={!packName.trim() || !chosen.length || saving} accessibilityRole="button" accessibilityState={{ disabled: !packName.trim() || !chosen.length || saving, busy: saving }} onPress={createPack} style={[styles.moreButton, { backgroundColor: colors.tagBg, marginHorizontal: 0 }]}>{saving && <ActivityIndicator color={colors.txt} />}<ButtonLabel style={{ color: colors.txt, fontWeight: "600" }}>{saving ? "Enregistrement…" : "Créer le pack"}</ButtonLabel></CardPressable>
+    </TagSheet>
+    <SourceAuthModal visible={authOpen} initialSource="rule34" onClose={() => setAuthOpen(false)} />
+  </View>;
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  sourceChipsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 6,
-  },
-  sourceChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  sourceChipDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  sourceChipText: {
-    fontSize: 12,
-    fontWeight: "700",
-    flexShrink: 1,
-    minWidth: 0,
-    paddingRight: 3,
-  },
-  taxBanner: {
-    marginHorizontal: 16,
-    marginBottom: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 10,
-    gap: 6,
-  },
-  taxBannerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  taxBannerText: {
-    fontSize: 12,
-    fontWeight: "600",
-    flexShrink: 1,
-    minWidth: 0,
-    paddingRight: 4,
-  },
-  taxTrack: {
-    height: 4,
-    borderRadius: 2,
-    overflow: "hidden",
-  },
-  taxBar: {
-    width: "40%",
-    height: "100%",
-    borderRadius: 2,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-  },
-  backBtn: {
-    marginLeft: -6,
-  },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#f3f4f6",
-  },
-  headerSub: {
-    fontSize: 11,
-    color: "#9ca3af",
-    marginTop: 1,
-  },
-  appendNotice: {
-    position: "absolute",
-    left: 16,
-    right: 16,
-    zIndex: 20,
-    elevation: 8,
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  appendNoticeText: {
-    fontSize: 12,
-    fontWeight: "700",
-    textAlign: "center",
-  },
-  headerActionBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  headerActionText: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#fff",
-  },
-  searchBarWrapper: {
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 8,
-  },
-  searchBarBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    minHeight: 48,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    gap: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 13,
-    color: "#f3f4f6",
-    padding: 0,
-  },
-  tabsContainer: {
-    paddingVertical: 4,
-    minHeight: 42,
-  },
-  tabChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 9,
-    borderWidth: 1,
-    marginRight: 8,
-  },
-  tabChipText: {
-    fontSize: 12,
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  favActionBanner: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-  },
-  searchAllFavsBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 9,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-  },
-  searchAllFavsText: {
-    color: "#fff",
-    fontSize: 12.5,
-    fontWeight: "800",
-  },
-  tagCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 11,
-    borderWidth: 1,
-    marginBottom: 7,
-    overflow: "hidden",
-  },
-  tagCardInner: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 9,
-    paddingHorizontal: 12,
-  },
-  tagTextCol: {
-    flex: 1,
-    minWidth: 0,
-  },
-  tagIconWrap: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
-    borderWidth: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  tagSubMeta: {
-    fontSize: 10.5,
-    color: "#9ca3af",
-    marginTop: 1,
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  tagActionBtn: {
-    minHeight: 44,
-    minWidth: 44,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderLeftWidth: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    flexShrink: 0,
-  },
-  collectionsContainer: {
-    padding: 16,
-    gap: 12,
-  },
-  colCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 14,
-    gap: 10,
-  },
-  colHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  colTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  colColorDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  colName: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#f3f4f6",
-  },
-  colDesc: {
-    fontSize: 12,
-    color: "#9ca3af",
-    lineHeight: 16,
-  },
-  colTagsWrap: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  colTagBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    maxWidth: "100%",
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  selectTagTextOverride: {
-    fontSize: 11.5,
-  },
-  colSearchBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 9,
-    borderRadius: 9,
-    marginTop: 4,
-  },
-  colSearchBtnText: {
-    fontSize: 12.5,
-    fontWeight: "800",
-    color: "#fff",
-  },
-  emptyContainer: {
-    flex: 1,
-    minHeight: 280,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 32,
-    gap: 8,
-  },
-  emptyTitle: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#f3f4f6",
-    marginTop: 4,
-  },
-  emptySub: {
-    fontSize: 12,
-    color: "#9ca3af",
-    textAlign: "center",
-    lineHeight: 17,
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.75)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  modalCard: {
-    width: "100%",
-    maxWidth: 380,
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 16,
-    gap: 12,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  modalTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#f3f4f6",
-  },
-  modalInput: {
-    minHeight: 48,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    fontSize: 13,
-    color: "#f3f4f6",
-  },
-  paletteTitle: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#9ca3af",
-    marginTop: 2,
-  },
-  paletteRow: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  paletteDot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  paletteDotSelected: {
-    borderWidth: 2,
-    borderColor: "#fff",
-  },
-  tagsSelectionWrap: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    paddingVertical: 4,
-  },
-  selectTagChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    borderWidth: 1,
-    maxWidth: "100%",
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  modalSubmitBtn: {
-    paddingVertical: 11,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 4,
-  },
-  modalSubmitText: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: "#fff",
-  },
+  root: { flex: 1 }, header: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 8, paddingBottom: 12 }, title: { fontSize: 23, fontWeight: "700" }, small: { fontSize: 12, lineHeight: 18 }, body: { fontSize: 14, lineHeight: 21 }, sectionTitle: { fontSize: 18, fontWeight: "600" },
+  iconButton: { minWidth: 48, minHeight: 48, alignItems: "center", justifyContent: "center" }, segmented: { flexDirection: "row", marginHorizontal: 16, borderRadius: 14, padding: 4, gap: 4 }, segment: { flex: 1, minWidth: 0, minHeight: 48, padding: 8, alignItems: "center", justifyContent: "center", borderRadius: 10 },
+  sourceRow: { flexDirection: "row", marginHorizontal: 16, marginTop: 16, gap: 8 }, sourceButton: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderRadius: 12, padding: 12, minHeight: 48 }, sourceName: { flexShrink: 1, fontSize: 14, fontWeight: "600" },
+  searchBox: { marginHorizontal: 16, marginTop: 10, flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderRadius: 12, paddingLeft: 12 }, input: { flex: 1, minWidth: 0, minHeight: 52, paddingVertical: 12, fontSize: 15 },
+  categoryList: { paddingHorizontal: 16, paddingVertical: 10, gap: 6 }, category: { minHeight: 44, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, justifyContent: "center" }, resultHeader: { paddingHorizontal: 16, paddingBottom: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }, statusButton: { minHeight: 40, justifyContent: "center", paddingHorizontal: 8 }, notice: { marginHorizontal: 16, padding: 12, borderRadius: 10, marginBottom: 8, fontSize: 13 },
+  tagRow: { flexDirection: "row", alignItems: "center", borderBottomWidth: 1, paddingRight: 4 }, tagMain: { flex: 1, minWidth: 0, paddingVertical: 15, paddingHorizontal: 12, gap: 5 }, tagName: { fontSize: 15, lineHeight: 22, fontWeight: "500" }, rowMeta: { fontSize: 11, lineHeight: 17 },
+  empty: { padding: 24, gap: 14, alignItems: "flex-start" }, moreButton: { minHeight: 48, marginHorizontal: 16, marginBottom: 8, borderRadius: 10, padding: 12, flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center" }, attribution: { paddingHorizontal: 16, paddingVertical: 8 },
+  createButton: { minHeight: 48, paddingHorizontal: 12, borderRadius: 12, gap: 8, flexDirection: "row", alignItems: "center" }, pack: { padding: 16, borderWidth: 1, borderRadius: 14, gap: 12, marginBottom: 12 }, packHeader: { flexDirection: "row", alignItems: "center", gap: 10 }, packName: { flex: 1, minWidth: 0, fontSize: 17, fontWeight: "600" }, colorDot: { width: 10, height: 10, borderRadius: 5 }, packTags: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  sheetBackdrop: { flex: 1, paddingHorizontal: 12, justifyContent: "center", alignItems: "center" }, sheet: { width: "100%", maxWidth: 520, height: "86%", borderRadius: 22, borderWidth: 1, overflow: "hidden" }, sheetHeader: { flexDirection: "row", alignItems: "center", paddingLeft: 20, paddingRight: 8, paddingVertical: 8, borderBottomWidth: 1 }, sheetContent: { padding: 20, paddingBottom: 32, gap: 12 }, sourceOption: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 64, paddingVertical: 12, borderBottomWidth: 1 }, label: { fontSize: 14, fontWeight: "600", marginTop: 4 }, formInput: { minHeight: 52, borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 16 }, palette: { flexDirection: "row", flexWrap: "wrap", gap: 12 }, swatch: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center" }, selectionChip: { minHeight: 48, justifyContent: "center", borderRadius: 10, borderWidth: 1, padding: 12, maxWidth: "100%" },
 });

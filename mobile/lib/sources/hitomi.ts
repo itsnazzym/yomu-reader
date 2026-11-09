@@ -1,3 +1,4 @@
+import { fetchHitomiTagDirectory } from "./tagCatalogFetchers";
 /**
  * Adaptateur hitomi.la — URLs images fraîches via gg.js (jamais persistées).
  *
@@ -382,6 +383,8 @@ export class HitomiSource implements SourceAdapter {
       pageUrls,
     };
   }
+
+  async getTags() { return fetchHitomiTagDirectory(); }
 
   async healthCheck() {
     const startedAt = Date.now();

@@ -7,7 +7,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const testEntries = ["engine.test.ts", "sessionSecurity.test.ts"];
 try {
   const fs = await import("node:fs");
-  for (const extra of ["resumable.test.ts", "sourcesHtml.test.ts", "sources.test.ts", "cloudSync.test.ts", "stabilization.test.ts", "uiUx.test.tsx"]) {
+  for (const extra of ["resumable.test.ts", "sourcesHtml.test.ts", "sources.test.ts", "cloudSync.test.ts", "stabilization.test.ts", "uiUx.test.tsx", "tagCatalog.test.ts"]) {
     if (fs.existsSync(path.join(here, extra))) {
       testEntries.push(extra);
     }

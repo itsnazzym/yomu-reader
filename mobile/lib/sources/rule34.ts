@@ -1,3 +1,4 @@
+import { fetchRule34TagPage } from "./tagCatalogFetchers";
 /**
  * Adaptateur Rule34 (rule34.xxx booru API).
  *
@@ -122,7 +123,7 @@ export class Rule34Source implements SourceAdapter {
     }
 
     // Nettoyage des opérateurs nHentai (ex: language:english) incompatibles avec le booru
-    const cleanQuery = stripNhentaiOperators(opts.query) || "";
+    const cleanQuery = (stripNhentaiOperators(opts.query) || "").replace(/\b(?:tag|artist|parody|character|group):(?:"([^"]+)"|([^\s]+))/gi, (_match, quoted: string, simple: string) => (quoted || simple).replace(/\s+/g, "_"));
     const url = `${API_URL}?page=dapi&s=post&q=index&json=1&limit=40&pid=${pageIndex}&tags=${encodeURIComponent(
       cleanQuery
     )}${authParams}`;
@@ -212,23 +213,8 @@ export class Rule34Source implements SourceAdapter {
     }
   }
 
-  async getTags(): Promise<SourceTaxonomyItem[]> {
-    const authParams = await this.getAuthQueryParams();
-    const url = `${API_URL}?page=dapi&s=tag&q=index&json=1&limit=60&order=count${authParams}`;
-    try {
-      const res = await fetch(url, { headers: HEADERS });
-      if (res.ok) {
-        const json = await res.json();
-        if (Array.isArray(json)) {
-          return json.map((t: { name?: string; count?: number | string }) => ({
-            name: (t.name || "").replace(/_/g, " "),
-            count: typeof t.count === "number" ? t.count : parseInt(String(t.count || 0), 10),
-          }));
-        }
-      }
-    } catch {}
-    return [];
-  }
+  async getTags(): Promise<SourceTaxonomyItem[]> { return (await this.getTagsPage(0)).tags; }
+  async getTagsPage(page: number) { return fetchRule34TagPage(page); }
 
   async healthCheck(): Promise<{ ok: boolean; latencyMs: number; error?: string }> {
     const startedAt = Date.now();

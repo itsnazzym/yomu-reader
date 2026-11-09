@@ -146,10 +146,12 @@ export interface SourceAdapter {
   getRandomNativeId?(request?: SourceRequestOptions): Promise<string>;
   /**
    * Liste réelle des tags du site (périmètre : tags uniquement). Absente si
-   * la source n'expose pas de taxonomie exploitable ; l'appelant retombe
-   * alors sur la DB statique nhentai.
+   * la source n'expose pas de taxonomie exploitable. Ne jamais substituer
+   * le catalogue d'une autre source.
    */
   getTags?(request?: SourceRequestOptions): Promise<SourceTaxonomyItem[]>;
+  /** Parcours des catalogues volumineux sans plafond arbitraire de tags. */
+  getTagsPage?(page: number): Promise<{ tags: SourceTaxonomyItem[]; hasMore: boolean }>;
   /**
    * Ping léger (search → getGallery → HEAD). Absent = sonde générique
    * via probeAdapterHealth.
@@ -159,6 +161,8 @@ export interface SourceAdapter {
 
 /** Entrée de la liste de tags native d'une source. */
 export interface SourceTaxonomyItem {
+  /** Espace de recherche natif : tag, artist, female, male, etc. */
+  type?: string;
   /** Libellé tel qu'utilisé dans la recherche du site. */
   name: string;
   /** Nombre de galeries portant ce tag, quand le site le fournit. */

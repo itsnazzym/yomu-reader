@@ -14,8 +14,9 @@ export function dedupeTags(tags: SourceTaxonomyItem[]): SourceTaxonomyItem[] {
   const seen = new Set<string>();
   const out: SourceTaxonomyItem[] = [];
   for (const t of tags) {
-    const key = normalizeName(t.name);
-    if (!key || seen.has(key)) continue;
+    const name = typeof t.name === "string" ? normalizeName(t.name) : "";
+    const key = `${t.type || "tag"}:${name}`;
+    if (!name || seen.has(key)) continue;
     seen.add(key);
     out.push(t);
   }

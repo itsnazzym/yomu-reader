@@ -270,11 +270,12 @@ export class ThreeHentaiSource implements SourceAdapter {
   /**
    * Liste réelle des tags du site : une requête par lettre (#, a…z), en lots
    * parallèles. Chaque item porte son compteur (data-qty). Une lettre en
-   * échec est ignorée : le reste de la liste reste exploitable.
+   * échec rend le chargement incomplet ; le cache précédent reste utilisable.
    */
   async getTags(): Promise<SourceTaxonomyItem[]> {
     const letters = ["%23", ..."abcdefghijklmnopqrstuvwxyz"];
     const results: SourceTaxonomyItem[] = [];
+    let failures = 0;
     const BATCH = 6;
     for (let i = 0; i < letters.length; i += BATCH) {
       const batch = letters.slice(i, i + BATCH);
@@ -282,10 +283,11 @@ export class ThreeHentaiSource implements SourceAdapter {
         batch.map((l) => fetchHtml(`${BASE}/tags?letter=${l}`))
       );
       for (const outcome of settled) {
-        if (outcome.status !== "fulfilled") continue;
+        if (outcome.status !== "fulfilled") { failures++; continue; }
         results.push(...parseThreeHentaiTagsPage(outcome.value));
       }
     }
+    if (failures || !results.length) throw new Error("Le répertoire 3Hentai est incomplet. Réessayez pour charger toutes les lettres.");
     return results;
   }
 

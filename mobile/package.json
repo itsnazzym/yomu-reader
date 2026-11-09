@@ -9,7 +9,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "eslint .",
-    "test": "node test/bundle.mjs && node --test test/engine.test.cjs test/resumable.test.cjs test/sourcesHtml.test.cjs test/sources.test.cjs test/cloudSync.test.cjs test/tablerIcons.test.cjs test/withAndroidDoh.test.cjs test/stabilization.test.cjs test/privacyNative.test.cjs test/uiUx.test.cjs test/sessionSecurity.test.cjs",
+    "test": "node test/bundle.mjs && node --test test/engine.test.cjs test/resumable.test.cjs test/sourcesHtml.test.cjs test/sources.test.cjs test/cloudSync.test.cjs test/tablerIcons.test.cjs test/withAndroidDoh.test.cjs test/stabilization.test.cjs test/privacyNative.test.cjs test/uiUx.test.cjs test/tagCatalog.test.cjs test/sessionSecurity.test.cjs",
     "doctor": "npx expo-doctor",
     "prebuild:android": "npx expo prebuild --platform android",
     "setup:signing": "node scripts/setup-release-signing.cjs --apply",

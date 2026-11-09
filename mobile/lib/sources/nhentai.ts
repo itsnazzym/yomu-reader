@@ -74,10 +74,9 @@ export class NhentaiSource implements SourceAdapter {
 
   /** DB statique embarquée (données réelles nhentai, zéro réseau). */
   async getTags() {
-    return (DB_CATEGORIES.tags || []).map((t) => ({
-      name: t.name,
-      count: t.count,
-    }));
+    return Object.entries(DB_CATEGORIES).flatMap(([category, tags]) => tags.map(t => ({
+      name: t.name, count: t.count, type: ({ tags: "tag", artists: "artist", characters: "character", parodies: "parody", groups: "group", languages: "language" } as Record<string, string>)[category] || "tag",
+    })));
   }
 
   async healthCheck() {

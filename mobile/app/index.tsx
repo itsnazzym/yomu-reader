@@ -126,8 +126,8 @@ export default function HomeScreen() {
 
     // Un tag sélectionné depuis la taxonomie d'une source cible
     // automatiquement cette source pour que les résultats viennent du bon site.
-    if (src && ["nhentai", "3hentai", "doujins", "hitomi"].includes(src)) {
-      const sid = src as SourceId;
+    if (src && ["all", "nhentai", "3hentai", "doujins", "hitomi", "ehentai", "rule34"].includes(src)) {
+      const sid = src as SourceId | "all";
       setActiveSource((prev) => (prev === sid ? prev : sid));
       setPage(1);
     }

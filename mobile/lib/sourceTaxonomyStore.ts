@@ -1,31 +1,33 @@
 /**
  * Cache des listes de tags par source (getTags des adaptateurs).
  *
- * - Cache AsyncStorage `@src_tax_<source>` avec TTL 7 jours ; en cas d'échec
+ * - Cache AsyncStorage segmenté `@src_tax_v3_<source>` avec TTL 7 jours ; en cas d'échec
  *   réseau on retombe sur le cache périmé plutôt que d'échouer.
  * - Doujins : la page /tags officielle n'expose que ~36 tags. On enrichit
  *   donc cumulativement avec les tags observés dans les listings /folders
- *   (recordObservedTags, appelé fire-and-forget par l'adaptateur), plafonné
- *   à OBSERVED_CAP entrées FIFO.
+ *   (recordObservedTags, appelé par l'adaptateur), sans retirer les anciens tags.
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { createWriteQueue } from "./persistQueue";
 import { dedupeTags } from "./sources/tagUtils";
 import type { SourceId, SourceTaxonomyItem } from "./sources/types";
 
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const OBSERVED_KEY = "@src_tax_doujins_seen";
-const OBSERVED_CAP = 2000;
+const CHUNK_SIZE = 1000;
+const observedWrites = createWriteQueue();
 
 interface TaxonomyCache {
   updatedAt: number;
   tags: SourceTaxonomyItem[];
+  chunks?: string[];
 }
 
 const inflight = new Map<string, Promise<SourceTaxonomyItem[]>>();
 
 function cacheKey(source: SourceId): string {
-  return `@src_tax_${source}`;
+  return `@src_tax_v3_${source}`;
 }
 
 function normalizeName(name: string): string {
@@ -37,8 +39,12 @@ async function readCache(source: SourceId): Promise<TaxonomyCache | null> {
     const raw = await AsyncStorage.getItem(cacheKey(source));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as TaxonomyCache;
-    if (!Array.isArray(parsed.tags)) return null;
-    return parsed;
+    if (!Array.isArray(parsed.chunks)) return null;
+    const pages = await Promise.all(parsed.chunks.map(key => AsyncStorage.getItem(key)));
+    if (pages.some(page => !page)) return null;
+    const tags: unknown[] = pages.flatMap(page => JSON.parse(page!));
+    if (!tags.every(tag => tag && typeof tag === "object" && "name" in tag && typeof tag.name === "string")) return null;
+    return { ...parsed, tags: tags as SourceTaxonomyItem[] };
   } catch {
     return null;
   }
@@ -48,33 +54,50 @@ async function writeCache(
   source: SourceId,
   tags: SourceTaxonomyItem[]
 ): Promise<void> {
-  const payload: TaxonomyCache = { updatedAt: Date.now(), tags };
-  await AsyncStorage.setItem(cacheKey(source), JSON.stringify(payload));
+  // Keep each SQLite value below Android CursorWindow limits.
+  const previous = await readCache(source);
+  const generation = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const chunks: string[] = [];
+  try {
+    for (let i = 0; i < tags.length; i += CHUNK_SIZE) {
+      const key = `${cacheKey(source)}_${generation}_${i / CHUNK_SIZE}`;
+      chunks.push(key);
+      await AsyncStorage.setItem(key, JSON.stringify(tags.slice(i, i + CHUNK_SIZE)));
+    }
+    await AsyncStorage.setItem(cacheKey(source), JSON.stringify({ updatedAt: Date.now(), chunks }));
+    await Promise.all((previous?.chunks || []).map(key => AsyncStorage.removeItem(key).catch(() => {})));
+  } catch {
+    await Promise.all(chunks.map(key => AsyncStorage.removeItem(key).catch(() => {})));
+    // A full cache must not hide a successfully fetched catalogue.
+  }
 }
 
 /* ── Cumul doujins : tags vus dans les listings /folders ─────────────── */
 
 export async function recordObservedTags(names: string[]): Promise<void> {
   if (!names.length) return;
-  try {
-    const raw = await AsyncStorage.getItem(OBSERVED_KEY);
-    let list: string[] = raw ? (JSON.parse(raw) as string[]) : [];
-    const existing = new Set(list.map(normalizeName));
-    for (const n of names) {
-      const key = normalizeName(n);
-      if (!key || existing.has(key)) continue;
-      existing.add(key);
-      list.push(n);
+  return observedWrites.enqueue(async () => {
+    try {
+      const raw = await AsyncStorage.getItem(OBSERVED_KEY);
+      const parsed: unknown = raw ? JSON.parse(raw) : [];
+      const list: string[] = Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : [];
+      const existing = new Set(list.map(normalizeName));
+      for (const n of names) {
+        if (typeof n !== "string") continue;
+        const key = normalizeName(n);
+        if (!key || existing.has(key)) continue;
+        existing.add(key);
+        list.push(n);
+      }
+      await AsyncStorage.setItem(OBSERVED_KEY, JSON.stringify(list));
+    } catch {
+      // Non bloquant : le cumul est une optimisation, jamais une obligation.
     }
-    // FIFO : on garde les plus récents si dépassement du plafond.
-    if (list.length > OBSERVED_CAP) list = list.slice(-OBSERVED_CAP);
-    await AsyncStorage.setItem(OBSERVED_KEY, JSON.stringify(list));
-  } catch {
-    // Non bloquant : le cumul est une optimisation, jamais une obligation.
-  }
+  });
 }
 
 async function readObservedTags(): Promise<string[]> {
+  await observedWrites.flush();
   try {
     const raw = await AsyncStorage.getItem(OBSERVED_KEY);
     const list = raw ? (JSON.parse(raw) as unknown) : [];
@@ -95,13 +118,14 @@ async function readObservedTags(): Promise<string[]> {
  */
 export async function getSourceTags(
   source: SourceId,
-  fetcher: () => Promise<SourceTaxonomyItem[]>
+  fetcher: () => Promise<SourceTaxonomyItem[]>,
+  options: { refresh?: boolean } = {}
 ): Promise<SourceTaxonomyItem[]> {
   if (inflight.has(source)) return inflight.get(source)!;
 
   const task = (async (): Promise<SourceTaxonomyItem[]> => {
     const cached = await readCache(source);
-    if (cached && Date.now() - cached.updatedAt < TTL_MS) {
+    if (!options.refresh && cached && Date.now() - cached.updatedAt < TTL_MS) {
       if (source === "doujins") return mergeDoujins(cached.tags);
       return cached.tags;
     }
@@ -111,15 +135,12 @@ export async function getSourceTags(
       if (source === "doujins") return mergeDoujins(fresh);
       return fresh;
     } catch (err) {
-      console.warn(`[sourceTaxonomy] fetch ${source} KO, fallback cache:`, err);
       if (cached && cached.tags.length > 0) {
         return source === "doujins" ? mergeDoujins(cached.tags) : cached.tags;
       }
       throw err instanceof Error ? err : new Error(String(err));
-    } finally {
-      inflight.delete(source);
     }
-  })();
+  })().finally(() => { inflight.delete(source); });
 
   inflight.set(source, task);
   return task;
@@ -133,5 +154,6 @@ async function mergeDoujins(official: SourceTaxonomyItem[]): Promise<SourceTaxon
 
 /** Force un rafraîchissement au prochain appel (pull-to-refresh futur). */
 export async function invalidateSourceTags(source: SourceId): Promise<void> {
-  await AsyncStorage.removeItem(cacheKey(source)).catch(() => {});
+  const cached = await readCache(source);
+  await Promise.all([cacheKey(source), ...(cached?.chunks || [])].map(key => AsyncStorage.removeItem(key).catch(() => {})));
 }
