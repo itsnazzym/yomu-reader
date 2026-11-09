@@ -1,15 +1,32 @@
-import React, { useState, useEffect } from "react";
-import { StyleSheet, View, Text, TextInput, ActivityIndicator, Alert, TouchableOpacity, Linking, Keyboard, type TextInputProps } from "react-native";
+import React, { useState, useEffect, useRef } from "react";
+import {
+  StyleSheet,
+  View,
+  Text,
+  TextInput,
+  ActivityIndicator,
+  Alert,
+  TouchableOpacity,
+  Linking,
+  Keyboard,
+  type TextInputProps,
+} from "react-native";
 import { AnimatePresence } from "moti";
 import { MotionSection } from "@/components/motion/MotionSection";
 import { AuthMotionFeedback } from "@/components/motion/AuthMotionFeedback";
-import { IconBook, IconExternalLink } from "@tabler/icons-react-native";
+import { IconExternalLink } from "@tabler/icons-react-native";
 import { useTheme } from "@/lib/ThemeContext";
 import { CardPressable } from "@/components/ui/CardPressable";
 import { ButtonLabel } from "@/components/ui/ButtonLabel";
 import { AuthModalShell } from "@/components/auth/AuthModalShell";
 import { lightTap } from "@/lib/haptics";
-import { clearSourceAuth, loginEhentaiWithCookies, loginRule34, parseCookieString, useSourceAuth } from "@/lib/sources/authStore";
+import {
+  clearSourceAuth,
+  loginEhentaiWithCookies,
+  loginRule34,
+  parseCookieString,
+  useSourceAuth,
+} from "@/lib/sources/authStore";
 import { parseRule34CredentialInput } from "@/lib/sources/credentialInput";
 import type { SourceId } from "@/lib/sources/types";
 import { EhentaiLoginModal } from "./EhentaiLoginModal";
@@ -18,16 +35,28 @@ import { AuthGuideModal, type GuideType } from "./AuthGuideModal";
 
 function AuthField({ label, ...props }: TextInputProps & { label: string }) {
   const { colors } = useTheme();
-  return <View style={styles.field}>
-    <Text style={[styles.fieldLabel, { color: colors.txt }]}>{label}</Text>
-    <TextInput {...props} accessibilityLabel={label} autoCapitalize="none" autoCorrect={false}
-      placeholderTextColor={colors.sub} style={[styles.input, { color: colors.txt, backgroundColor: colors.bg, borderColor: colors.tagBg }]} />
-  </View>;
+  return (
+    <View style={styles.field}>
+      <Text style={[styles.fieldLabel, { color: colors.txt }]}>{label}</Text>
+      <TextInput
+        {...props}
+        accessibilityLabel={label}
+        autoCapitalize="none"
+        autoCorrect={false}
+        placeholderTextColor={colors.sub}
+        style={[
+          styles.input,
+          { color: colors.txt, backgroundColor: colors.bg, borderColor: colors.tagBg },
+        ]}
+      />
+    </View>
+  );
 }
 
 export interface SourceAuthModalProps {
   visible: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
   initialSource?: SourceId;
   onOpenNhentaiAuth?: () => void;
 }
@@ -35,6 +64,7 @@ export interface SourceAuthModalProps {
 export function SourceAuthModal({
   visible,
   onClose,
+  onSuccess,
   initialSource = "ehentai",
   onOpenNhentaiAuth,
 }: SourceAuthModalProps) {
@@ -64,13 +94,22 @@ export function SourceAuthModal({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
-    if (!visible) setGuideModalType(null);
+    if (!visible) {
+      setGuideModalType(null);
+      if (closeTimer.current) clearTimeout(closeTimer.current);
+    }
     setActiveTab(initialSource === "rule34" ? "rule34" : "ehentai");
     setErrorMessage(null);
     setSuccessMessage(null);
     setRawCookieString("");
     if (!visible) setBrowserOpen(false);
+
+    return () => {
+      if (closeTimer.current) clearTimeout(closeTimer.current);
+    };
   }, [visible, initialSource]);
 
   useEffect(() => {
@@ -101,13 +140,25 @@ export function SourceAuthModal({
     setErrorMessage(null);
     setSuccessMessage(null);
     try {
-      const result = await loginEhentaiWithCookies(rawCookieString.trim() || {
-        ipb_member_id: ipbMemberId,
-        ipb_pass_hash: ipbPassHash,
-        igneous: igneousCookie,
-      }, exhentaiToggle);
+      const result = await loginEhentaiWithCookies(
+        rawCookieString.trim() || {
+          ipb_member_id: ipbMemberId,
+          ipb_pass_hash: ipbPassHash,
+          igneous: igneousCookie,
+        },
+        exhentaiToggle
+      );
       lightTap();
-      setSuccessMessage(result.isExHentaiEnabled ? "Session ExHentai enregistrée." : "Session E-Hentai enregistrée.");
+      const msg = result.isExHentaiEnabled
+        ? "Session ExHentai enregistrée."
+        : "Session E-Hentai enregistrée.";
+      setSuccessMessage(msg);
+      onSuccess?.();
+
+      if (closeTimer.current) clearTimeout(closeTimer.current);
+      closeTimer.current = setTimeout(() => {
+        onClose();
+      }, 900);
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : String(err));
     } finally {
@@ -135,7 +186,9 @@ export function SourceAuthModal({
               setRawCookieString("");
               setSuccessMessage("Session E-Hentai déconnectée.");
               lightTap();
-            } catch { setErrorMessage("Impossible d’effacer la session sécurisée. Réessayez."); }
+            } catch {
+              setErrorMessage("Impossible d’effacer la session sécurisée. Réessayez.");
+            }
           },
         },
       ]
@@ -153,6 +206,12 @@ export function SourceAuthModal({
       await loginRule34(cleanUid, cleanKey);
       lightTap();
       setSuccessMessage("Compte Rule34 lié avec succès !");
+      onSuccess?.();
+
+      if (closeTimer.current) clearTimeout(closeTimer.current);
+      closeTimer.current = setTimeout(() => {
+        onClose();
+      }, 900);
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : String(err));
     } finally {
@@ -176,7 +235,9 @@ export function SourceAuthModal({
               setRule34ApiKey("");
               setSuccessMessage("Identifiants Rule34 retirés.");
               lightTap();
-            } catch { setErrorMessage("Impossible d’effacer la session sécurisée. Réessayez."); }
+            } catch {
+              setErrorMessage("Impossible d’effacer la session sécurisée. Réessayez.");
+            }
           },
         },
       ]
@@ -191,120 +252,393 @@ export function SourceAuthModal({
     } else if (field === "userId") setRule34UserId(text);
     else setRule34ApiKey(text);
   };
+
   const switchSource = (source: SourceId) => {
     Keyboard.dismiss();
     setActiveTab(source);
     setErrorMessage(null);
     setSuccessMessage(null);
   };
-  const openGuide = (type: GuideType) => { Keyboard.dismiss(); setGuideModalType(type); };
+
+  const openGuide = (type: GuideType) => {
+    Keyboard.dismiss();
+    setGuideModalType(type);
+  };
+
+  const auth = activeTab === "rule34" ? rule34Auth : ehentaiAuth;
   const guideLink = (type: GuideType) => (
-    <TouchableOpacity onPress={() => openGuide(type)} style={styles.help} accessibilityRole="button">
-      <IconBook size={18} color={colors.metaText} />
-      <ButtonLabel style={[styles.helpText, { color: colors.metaText }]}>Guide illustré pas à pas</ButtonLabel>
+    <TouchableOpacity
+      accessibilityRole="button"
+      style={styles.help}
+      onPress={() => openGuide(type)}
+    >
+      <IconExternalLink size={16} color={colors.metaText} />
+      <ButtonLabel style={[styles.helpText, { color: colors.metaText }]}>
+        {type === "rule34_api"
+          ? "Guide pas à pas Rule34"
+          : type === "ehentai_cookies"
+          ? "Guide pas à pas cookies"
+          : "Guide pas à pas nHentai"}
+      </ButtonLabel>
     </TouchableOpacity>
   );
-  const auth = activeTab === "rule34" ? rule34Auth : ehentaiAuth;
-  return <>
-    <AuthModalShell visible={visible && guideModalType === null && !browserOpen} onClose={onClose} title="Comptes et sources">
-      <Text style={[styles.description, { color: colors.sub }]}>Chaque source utilise ses propres identifiants.</Text>
-      <View style={styles.tabs}>
-        {(["ehentai", "rule34"] as const).map(source => <TouchableOpacity key={source}
-          disabled={loading} onPress={() => switchSource(source)} accessibilityRole="tab"
-          accessibilityState={{ selected: activeTab === source, disabled: loading }}
-          style={[styles.tab, { backgroundColor: activeTab === source ? colors.tagBg : colors.bg }]}>
-          <ButtonLabel style={[styles.tabText, { color: activeTab === source ? colors.txt : colors.sub }]}>{source === "ehentai" ? "E-Hentai" : "Rule34"}</ButtonLabel>
-        </TouchableOpacity>)}
-      </View>
-      <AnimatePresence exitBeforeEnter>
-      <MotionSection key={`${activeTab}:${ehentaiLoginMode}`}>
-      <Text accessibilityLiveRegion="polite" style={[styles.description, { color: colors.sub }]}>
-        {auth.isLoggedIn ? `Connecté · ${auth.username || (activeTab === "rule34" ? "Rule34" : "E-Hentai")}` : activeTab === "rule34" ? "Une clé API est nécessaire pour consulter cette source." : "Mode invité · Connectez-vous pour accéder à votre compte."}
-      </Text>
-      {activeTab === "ehentai" ? <>
-        <Text style={[styles.fieldLabel, { color: colors.txt }]}>Où voulez-vous vous connecter ?</Text>
+
+  return (
+    <>
+      <AuthModalShell visible={visible} onClose={onClose} title="Comptes et sources">
+        <Text style={[styles.description, { color: colors.sub }]}>
+          Chaque source utilise ses propres identifiants.
+        </Text>
         <View style={styles.tabs}>
-          {([false, true] as const).map(ex => <TouchableOpacity key={String(ex)} disabled={loading} accessibilityRole="radio"
-            accessibilityState={{ selected: exhentaiToggle === ex }} onPress={() => { setExhentaiToggle(ex); setErrorMessage(null); }}
-            style={[styles.tab, { backgroundColor: exhentaiToggle === ex ? colors.tagBg : colors.bg }]}>
-            <ButtonLabel style={[styles.tabText, { color: colors.txt }]}>{ex ? "ExHentai" : "E-Hentai"}</ButtonLabel>
-          </TouchableOpacity>)}
+          {(["ehentai", "rule34"] as const).map((source) => (
+            <TouchableOpacity
+              key={source}
+              disabled={loading}
+              onPress={() => switchSource(source)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: activeTab === source, disabled: loading }}
+              style={[
+                styles.tab,
+                { backgroundColor: activeTab === source ? colors.tagBg : colors.bg },
+              ]}
+            >
+              <ButtonLabel
+                style={[
+                  styles.tabText,
+                  { color: activeTab === source ? colors.txt : colors.sub },
+                ]}
+              >
+                {source === "ehentai" ? "E-Hentai" : "Rule34"}
+              </ButtonLabel>
+            </TouchableOpacity>
+          ))}
         </View>
-        <View style={styles.tabs}>
-          {(["browser", "cookies"] as const).map(mode => <TouchableOpacity key={mode} disabled={loading}
-            onPress={() => { Keyboard.dismiss(); setEhentaiLoginMode(mode); setErrorMessage(null); setSuccessMessage(null); }}
-            accessibilityRole="tab" accessibilityState={{ selected: ehentaiLoginMode === mode, disabled: loading }}
-            style={[styles.tab, { backgroundColor: ehentaiLoginMode === mode ? colors.tagBg : colors.bg }]}>
-            <ButtonLabel style={[styles.tabText, { color: colors.txt }]}>{mode === "browser" ? "Connexion directe" : "Importer des cookies"}</ButtonLabel>
-          </TouchableOpacity>)}
-        </View>
-        {ehentaiLoginMode === "browser" ? <>
-          <Text style={[styles.description, { color: colors.txt }]}>Un seul compte pour les deux sites.</Text>
-          <Text style={[styles.description, { color: colors.sub }]}>Ouvrez la page officielle, connectez-vous, puis Yomu récupère votre session. Aucun cookie à chercher ni mot de passe à enregistrer.</Text>
-          {exhentaiToggle && <Text style={[styles.description, { color: colors.sub }]}>ExHentai reste soumis aux droits d’accès de votre compte.</Text>}
-        </> : <>
-          <Text style={[styles.description, { color: colors.sub }]}>Collez vos cookies de navigateur ou de JHentai. Les champs sont remplis automatiquement.</Text>
-          <AuthField label="Cookies de session" value={rawCookieString} onChangeText={handleRawCookiePaste} secureTextEntry editable={!loading} placeholder="ipb_member_id=…; ipb_pass_hash=…" />
-          <TouchableOpacity accessibilityRole="button" accessibilityState={{ expanded: manualCookies }} style={styles.help} onPress={() => setManualCookies(value => !value)}>
-            <ButtonLabel style={[styles.helpText, { color: colors.txt }]}>{manualCookies ? "Masquer les valeurs séparées" : "Renseigner les valeurs séparément"}</ButtonLabel>
-          </TouchableOpacity>
-          {manualCookies && <>
-            <AuthField label="Identifiant membre · ipb_member_id" value={ipbMemberId} onChangeText={setIpbMemberId} keyboardType="number-pad" editable={!loading} />
-            <AuthField label="Cookie de connexion · ipb_pass_hash" value={ipbPassHash} onChangeText={setIpbPassHash} secureTextEntry editable={!loading} />
-            <AuthField label="Cookie ExHentai · igneous" value={igneousCookie} onChangeText={setIgneousCookie} secureTextEntry editable={!loading} />
-          </>}
-          {exhentaiToggle && <Text style={[styles.description, { color: colors.sub }]}>ExHentai demande aussi un cookie igneous valide.</Text>}
-          {guideLink("ehentai_cookies")}
-        </>}
-      </> : <>
-        <Text style={[styles.description, { color: colors.sub }]}>Collez votre User ID et votre clé API, ou la ligne complète dans l’un des champs.</Text>
-        <TouchableOpacity accessibilityRole="link" style={styles.help}
-          onPress={() => { void Linking.openURL("https://rule34.xxx/index.php?page=account&s=options").catch(() => setErrorMessage("Impossible d’ouvrir le navigateur. Réessayez.")); }}>
-          <IconExternalLink size={18} color={colors.metaText} />
-          <ButtonLabel style={[styles.helpText, { color: colors.metaText }]}>Ouvrir les options de mon compte Rule34</ButtonLabel>
-        </TouchableOpacity>
-        {guideLink("rule34_api")}
-        <AuthField label="User ID Rule34" value={rule34UserId} onChangeText={text => updateRule34Field("userId", text)} editable={!loading} placeholder="Identifiant ou ligne complète" />
-        <AuthField label="Clé API Rule34" value={rule34ApiKey} onChangeText={text => updateRule34Field("apiKey", text)} secureTextEntry editable={!loading} />
-      </>}
-      <AuthMotionFeedback loading={loading} error={errorMessage} success={successMessage} active={visible && guideModalType === null && !browserOpen} />
-      <CardPressable onPress={activeTab === "rule34" ? handleRule34Login : ehentaiLoginMode === "browser" ? () => { Keyboard.dismiss(); setBrowserOpen(true); } : handleEhentaiLogin} disabled={loading}
-        accessibilityRole="button" accessibilityState={{ busy: loading, disabled: loading }} style={styles.primaryBtn}>
-        {loading && <ActivityIndicator color="#20252b" />}
-        <ButtonLabel style={styles.primaryText}>{loading ? "Connexion en cours…" : activeTab === "rule34" ? "Enregistrer la clé Rule34" : ehentaiLoginMode === "browser" ? `Ouvrir la connexion ${exhentaiToggle ? "ExHentai" : "E-Hentai"}` : "Enregistrer les cookies"}</ButtonLabel>
-      </CardPressable>
-      {auth.isLoggedIn && <TouchableOpacity disabled={loading} accessibilityRole="button" style={styles.help}
-        onPress={activeTab === "rule34" ? handleRule34Logout : handleEhentaiLogout}>
-        <ButtonLabel style={styles.errorText}>Déconnecter ce compte</ButtonLabel>
-      </TouchableOpacity>}
-      {onOpenNhentaiAuth && <TouchableOpacity disabled={loading} accessibilityRole="button" style={styles.help}
-        onPress={() => { onClose(); onOpenNhentaiAuth(); }}>
-        <ButtonLabel style={[styles.helpText, { color: colors.txt }]}>Gérer mon compte nHentai</ButtonLabel>
-      </TouchableOpacity>}
-      {guideLink("nhentai_session")}
-      </MotionSection>
-      </AnimatePresence>
-    </AuthModalShell>
-    {visible && browserOpen && <EhentaiLoginModal target={exhentaiToggle ? "exhentai" : "ehentai"} onClose={() => setBrowserOpen(false)} onSuccess={ex => {
-      setBrowserOpen(false); setErrorMessage(null); setSuccessMessage(ex ? "Connecté à ExHentai." : "Connecté à E-Hentai."); lightTap();
-    }} />}
-    <AuthGuideModal visible={visible && guideModalType !== null} guideType={guideModalType} onClose={() => setGuideModalType(null)} />
-  </>;
+
+        <AnimatePresence exitBeforeEnter>
+          <MotionSection key={`${activeTab}:${ehentaiLoginMode}`}>
+            <Text accessibilityLiveRegion="polite" style={[styles.description, { color: colors.sub }]}>
+              {auth.isLoggedIn
+                ? `Connecté · ${auth.username || (activeTab === "rule34" ? "Rule34" : "E-Hentai")}`
+                : activeTab === "rule34"
+                ? "Une clé API est nécessaire pour consulter cette source."
+                : "Mode invité · Connectez-vous pour accéder à votre compte."}
+            </Text>
+
+            {activeTab === "ehentai" ? (
+              <>
+                <Text style={[styles.fieldLabel, { color: colors.txt }]}>
+                  Où voulez-vous vous connecter ?
+                </Text>
+                <View style={styles.tabs}>
+                  {([false, true] as const).map((ex) => (
+                    <TouchableOpacity
+                      key={String(ex)}
+                      disabled={loading}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: exhentaiToggle === ex }}
+                      onPress={() => {
+                        setExhentaiToggle(ex);
+                        setErrorMessage(null);
+                      }}
+                      style={[
+                        styles.tab,
+                        { backgroundColor: exhentaiToggle === ex ? colors.tagBg : colors.bg },
+                      ]}
+                    >
+                      <ButtonLabel style={[styles.tabText, { color: colors.txt }]}>
+                        {ex ? "ExHentai" : "E-Hentai"}
+                      </ButtonLabel>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <View style={styles.tabs}>
+                  {(["browser", "cookies"] as const).map((mode) => (
+                    <TouchableOpacity
+                      key={mode}
+                      disabled={loading}
+                      onPress={() => {
+                        Keyboard.dismiss();
+                        setEhentaiLoginMode(mode);
+                        setErrorMessage(null);
+                        setSuccessMessage(null);
+                      }}
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected: ehentaiLoginMode === mode, disabled: loading }}
+                      style={[
+                        styles.tab,
+                        { backgroundColor: ehentaiLoginMode === mode ? colors.tagBg : colors.bg },
+                      ]}
+                    >
+                      <ButtonLabel style={[styles.tabText, { color: colors.txt }]}>
+                        {mode === "browser" ? "Connexion directe" : "Importer des cookies"}
+                      </ButtonLabel>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {ehentaiLoginMode === "browser" ? (
+                  <>
+                    <Text style={[styles.description, { color: colors.txt }]}>
+                      Un seul compte pour les deux sites.
+                    </Text>
+                    <Text style={[styles.description, { color: colors.sub }]}>
+                      Ouvrez la page officielle, connectez-vous, puis Yomu récupère votre session. Aucun
+                      cookie à chercher ni mot de passe à enregistrer.
+                    </Text>
+                    {exhentaiToggle && (
+                      <Text style={[styles.description, { color: colors.sub }]}>
+                        ExHentai reste soumis aux droits d’accès de votre compte.
+                      </Text>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <Text style={[styles.description, { color: colors.sub }]}>
+                      Collez vos cookies de navigateur ou de JHentai. Les champs sont remplis
+                      automatiquement.
+                    </Text>
+                    <AuthField
+                      label="Cookies de session"
+                      value={rawCookieString}
+                      onChangeText={handleRawCookiePaste}
+                      secureTextEntry
+                      editable={!loading}
+                      placeholder="ipb_member_id=…; ipb_pass_hash=…"
+                    />
+                    <TouchableOpacity
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded: manualCookies }}
+                      style={styles.help}
+                      onPress={() => setManualCookies((value) => !value)}
+                    >
+                      <ButtonLabel style={[styles.helpText, { color: colors.txt }]}>
+                        {manualCookies
+                          ? "Masquer les valeurs séparées"
+                          : "Renseigner les valeurs séparément"}
+                      </ButtonLabel>
+                    </TouchableOpacity>
+                    {manualCookies && (
+                      <>
+                        <AuthField
+                          label="Identifiant membre · ipb_member_id"
+                          value={ipbMemberId}
+                          onChangeText={setIpbMemberId}
+                          keyboardType="number-pad"
+                          editable={!loading}
+                        />
+                        <AuthField
+                          label="Cookie de connexion · ipb_pass_hash"
+                          value={ipbPassHash}
+                          onChangeText={setIpbPassHash}
+                          secureTextEntry
+                          editable={!loading}
+                        />
+                        <AuthField
+                          label="Cookie ExHentai · igneous"
+                          value={igneousCookie}
+                          onChangeText={setIgneousCookie}
+                          secureTextEntry
+                          editable={!loading}
+                        />
+                      </>
+                    )}
+                    {exhentaiToggle && (
+                      <Text style={[styles.description, { color: colors.sub }]}>
+                        ExHentai demande aussi un cookie igneous valide.
+                      </Text>
+                    )}
+                    {guideLink("ehentai_cookies")}
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <Text style={[styles.description, { color: colors.sub }]}>
+                  Collez votre User ID et votre clé API, ou la ligne complète dans l’un des champs.
+                </Text>
+                <TouchableOpacity
+                  accessibilityRole="link"
+                  style={styles.help}
+                  onPress={() => {
+                    void Linking.openURL("https://rule34.xxx/index.php?page=account&s=options").catch(
+                      () => setErrorMessage("Impossible d’ouvrir le navigateur. Réessayez.")
+                    );
+                  }}
+                >
+                  <IconExternalLink size={18} color={colors.metaText} />
+                  <ButtonLabel style={[styles.helpText, { color: colors.metaText }]}>
+                    Ouvrir les options de mon compte Rule34
+                  </ButtonLabel>
+                </TouchableOpacity>
+                {guideLink("rule34_api")}
+                <AuthField
+                  label="User ID Rule34"
+                  value={rule34UserId}
+                  onChangeText={(text) => updateRule34Field("userId", text)}
+                  editable={!loading}
+                  placeholder="Identifiant ou ligne complète"
+                />
+                <AuthField
+                  label="Clé API Rule34"
+                  value={rule34ApiKey}
+                  onChangeText={(text) => updateRule34Field("apiKey", text)}
+                  secureTextEntry
+                  editable={!loading}
+                />
+              </>
+            )}
+
+            <AuthMotionFeedback
+              loading={loading}
+              error={errorMessage}
+              success={successMessage}
+              active={visible && guideModalType === null && !browserOpen}
+            />
+
+            <CardPressable
+              onPress={
+                successMessage
+                  ? onClose
+                  : activeTab === "rule34"
+                  ? handleRule34Login
+                  : ehentaiLoginMode === "browser"
+                  ? () => {
+                      Keyboard.dismiss();
+                      setBrowserOpen(true);
+                    }
+                  : handleEhentaiLogin
+              }
+              disabled={loading}
+              accessibilityRole="button"
+              accessibilityState={{ busy: loading, disabled: loading }}
+              style={[
+                styles.primaryBtn,
+                Boolean(successMessage) && { backgroundColor: "#2ec4b6" },
+              ]}
+            >
+              {loading && <ActivityIndicator color="#20252b" />}
+              <ButtonLabel
+                style={[
+                  styles.primaryText,
+                  Boolean(successMessage) && { color: "#ffffff" },
+                ]}
+              >
+                {loading
+                  ? "Connexion en cours…"
+                  : successMessage
+                  ? "✓ Terminé · Fermer"
+                  : activeTab === "rule34"
+                  ? "Enregistrer la clé Rule34"
+                  : ehentaiLoginMode === "browser"
+                  ? `Ouvrir la connexion ${exhentaiToggle ? "ExHentai" : "E-Hentai"}`
+                  : "Enregistrer les cookies"}
+              </ButtonLabel>
+            </CardPressable>
+
+            {auth.isLoggedIn && (
+              <TouchableOpacity
+                disabled={loading}
+                accessibilityRole="button"
+                style={styles.help}
+                onPress={activeTab === "rule34" ? handleRule34Logout : handleEhentaiLogout}
+              >
+                <ButtonLabel style={styles.errorText}>Déconnecter ce compte</ButtonLabel>
+              </TouchableOpacity>
+            )}
+
+            {onOpenNhentaiAuth && (
+              <TouchableOpacity
+                disabled={loading}
+                accessibilityRole="button"
+                style={styles.help}
+                onPress={() => {
+                  onClose();
+                  onOpenNhentaiAuth();
+                }}
+              >
+                <ButtonLabel style={[styles.helpText, { color: colors.txt }]}>
+                  Gérer mon compte nHentai
+                </ButtonLabel>
+              </TouchableOpacity>
+            )}
+            {guideLink("nhentai_session")}
+          </MotionSection>
+        </AnimatePresence>
+      </AuthModalShell>
+
+      {visible && browserOpen && (
+        <EhentaiLoginModal
+          target={exhentaiToggle ? "exhentai" : "ehentai"}
+          onClose={() => setBrowserOpen(false)}
+          onSuccess={(ex) => {
+            setBrowserOpen(false);
+            setErrorMessage(null);
+            setSuccessMessage(ex ? "Connecté à ExHentai." : "Connecté à E-Hentai.");
+            lightTap();
+            onSuccess?.();
+            if (closeTimer.current) clearTimeout(closeTimer.current);
+            closeTimer.current = setTimeout(() => {
+              onClose();
+            }, 900);
+          }}
+        />
+      )}
+
+      <AuthGuideModal
+        visible={visible && guideModalType !== null}
+        guideType={guideModalType}
+        onClose={() => setGuideModalType(null)}
+      />
+    </>
+  );
 }
 
 const styles = StyleSheet.create({
   description: { fontSize: 14, lineHeight: 21 },
   tabs: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  tab: { flexGrow: 1, flexBasis: "42%", minWidth: 0, minHeight: 48, padding: 12, borderRadius: 12, justifyContent: "center", alignItems: "center" },
+  tab: {
+    flex: 1,
+    minWidth: 100,
+    minHeight: 48,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   tabText: { fontSize: 14, fontWeight: "600" },
   field: { gap: 8 },
   fieldLabel: { fontSize: 14, fontWeight: "500" },
-  input: { minHeight: 52, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 },
-  help: { minHeight: 48, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", paddingVertical: 10 },
+  input: {
+    minHeight: 52,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+  },
+  help: {
+    minHeight: 48,
+    flexDirection: "row",
+    gap: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+  },
   helpText: { fontSize: 14, textDecorationLine: "underline" },
   switchRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   switchLabel: { flex: 1, minWidth: 0, fontSize: 14 },
-  primaryBtn: { minHeight: 52, padding: 14, borderRadius: 12, flexDirection: "row", gap: 10, justifyContent: "center", alignItems: "center", backgroundColor: "#d9dfe7" },
+  primaryBtn: {
+    minHeight: 52,
+    padding: 14,
+    borderRadius: 12,
+    flexDirection: "row",
+    gap: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#d9dfe7",
+  },
   primaryText: { fontSize: 15, fontWeight: "700", color: "#20252b" },
   errorText: { color: "#ffb4ab", fontSize: 14, lineHeight: 21 },
   successText: { color: "#adcdb8", fontSize: 14, lineHeight: 21 },

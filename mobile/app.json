@@ -2,7 +2,7 @@
   "expo": {
     "name": "Yomu Reader",
     "slug": "nhentaidownlo-mobile",
-    "version": "2.0.2",
+    "version": "2.0.3",
     "orientation": "default",
     "icon": "./assets/images/yomu-reader-icon.png",
     "scheme": [
@@ -25,7 +25,7 @@
         "backgroundColor": "#101018"
       },
       "package": "com.nhentaidownlo.mobile",
-      "versionCode": 4,
+      "versionCode": 5,
       "permissions": [
         "INTERNET",
         "ACCESS_NETWORK_STATE",

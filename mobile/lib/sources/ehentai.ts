@@ -32,6 +32,8 @@ import {
 } from "./authStore";
 import {
   getEhentaiCategoryInfo,
+  EHENTAI_CATEGORIES,
+  calculateCategoryBitmask,
 } from "./ehentaiCategories";
 
 const BASE_EHENTAI = "https://e-hentai.org";
@@ -281,6 +283,9 @@ export class EhentaiSource implements SourceAdapter {
     supportsComments: true,
   };
 
+  /** Cache des curseurs nextGid par requête pour pagination fluide sans boucle infinie (JHenTai style) */
+  private searchCursors = new Map<string, Map<number, string>>();
+
   /** Détermine le domaine actif (E-Hentai ou ExHentai) et les headers de requête. */
   private async getRequestConfig(): Promise<{ baseUrl: string; headers: Record<string, string> }> {
     const auth = await getSourceAuth("ehentai");
@@ -303,7 +308,9 @@ export class EhentaiSource implements SourceAdapter {
 
   async search(opts: SourceSearchOptions): Promise<{ cards: SourceGalleryCard[]; hasMore: boolean }> {
     const { baseUrl, headers } = await this.getRequestConfig();
-    const pageIndex = Math.max(0, (opts.page || 1) - 1);
+    const pageNum = Math.max(1, opts.page || 1);
+
+    const cacheKey = `${baseUrl}|${opts.query || ""}|${(opts.categories || []).join(",")}|${opts.pageMin || ""}|${opts.pageMax || ""}|${opts.minRating || ""}|${opts.sort || ""}`;
 
     const params = new URLSearchParams();
     // inline_set=dm_m force l'affichage en mode tableau Minimal+ prévisible
@@ -312,8 +319,55 @@ export class EhentaiSource implements SourceAdapter {
     if (opts.query?.trim()) {
       params.append("f_search", opts.query.trim());
     }
-    if (pageIndex > 0) {
-      params.append("page", String(pageIndex));
+
+    // Gestion du curseur nextGid pour pagination E-Hentai (JHenTai style)
+    if (pageNum === 1) {
+      this.searchCursors.delete(cacheKey);
+    } else {
+      const cursors = this.searchCursors.get(cacheKey);
+      const nextGid = cursors?.get(pageNum);
+      if (nextGid) {
+        params.append("next", nextGid);
+      } else {
+        params.append("page", String(pageNum - 1));
+      }
+    }
+
+    if (opts.categories && opts.categories.length > 0) {
+      const allCategoryKeys = Object.keys(EHENTAI_CATEGORIES);
+      const disabled = allCategoryKeys.filter(
+        (cat) => !opts.categories.some((c) => c.toLowerCase() === cat.toLowerCase())
+      );
+      if (disabled.length > 0) {
+        const mask = calculateCategoryBitmask(disabled);
+        params.append("f_cats", String(mask));
+      }
+    }
+
+    if (opts.pageMin !== undefined || opts.pageMax !== undefined) {
+      params.append("f_sp", "on");
+      if (opts.pageMin !== undefined && opts.pageMin > 0) {
+        params.append("f_spf", String(opts.pageMin));
+      }
+      if (opts.pageMax !== undefined && opts.pageMax > 0) {
+        params.append("f_spt", String(opts.pageMax));
+      }
+    }
+
+    if (opts.minRating !== undefined && opts.minRating > 0) {
+      params.append("f_sr", "on");
+      params.append("f_srdd", String(opts.minRating));
+    }
+
+    if (
+      opts.pageMin !== undefined ||
+      opts.pageMax !== undefined ||
+      (opts.minRating !== undefined && opts.minRating > 0)
+    ) {
+      params.append("advsearch", "1");
+      params.append("f_sname", "on");
+      params.append("f_stags", "on");
+      params.append("f_sdesc", "on");
     }
 
     const url = `${baseUrl}/?${params.toString()}`;
@@ -327,9 +381,26 @@ export class EhentaiSource implements SourceAdapter {
       }
       const html = await response.text();
       const cards = parseEhentaiListingCards(html);
+
+      // Extraction du curseur nextGid dans le HTML (#dnext ou #unext ou next=XXXX)
+      const nextMatch =
+        html.match(/id=["']dnext["'][^>]*href=["'][^"']*(?:[?&]|&amp;)next=([\d-]+)/i) ||
+        html.match(/id=["']unext["'][^>]*href=["'][^"']*(?:[?&]|&amp;)next=([\d-]+)/i) ||
+        html.match(/(?:[?&]|&amp;)next=([\d-]+)/i);
+      const nextCursor = nextMatch ? nextMatch[1] : undefined;
+
+      if (nextCursor) {
+        let cursors = this.searchCursors.get(cacheKey);
+        if (!cursors) {
+          cursors = new Map<number, string>();
+          this.searchCursors.set(cacheKey, cursors);
+        }
+        cursors.set(pageNum + 1, nextCursor);
+      }
+
       return {
         cards,
-        hasMore: cards.length >= 20,
+        hasMore: Boolean(nextCursor) || cards.length >= 25,
       };
     } finally {
       clearTimeout(timer);
@@ -423,12 +494,11 @@ export class EhentaiSource implements SourceAdapter {
       tags.unshift({ name: meta.category, type: "category" });
     }
 
-    // Pré-résolution en parallèle des premières pages pour lancement immédiat du lecteur
-    const preResolveCount = Math.min(3, readerPageLinks.length);
-    const preResolvePromises = readerPageLinks.slice(0, preResolveCount).map((p) =>
-      this.resolvePageImageUrl(p.url, headers).catch(() => "")
-    );
-    await Promise.allSettled(preResolvePromises);
+    // Pré-résolution asynchrone non-bloquante pour affichage instantané de la fiche
+    const preResolveCount = Math.min(2, readerPageLinks.length);
+    readerPageLinks.slice(0, preResolveCount).forEach((p) => {
+      void this.resolvePageImageUrl(p.url, headers).catch(() => "");
+    });
 
     // Construction de la liste des pages pour le lecteur
     const pageUrls: { url: string; width?: number; height?: number }[] = [];

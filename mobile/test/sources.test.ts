@@ -106,3 +106,37 @@ test("galleryLoader forceRefresh ne réutilise pas une requête bloquée", async
     clearSourceGalleryCache();
   }
 });
+
+
+import { getSourceFilterSupport, hasAnyFilterSupport } from "../lib/sources/sourceFilterSupport";
+
+test("sourceFilterSupport: E-Hentai a le filtre complet (catégories, pages, rating)", () => {
+  const eh = getSourceFilterSupport("ehentai");
+  assert.equal(eh.supportsCategories, true);
+  assert.equal(eh.supportedCategories.length, 10);
+  assert.equal(eh.supportsPages, true);
+  assert.equal(eh.supportsRating, true);
+});
+
+test("sourceFilterSupport: nHentai adapte les filtres (pages et catégories OK, note exclue)", () => {
+  const nh = getSourceFilterSupport("nhentai");
+  assert.equal(nh.supportsCategories, true);
+  assert.equal(nh.supportsPages, true);
+  assert.equal(nh.supportsRating, false);
+});
+
+test("sourceFilterSupport: Hitomi adapte aux sous-types sans pages ni note", () => {
+  const hit = getSourceFilterSupport("hitomi");
+  assert.equal(hit.supportsCategories, true);
+  assert.equal(hit.supportedCategories.length, 4);
+  assert.equal(hit.supportsPages, false);
+  assert.equal(hit.supportsRating, false);
+});
+
+test("sourceFilterSupport: hasAnyFilterSupport distingue les sources compatibles", () => {
+  assert.equal(hasAnyFilterSupport("ehentai"), true);
+  assert.equal(hasAnyFilterSupport("nhentai"), true);
+  assert.equal(hasAnyFilterSupport("hitomi"), true);
+  assert.equal(hasAnyFilterSupport("3hentai"), true);
+  assert.equal(hasAnyFilterSupport("doujins"), false);
+});

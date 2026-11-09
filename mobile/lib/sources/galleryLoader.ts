@@ -5,7 +5,7 @@ import type { SourceGallery, SourceId } from "./types";
 
 const MAX_ENTRIES = 40;
 const DEFAULT_TTL_MS = 5 * 60 * 1000;
-const DEFAULT_LOAD_TIMEOUT_MS = 10_000;
+const DEFAULT_LOAD_TIMEOUT_MS = 18_000;
 // Doujins produit des URLs signées : elles ne doivent pas rester longtemps.
 const SIGNED_URL_TTL_MS = 60 * 1000;
 
@@ -76,7 +76,7 @@ export function loadSourceGallery(
       callback();
     };
     const timer = setTimeout(() => {
-      settle(() => reject(new Error("Le chargement de la galerie a dépassé 10 secondes. Réessayez.")));
+      settle(() => reject(new Error("Le chargement de la galerie a pris trop de temps. Réessayez.")));
     }, timeoutMs);
 
     void getSource(source)

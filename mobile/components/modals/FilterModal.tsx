@@ -6,27 +6,39 @@ import {
   Modal,
   Pressable,
   TouchableOpacity,
+  TextInput,
   ScrollView,
   Animated,
   Easing,
 } from "react-native";
 import {
   IconWorld,
-  IconFileText,
   IconCalendar,
   IconChevronRight,
   IconArrowLeft,
   IconCheck,
   IconRotateClockwise,
+  IconHelpCircle,
+  IconChevronDown,
+  IconX,
 } from "@tabler/icons-react-native";
 import { useTheme } from "@/lib/ThemeContext";
-import { ButtonLabel } from "@/components/ui/ButtonLabel";
+import { type SourceId } from "@/lib/sources/types";
+import {
+  getSourceFilterSupport,
+} from "@/lib/sources/sourceFilterSupport";
+import { getEhentaiCategoryInfo } from "@/lib/sources/ehentaiCategories";
 
 export interface FilterOptions {
   sort: "recent" | "popular-today" | "popular-week" | "popular";
   language: string;
   pageRange: string;
   dateFilter: string;
+  keyword?: string;
+  categories?: string[];
+  pageMin?: string;
+  pageMax?: string;
+  minRating?: number; // 0 = all, 1..5
 }
 
 export interface FilterModalProps {
@@ -34,30 +46,79 @@ export interface FilterModalProps {
   onClose: () => void;
   options: FilterOptions;
   onChange: (options: FilterOptions) => void;
+  source?: SourceId | "all";
 }
 
-export function FilterModal({ visible, onClose, options, onChange }: FilterModalProps) {
-  const { colors } = useTheme();
+/** Ordre 1:1 d'affichage des 10 catégories d'après la maquette */
+const CATEGORY_PAIRS: [string, string][] = [
+  ["Doujinshi", "Manga"],
+  ["Image Set", "Game CG"],
+  ["Artist CG", "Cosplay"],
+  ["Non-H", "Asian Porn"],
+  ["Western", "Misc"],
+];
 
-  const [activeSubmenu, setActiveSubmenu] = useState<"none" | "language" | "pages" | "date">("none");
+const RATING_OPTIONS = [
+  { value: 0, label: "Toutes (0★)" },
+  { value: 1, label: "1 ★ et +" },
+  { value: 2, label: "2 ★ et +" },
+  { value: 3, label: "3 ★ et +" },
+  { value: 4, label: "4 ★ et +" },
+  { value: 5, label: "5 ★" },
+];
+
+export function FilterModal({
+  visible,
+  onClose,
+  options,
+  onChange,
+  source = "all",
+}: FilterModalProps) {
+  const { colors } = useTheme();
+  const support = getSourceFilterSupport(source);
+
+  const [activeSubmenu, setActiveSubmenu] = useState<"none" | "language" | "date">("none");
   const [currentSort, setCurrentSort] = useState(options.sort);
   const [currentLang, setCurrentLang] = useState(options.language);
-  const [currentPageRange, setCurrentPageRange] = useState(options.pageRange || "all");
   const [currentDateFilter, setCurrentDateFilter] = useState(options.dateFilter || "all");
 
-  // Slide + fade animation for the menu panel
+  // Nouveaux filtres graphiques
+  const [keyword, setKeyword] = useState(options.keyword || "");
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(() => {
+    if (options.categories && options.categories.length > 0) {
+      return options.categories;
+    }
+    return support.supportedCategories;
+  });
+  const [pageMin, setPageMin] = useState(options.pageMin || "");
+  const [pageMax, setPageMax] = useState(options.pageMax || "");
+  const [minRating, setMinRating] = useState<number>(options.minRating || 0);
+  const [showRatingMenu, setShowRatingMenu] = useState(false);
+  const [showPagesTooltip, setShowPagesTooltip] = useState(false);
+
+  // Animations slide + fade
   const slideY = useRef(new Animated.Value(-20)).current;
   const opacity = useRef(new Animated.Value(0)).current;
-  // Slide for submenu transition
   const submenuSlide = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (visible) {
       setCurrentSort(options.sort);
       setCurrentLang(options.language);
-      setCurrentPageRange(options.pageRange || "all");
       setCurrentDateFilter(options.dateFilter || "all");
+      setKeyword(options.keyword || "");
+      setSelectedCategories(
+        options.categories && options.categories.length > 0
+          ? options.categories
+          : support.supportedCategories
+      );
+      setPageMin(options.pageMin || "");
+      setPageMax(options.pageMax || "");
+      setMinRating(options.minRating || 0);
+      setShowRatingMenu(false);
+      setShowPagesTooltip(false);
       setActiveSubmenu("none");
+
       slideY.setValue(-20);
       opacity.setValue(0);
       Animated.parallel([
@@ -75,9 +136,61 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
         }),
       ]).start();
     }
-  }, [visible, options, opacity, slideY]);
+  }, [visible, options, opacity, slideY, source]);
 
-  const navigateToSubmenu = (menu: "language" | "pages" | "date") => {
+  const toggleCategory = (catName: string) => {
+    setSelectedCategories((prev) => {
+      const exists = prev.some((c) => c.toLowerCase() === catName.toLowerCase());
+      if (exists) {
+        return prev.filter((c) => c.toLowerCase() !== catName.toLowerCase());
+      } else {
+        return [...prev, catName];
+      }
+    });
+  };
+
+  const handleApply = () => {
+    onChange({
+      sort: currentSort,
+      language: currentLang,
+      pageRange: options.pageRange || "all",
+      dateFilter: currentDateFilter,
+      keyword: keyword.trim(),
+      categories: selectedCategories,
+      pageMin: pageMin.trim(),
+      pageMax: pageMax.trim(),
+      minRating: minRating,
+    });
+    onClose();
+  };
+
+  const handleReset = () => {
+    setCurrentSort("recent");
+    setCurrentLang("english");
+    setCurrentDateFilter("all");
+    setKeyword("");
+    setSelectedCategories(support.supportedCategories);
+    setPageMin("");
+    setPageMax("");
+    setMinRating(0);
+    setShowRatingMenu(false);
+    setShowPagesTooltip(false);
+
+    onChange({
+      sort: "recent",
+      language: "english",
+      pageRange: "all",
+      dateFilter: "all",
+      keyword: "",
+      categories: support.supportedCategories,
+      pageMin: "",
+      pageMax: "",
+      minRating: 0,
+    });
+    onClose();
+  };
+
+  const navigateToSubmenu = (menu: "language" | "date") => {
     submenuSlide.setValue(30);
     setActiveSubmenu(menu);
     Animated.timing(submenuSlide, {
@@ -99,36 +212,6 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
     }).start();
   };
 
-  const hasActiveFilters =
-    currentLang !== "english" ||
-    currentPageRange !== "all" ||
-    currentDateFilter !== "all" ||
-    currentSort !== "recent";
-
-  const handleReset = () => {
-    setCurrentSort("recent");
-    setCurrentLang("english");
-    setCurrentPageRange("all");
-    setCurrentDateFilter("all");
-    onChange({
-      sort: "recent",
-      language: "english",
-      pageRange: "all",
-      dateFilter: "all",
-    });
-    onClose();
-  };
-
-  // Tri façon nhentai.net : un mode « Recent | Popular », et une période
-  // (Today / Week / All time) visible seulement en mode Popular.
-  const popularPeriods = [
-    { key: "popular-today", label: "Aujourd'hui" },
-    { key: "popular-week", label: "Cette semaine" },
-    { key: "popular", label: "Tout" },
-  ] as const;
-  const sortMode: "recent" | "popular" =
-    currentSort === "recent" ? "recent" : "popular";
-
   const languages = [
     { key: "all", label: "Toutes les langues" },
     { key: "english", label: "Anglais" },
@@ -140,14 +223,6 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
     { key: "korean", label: "Coréen" },
   ];
 
-  const pageRanges = [
-    { key: "all", label: "Tous les nombres de pages" },
-    { key: "pages:<20", label: "Court (< 20 pages)" },
-    { key: "pages:20-50", label: "Moyen (20–50 pages)" },
-    { key: "pages:50-100", label: "Long (50–100 pages)" },
-    { key: "pages:>100", label: "Très long (> 100 pages)" },
-  ];
-
   const dateFilters = [
     { key: "all", label: "Toutes les dates" },
     { key: "uploaded:today", label: "Aujourd'hui (24 h)" },
@@ -156,31 +231,34 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
     { key: "uploaded:thisyear", label: "Cette année" },
   ];
 
-  const selectSort = (key: FilterOptions["sort"]) => {
-    setCurrentSort(key);
-    onChange({
-      sort: key,
-      language: currentLang,
-      pageRange: currentPageRange,
-      dateFilter: currentDateFilter,
-    });
-    onClose();
-  };
+  const popularPeriods = [
+    { key: "popular-today", label: "Aujourd'hui" },
+    { key: "popular-week", label: "Cette semaine" },
+    { key: "popular", label: "Tout" },
+  ] as const;
+
+  const sortMode: "recent" | "popular" =
+    currentSort === "recent" ? "recent" : "popular";
 
   const getLangLabel = () => {
     const found = languages.find((l) => l.key === currentLang);
     return found ? found.label : "Toutes les langues";
   };
 
-  const getPageLabel = () => {
-    const found = pageRanges.find((p) => p.key === currentPageRange);
-    return found ? found.label : "Tous les nombres de pages";
-  };
-
   const getDateLabel = () => {
     const found = dateFilters.find((d) => d.key === currentDateFilter);
     return found ? found.label : "Toutes les dates";
   };
+
+  // Filtrage des paires de catégories compatibles
+  const visibleCategoryPairs = CATEGORY_PAIRS.map(([left, right]) => {
+    const leftSupported = support.supportedCategories.includes(left);
+    const rightSupported = support.supportedCategories.includes(right);
+    return [leftSupported ? left : null, rightSupported ? right : null] as [
+      string | null,
+      string | null
+    ];
+  }).filter(([left, right]) => left !== null || right !== null);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -197,195 +275,365 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
           ]}
           onStartShouldSetResponder={() => true}
         >
-          {/* Main Filter Menu */}
+          {/* Header 1:1 : Reset à gauche, Titre "Filter" au centre, Validation à droite */}
+          <View style={[styles.headerBar, { borderBottomColor: colors.tagBg }]}>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={handleReset}
+              style={styles.headerBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Réinitialiser les filtres"
+              hitSlop={8}
+            >
+              <IconRotateClockwise size={22} color={colors.accent || "#d1cdd9"} strokeWidth={2} />
+            </TouchableOpacity>
+
+            <View style={styles.headerTitleWrap}>
+              <Text style={styles.headerTitle}>Filter</Text>
+              {source && source !== "all" && (
+                <Text style={[styles.headerSourceBadge, { color: colors.accent }]}>
+                  {source.toUpperCase()}
+                </Text>
+              )}
+            </View>
+
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={handleApply}
+              style={[styles.headerBtn, styles.headerCheckBtn]}
+              accessibilityRole="button"
+              accessibilityLabel="Appliquer les filtres"
+              hitSlop={8}
+            >
+              <IconCheck size={24} color="#ffffff" strokeWidth={2.5} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Corps principal défilable */}
           {activeSubmenu === "none" && (
-            <View>
-              {/* Header Navigation Options */}
-              <View style={[styles.topOptionsGroup, { borderBottomColor: colors.tagBg }]}>
-                {/* Language Row */}
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => navigateToSubmenu("language")}
-                  style={styles.menuOptionRow}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Langue : ${getLangLabel()}`}
-                >
-                  <View style={styles.optionLeft}>
-                    <IconWorld size={16} color={colors.accent} strokeWidth={1.8} style={styles.optionIcon} />
-                    <Text style={styles.optionTitle}>Langue : {getLangLabel()}</Text>
-                  </View>
-                  <IconChevronRight size={16} color="#6b7280" strokeWidth={2} />
-                </TouchableOpacity>
+            <ScrollView
+              style={styles.scrollBody}
+              contentContainerStyle={styles.scrollContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {/* 1. GRILLE DE CATÉGORIES (si supportée par la source) */}
+              {support.supportsCategories && (
+                <View style={styles.categoriesSection}>
+                  {visibleCategoryPairs.map(([left, right], idx) => {
+                    const renderCatBtn = (catName: string | null) => {
+                      if (!catName) {
+                        return <View style={styles.catBtnSpacer} />;
+                      }
+                      const isSelected = selectedCategories.some(
+                        (c) => c.toLowerCase() === catName.toLowerCase()
+                      );
+                      const catInfo = getEhentaiCategoryInfo(catName);
 
-                {/* Pages Row */}
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => navigateToSubmenu("pages")}
-                  style={styles.menuOptionRow}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Pages${currentPageRange !== "all" ? ` : ${getPageLabel()}` : ""}`}
-                >
-                  <View style={styles.optionLeft}>
-                    <IconFileText size={16} color={colors.accent} strokeWidth={1.8} style={styles.optionIcon} />
-                    <Text style={styles.optionTitle}>
-                      Pages {currentPageRange !== "all" ? `(${getPageLabel()})` : ""}
-                    </Text>
-                  </View>
-                  <IconChevronRight size={16} color="#6b7280" strokeWidth={2} />
-                </TouchableOpacity>
+                      return (
+                        <TouchableOpacity
+                          key={catName}
+                          activeOpacity={0.75}
+                          onPress={() => toggleCategory(catName)}
+                          style={[
+                            styles.catBtn,
+                            isSelected
+                              ? [
+                                  styles.catBtnSelected,
+                                  {
+                                    backgroundColor: catInfo?.color || "#5e5873",
+                                    borderColor: catInfo?.color || colors.accent,
+                                  },
+                                ]
+                              : styles.catBtnUnselected,
+                          ]}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: isSelected }}
+                          accessibilityLabel={`Catégorie ${catName}`}
+                        >
+                          <Text
+                            style={[
+                              styles.catBtnText,
+                              isSelected ? styles.catBtnTextSelected : styles.catBtnTextUnselected,
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {catName}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    };
 
-                {/* Date Filter Row */}
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => navigateToSubmenu("date")}
-                  style={styles.menuOptionRow}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Filtre de date${currentDateFilter !== "all" ? ` : ${getDateLabel()}` : ""}`}
-                >
-                  <View style={styles.optionLeft}>
-                    <IconCalendar size={16} color={colors.accent} strokeWidth={1.8} style={styles.optionIcon} />
-                    <Text style={styles.optionTitle}>
-                      Date de mise en ligne {currentDateFilter !== "all" ? `(${getDateLabel()})` : ""}
-                    </Text>
-                  </View>
-                  <IconChevronRight size={16} color="#6b7280" strokeWidth={2} />
-                </TouchableOpacity>
+                    return (
+                      <View key={`cat_row_${idx}`} style={styles.catRow}>
+                        {renderCatBtn(left)}
+                        {renderCatBtn(right)}
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+
+              {/* 2. CHAMP KEYWORD (Recherche textuelle) */}
+              <View style={styles.keywordSection}>
+                <Text style={styles.fieldLabel}>Keyword</Text>
+                <View style={[styles.keywordInputWrap, { borderBottomColor: colors.tagBg }]}>
+                  <TextInput
+                    value={keyword}
+                    onChangeText={setKeyword}
+                    placeholder="Saisir des mots-clés..."
+                    placeholderTextColor="#5a5467"
+                    style={styles.keywordInput}
+                    returnKeyType="done"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  {keyword.length > 0 && (
+                    <TouchableOpacity
+                      onPress={() => setKeyword("")}
+                      style={styles.clearKeywordBtn}
+                      hitSlop={6}
+                    >
+                      <IconX size={16} color="#7c7689" strokeWidth={2} />
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
 
-              {/* SORT Section */}
-              <View style={styles.sortSection}>
-                <Text style={styles.sortHeader}>TRI</Text>
+              {/* 3. PLAGE DE PAGES : Pages Between [ min ] to [ max ] */}
+              {support.supportsPages && (
+                <View style={styles.filterRowSection}>
+                  <View style={styles.filterRowHeader}>
+                    <Text style={styles.rowLabelText}>Pages Between</Text>
+                    <TouchableOpacity
+                      onPress={() => setShowPagesTooltip((prev) => !prev)}
+                      hitSlop={6}
+                      style={styles.helpIconBtn}
+                    >
+                      <IconHelpCircle size={16} color="#8a8397" strokeWidth={2} />
+                    </TouchableOpacity>
+                  </View>
 
-                {/* Mode : Recent | Popular */}
-                <View style={styles.sortModeRow}>
-                  {(["recent", "popular"] as const).map((mode) => {
-                    const isActive = sortMode === mode;
+                  <View style={styles.pagesBetweenInputs}>
+                    <TextInput
+                      value={pageMin}
+                      onChangeText={(val) => setPageMin(val.replace(/[^0-9]/g, ""))}
+                      placeholder="min"
+                      placeholderTextColor="#524d5e"
+                      keyboardType="numeric"
+                      maxLength={5}
+                      style={[styles.pageSquareInput, { borderColor: colors.tagBg }]}
+                    />
+                    <Text style={styles.toSeparatorText}>to</Text>
+                    <TextInput
+                      value={pageMax}
+                      onChangeText={(val) => setPageMax(val.replace(/[^0-9]/g, ""))}
+                      placeholder="max"
+                      placeholderTextColor="#524d5e"
+                      keyboardType="numeric"
+                      maxLength={5}
+                      style={[styles.pageSquareInput, { borderColor: colors.tagBg }]}
+                    />
+                  </View>
+                </View>
+              )}
+
+              {/* Info bulle Pages */}
+              {showPagesTooltip && support.supportsPages && (
+                <View style={styles.tooltipBox}>
+                  <Text style={styles.tooltipText}>
+                    Exclut les galeries ayant moins de "min" pages ou plus de "max" pages. Laissez vide pour ne pas contraindre.
+                  </Text>
+                </View>
+              )}
+
+              {/* 4. NOTE MINIMALE : Minimum Rating [ 1 ▾ ] */}
+              {support.supportsRating && (
+                <View style={styles.filterRowSection}>
+                  <Text style={styles.rowLabelText}>Minimum Rating</Text>
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => setShowRatingMenu((prev) => !prev)}
+                    style={[styles.ratingSelectorBtn, { borderBottomColor: colors.tagBg }]}
+                  >
+                    <Text style={styles.ratingSelectorValue}>
+                      {minRating > 0 ? `${minRating} ★` : "Toutes"}
+                    </Text>
+                    <IconChevronDown size={18} color="#8a8397" strokeWidth={2} />
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Sélecteur de note dépliable */}
+              {showRatingMenu && support.supportsRating && (
+                <View style={[styles.ratingPillsRow, { borderColor: colors.tagBg }]}>
+                  {RATING_OPTIONS.map((opt) => {
+                    const isSelected = minRating === opt.value;
                     return (
                       <TouchableOpacity
-                        key={mode}
-                        activeOpacity={0.7}
-                        onPress={() =>
-                          selectSort(
-                            mode === "recent"
-                              ? "recent"
-                              : popularPeriods[0].key
-                          )
-                        }
+                        key={opt.value}
+                        onPress={() => {
+                          setMinRating(opt.value);
+                          setShowRatingMenu(false);
+                        }}
                         style={[
-                          styles.sortModePill,
-                          { borderColor: colors.tagBg },
-                          isActive && {
-                            backgroundColor: colors.accent + "26",
-                            borderColor: colors.accent,
-                          },
+                          styles.ratingPill,
+                          isSelected && [
+                            styles.ratingPillActive,
+                            { backgroundColor: colors.accent + "33", borderColor: colors.accent },
+                          ],
                         ]}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: isActive }}
-                        accessibilityLabel={mode === "recent" ? "Récents" : "Populaires"}
                       >
                         <Text
                           style={[
-                            styles.sortModeText,
-                            isActive && { color: colors.accent, fontWeight: "800" },
+                            styles.ratingPillText,
+                            isSelected && { color: colors.accent, fontWeight: "700" },
                           ]}
                         >
-                          {mode === "recent" ? "Récentes" : "Populaires"}
+                          {opt.value === 0 ? "0★" : `${opt.value}★`}
                         </Text>
                       </TouchableOpacity>
                     );
                   })}
                 </View>
+              )}
 
-                {/* Période — visible seulement en mode Popular */}
-                {sortMode === "popular" && (
-                  <View style={styles.periodRow}>
-                    {popularPeriods.map((period) => {
-                      const isSelected = currentSort === period.key;
-                      return (
-                        <TouchableOpacity
-                          key={period.key}
-                          activeOpacity={0.7}
-                          onPress={() => selectSort(period.key)}
-                          style={[
-                            styles.periodPill,
-                            { borderColor: colors.tagBg },
-                            isSelected && {
-                              backgroundColor: colors.accent + "26",
-                              borderColor: colors.accent,
-                            },
-                          ]}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected: isSelected }}
-                          accessibilityLabel={`Période : ${period.label}`}
-                        >
-                          <Text
-                            style={[
-                              styles.periodText,
-                              isSelected && { color: colors.accent, fontWeight: "800" },
-                            ]}
-                          >
-                            {period.label}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                )}
-                {/* Reset Filters Option (if active) */}
-                {hasActiveFilters && (
-                  <View style={[styles.resetWrap, { borderTopColor: colors.tagBg }]}>
+              {/* 5. OPTIONS AVANCÉES DE SOURCE (Tri, Langue, Date) */}
+              {(support.supportsSort || support.supportsLanguage || support.supportsDate) && (
+                <View style={[styles.extraOptionsGroup, { borderTopColor: colors.tagBg }]}>
+                  {/* Tri (si supporté) */}
+                  {support.supportsSort && (
+                    <View style={styles.sortBlock}>
+                      <Text style={styles.sortHeader}>TRI</Text>
+                      <View style={styles.sortModeRow}>
+                        {(["recent", "popular"] as const).map((mode) => {
+                          const isActive = sortMode === mode;
+                          return (
+                            <TouchableOpacity
+                              key={mode}
+                              activeOpacity={0.7}
+                              onPress={() =>
+                                setCurrentSort(
+                                  mode === "recent" ? "recent" : popularPeriods[0].key
+                                )
+                              }
+                              style={[
+                                styles.sortModePill,
+                                { borderColor: colors.tagBg },
+                                isActive && {
+                                  backgroundColor: colors.accent + "26",
+                                  borderColor: colors.accent,
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.sortModeText,
+                                  isActive && { color: colors.accent, fontWeight: "800" },
+                                ]}
+                              >
+                                {mode === "recent" ? "Récentes" : "Populaires"}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+
+                      {sortMode === "popular" && (
+                        <View style={styles.periodRow}>
+                          {popularPeriods.map((period) => {
+                            const isSelected = currentSort === period.key;
+                            return (
+                              <TouchableOpacity
+                                key={period.key}
+                                activeOpacity={0.7}
+                                onPress={() => setCurrentSort(period.key)}
+                                style={[
+                                  styles.periodPill,
+                                  { borderColor: colors.tagBg },
+                                  isSelected && {
+                                    backgroundColor: colors.accent + "26",
+                                    borderColor: colors.accent,
+                                  },
+                                ]}
+                              >
+                                <Text
+                                  style={[
+                                    styles.periodText,
+                                    isSelected && { color: colors.accent, fontWeight: "800" },
+                                  ]}
+                                >
+                                  {period.label}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      )}
+                    </View>
+                  )}
+
+                  {/* Langue (si supportée) */}
+                  {support.supportsLanguage && (
                     <TouchableOpacity
                       activeOpacity={0.7}
-                      onPress={handleReset}
-                      style={styles.resetBtn}
-                      accessibilityRole="button"
-                      accessibilityLabel="Réinitialiser les filtres"
+                      onPress={() => navigateToSubmenu("language")}
+                      style={styles.menuOptionRow}
                     >
-                      <IconRotateClockwise size={16} color={colors.accent} strokeWidth={2} />
-                      <ButtonLabel style={styles.resetBtnText}>Réinitialiser les filtres</ButtonLabel>
+                      <View style={styles.optionLeft}>
+                        <IconWorld size={16} color={colors.accent} strokeWidth={1.8} style={styles.optionIcon} />
+                        <Text style={styles.optionTitle}>Langue : {getLangLabel()}</Text>
+                      </View>
+                      <IconChevronRight size={16} color="#6b7280" strokeWidth={2} />
                     </TouchableOpacity>
-                  </View>
-                )}
-              </View>
-            </View>
+                  )}
+
+                  {/* Date (si supportée) */}
+                  {support.supportsDate && (
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={() => navigateToSubmenu("date")}
+                      style={styles.menuOptionRow}
+                    >
+                      <View style={styles.optionLeft}>
+                        <IconCalendar size={16} color={colors.accent} strokeWidth={1.8} style={styles.optionIcon} />
+                        <Text style={styles.optionTitle}>
+                          Date de téléversement {currentDateFilter !== "all" ? `(${getDateLabel()})` : ""}
+                        </Text>
+                      </View>
+                      <IconChevronRight size={16} color="#6b7280" strokeWidth={2} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+            </ScrollView>
           )}
 
-          {/* Submenu: Language */}
+          {/* Sous-menu Langue */}
           {activeSubmenu === "language" && (
             <View>
               <TouchableOpacity
                 activeOpacity={0.7}
                 onPress={navigateBack}
                 style={[styles.submenuHeader, { borderBottomColor: colors.tagBg }]}
-                accessibilityRole="button"
-                accessibilityLabel="Retour aux filtres"
               >
                 <IconArrowLeft size={16} color={colors.accent} strokeWidth={2} />
                 <Text style={styles.submenuTitle}>Choisir une langue</Text>
               </TouchableOpacity>
 
-              <ScrollView style={{ maxHeight: 280 }} keyboardShouldPersistTaps="handled">
+              <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="handled">
                 {languages.map((l) => (
                   <TouchableOpacity
                     key={l.key}
                     activeOpacity={0.7}
                     onPress={() => {
                       setCurrentLang(l.key);
-                      onChange({
-                        sort: currentSort,
-                        language: l.key,
-                        pageRange: currentPageRange,
-                        dateFilter: currentDateFilter,
-                      });
-                      onClose();
+                      navigateBack();
                     }}
                     style={[
                       styles.submenuItem,
                       currentLang === l.key && { backgroundColor: colors.accent + "26" },
                     ]}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: currentLang === l.key }}
-                    accessibilityLabel={l.label}
                   >
                     <Text
                       style={[
@@ -402,94 +650,31 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
             </View>
           )}
 
-          {/* Submenu: Pages */}
-          {activeSubmenu === "pages" && (
-            <View>
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={navigateBack}
-                style={[styles.submenuHeader, { borderBottomColor: colors.tagBg }]}
-                accessibilityRole="button"
-                accessibilityLabel="Retour aux filtres"
-              >
-                <IconArrowLeft size={16} color={colors.accent} strokeWidth={2} />
-                <Text style={styles.submenuTitle}>Filtrer par nombre de pages</Text>
-              </TouchableOpacity>
-
-              <ScrollView style={{ maxHeight: 280 }} keyboardShouldPersistTaps="handled">
-                {pageRanges.map((p) => (
-                  <TouchableOpacity
-                    key={p.key}
-                    activeOpacity={0.7}
-                    onPress={() => {
-                      setCurrentPageRange(p.key);
-                      onChange({
-                        sort: currentSort,
-                        language: currentLang,
-                        pageRange: p.key,
-                        dateFilter: currentDateFilter,
-                      });
-                      onClose();
-                    }}
-                    style={[
-                      styles.submenuItem,
-                      currentPageRange === p.key && { backgroundColor: colors.accent + "26" },
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: currentPageRange === p.key }}
-                    accessibilityLabel={p.label}
-                  >
-                    <Text
-                      style={[
-                        styles.submenuItemText,
-                        currentPageRange === p.key && { color: colors.accent, fontWeight: "700" },
-                      ]}
-                    >
-                      {p.label}
-                    </Text>
-                    {currentPageRange === p.key && <IconCheck size={16} color={colors.accent} strokeWidth={2.5} />}
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          )}
-
-          {/* Submenu: Date */}
+          {/* Sous-menu Date */}
           {activeSubmenu === "date" && (
             <View>
               <TouchableOpacity
                 activeOpacity={0.7}
                 onPress={navigateBack}
                 style={[styles.submenuHeader, { borderBottomColor: colors.tagBg }]}
-                accessibilityRole="button"
-                accessibilityLabel="Retour aux filtres"
               >
                 <IconArrowLeft size={16} color={colors.accent} strokeWidth={2} />
-                <Text style={styles.submenuTitle}>Filtrer par date de mise en ligne</Text>
+                <Text style={styles.submenuTitle}>Période de mise en ligne</Text>
               </TouchableOpacity>
 
-              <ScrollView style={{ maxHeight: 280 }} keyboardShouldPersistTaps="handled">
+              <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="handled">
                 {dateFilters.map((d) => (
                   <TouchableOpacity
                     key={d.key}
                     activeOpacity={0.7}
                     onPress={() => {
                       setCurrentDateFilter(d.key);
-                      onChange({
-                        sort: currentSort,
-                        language: currentLang,
-                        pageRange: currentPageRange,
-                        dateFilter: d.key,
-                      });
-                      onClose();
+                      navigateBack();
                     }}
                     style={[
                       styles.submenuItem,
                       currentDateFilter === d.key && { backgroundColor: colors.accent + "26" },
                     ]}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: currentDateFilter === d.key }}
-                    accessibilityLabel={d.label}
                   >
                     <Text
                       style={[
@@ -514,35 +699,286 @@ export function FilterModal({ visible, onClose, options, onChange }: FilterModal
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    justifyContent: "flex-start",
-    alignItems: "flex-end",
-    paddingTop: 60,
-    paddingRight: 14,
+    backgroundColor: "rgba(0,0,0,0.72)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
   },
   menuContainer: {
-    width: 290,
+    width: "100%",
+    maxWidth: 380,
+    maxHeight: "86%",
+    borderRadius: 16,
     borderWidth: 1,
-    borderRadius: 18,
-    paddingVertical: 8,
+    overflow: "hidden",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
+    shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.5,
-    shadowRadius: 16,
+    shadowRadius: 20,
     elevation: 12,
   },
-  topOptionsGroup: {
-    borderBottomWidth: 1,
-    borderBottomColor: "#222232",
-    paddingBottom: 6,
-    marginBottom: 4,
+  headerBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  headerBtn: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerCheckBtn: {
+    borderRadius: 20,
+  },
+  headerTitleWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerTitle: {
+    fontSize: 19,
+    fontWeight: "700",
+    color: "#f0edf5",
+    letterSpacing: 0.3,
+  },
+  headerSourceBadge: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+    marginTop: 1,
+  },
+  scrollBody: {
+    flexGrow: 0,
+  },
+  scrollContent: {
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 22,
+  },
+  categoriesSection: {
+    marginBottom: 16,
+  },
+  catRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 8,
+  },
+  catBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    paddingHorizontal: 6,
+  },
+  catBtnSpacer: {
+    flex: 1,
+    height: 44,
+  },
+  catBtnUnselected: {
+    backgroundColor: "#1c1922",
+    borderColor: "#2d2737",
+  },
+  catBtnSelected: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  catBtnText: {
+    fontSize: 14,
+    textAlign: "center",
+  },
+  catBtnTextUnselected: {
+    color: "#6c6678",
+    fontWeight: "600",
+  },
+  catBtnTextSelected: {
+    color: "#ffffff",
+    fontWeight: "800",
+  },
+  keywordSection: {
+    marginBottom: 18,
+    marginTop: 4,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#8c8699",
+    marginBottom: 6,
+    letterSpacing: 0.4,
+  },
+  keywordInputWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderBottomWidth: 1.5,
+    paddingVertical: 4,
+  },
+  keywordInput: {
+    flex: 1,
+    fontSize: 15,
+    color: "#ffffff",
+    paddingVertical: 6,
+  },
+  clearKeywordBtn: {
+    padding: 6,
+  },
+  filterRowSection: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 12,
+  },
+  filterRowHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  rowLabelText: {
+    fontSize: 16,
+    color: "#e8e5ef",
+    fontWeight: "500",
+  },
+  helpIconBtn: {
+    padding: 2,
+  },
+  pagesBetweenInputs: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  pageSquareInput: {
+    width: 52,
+    height: 42,
+    backgroundColor: "#0d0b11",
+    borderRadius: 8,
+    borderWidth: 1,
+    textAlign: "center",
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  toSeparatorText: {
+    fontSize: 14,
+    color: "#9e97ab",
+    fontWeight: "500",
+  },
+  tooltipBox: {
+    backgroundColor: "#201c29",
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: "#a39eb0",
+  },
+  tooltipText: {
+    fontSize: 12,
+    color: "#b0aac0",
+    lineHeight: 16,
+  },
+  ratingSelectorBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderBottomWidth: 1.5,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    minWidth: 64,
+    justifyContent: "space-between",
+  },
+  ratingSelectorValue: {
+    fontSize: 16,
+    color: "#f5f3fa",
+    fontWeight: "600",
+  },
+  ratingPillsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: 8,
+    marginBottom: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  ratingPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: "#1b1822",
+    borderWidth: 1,
+    borderColor: "#2d2737",
+  },
+  ratingPillActive: {
+    elevation: 2,
+  },
+  ratingPillText: {
+    fontSize: 12,
+    color: "#857f92",
+    fontWeight: "600",
+  },
+  extraOptionsGroup: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  sortBlock: {
+    marginBottom: 14,
+  },
+  sortHeader: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#6b7280",
+    letterSpacing: 1.2,
+    marginBottom: 8,
+  },
+  sortModeRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 8,
+  },
+  sortModePill: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#16131c",
+  },
+  sortModeText: {
+    fontSize: 12,
+    color: "#9ca3af",
+    fontWeight: "600",
+  },
+  periodRow: {
+    flexDirection: "row",
+    gap: 6,
+    marginTop: 4,
+  },
+  periodPill: {
+    flex: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#16131c",
+  },
+  periodText: {
+    fontSize: 11,
+    color: "#9ca3af",
+    fontWeight: "500",
   },
   menuOptionRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    justifyContent: "space-between",
     paddingVertical: 10,
-    paddingHorizontal: 14,
   },
   optionLeft: {
     flexDirection: "row",
@@ -550,122 +986,36 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   optionIcon: {
-    marginRight: 10,
+    marginRight: 8,
   },
   optionTitle: {
     fontSize: 13,
-    fontWeight: "600",
-    color: "#f3f4f6",
-    flexShrink: 1,
-    minWidth: 0,
-    paddingRight: 4,
-  },
-  sortSection: {
-    paddingTop: 4,
-  },
-  sortHeader: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#6b7280",
-    letterSpacing: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    flexShrink: 0,
-    paddingRight: 4,
-  },
-  sortModeRow: {
-    flexDirection: "row",
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingBottom: 10,
-  },
-  sortModePill: {
-    flex: 1,
-    paddingVertical: 9,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#2a2a3a",
-    alignItems: "center",
-  },
-  sortModeText: {
-    fontSize: 13,
-    fontWeight: "700",
     color: "#d1d5db",
-    flexShrink: 1,
-    minWidth: 0,
-    paddingRight: 3,
-  },
-  periodRow: {
-    flexDirection: "row",
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingBottom: 12,
-  },
-  periodPill: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#2a2a3a",
-    alignItems: "center",
-  },
-  periodText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#d1d5db",
-    flexShrink: 1,
-    minWidth: 0,
-    paddingRight: 2,
+    fontWeight: "500",
   },
   submenuHeader: {
     flexDirection: "row",
     alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#222232",
   },
   submenuTitle: {
-    fontSize: 13.5,
-    fontWeight: "800",
+    fontSize: 15,
+    fontWeight: "700",
     color: "#f3f4f6",
   },
   submenuItem: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   submenuItemText: {
-    fontSize: 13,
+    fontSize: 14,
     color: "#d1d5db",
-  },
-  resetWrap: {
-    paddingHorizontal: 14,
-    paddingTop: 6,
-    paddingBottom: 6,
-    borderTopWidth: 1,
-    borderTopColor: "#222232",
-    marginTop: 4,
-  },
-  resetBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: "rgba(255, 71, 87, 0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 71, 87, 0.3)",
-  },
-  resetBtnText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#ff4757",
+    fontWeight: "500",
   },
 });
-
-export default FilterModal;

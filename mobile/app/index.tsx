@@ -40,6 +40,10 @@ import { SearchBar } from "@/components/SearchBar";
 import { TagLabel } from "@/components/ui/TagLabel";
 import { ButtonLabel } from "@/components/ui/ButtonLabel";
 import { FilterModal, FilterOptions } from "@/components/modals/FilterModal";
+import {
+  getSourceFilterSupport,
+  hasAnyFilterSupport,
+} from "@/lib/sources/sourceFilterSupport";
 import { ReverseImageSearchModal } from "@/components/modals/ReverseImageSearchModal";
 import { SourceAuthModal } from "@/components/modals/SourceAuthModal";
 import { searchGalleries } from "@/lib/api/nhentai";
@@ -321,7 +325,12 @@ export default function HomeScreen() {
         }
 
         const effectiveQuery = queryParts.join(" ");
-        const altQuery = translateQueryForSource(userQuery) || undefined;
+        const isEhentaiOrRule34 = activeSource === "ehentai" || activeSource === "rule34";
+        const altQuery = isEhentaiOrRule34
+          ? userQuery || undefined
+          : translateQueryForSource(userQuery) || undefined;
+        const pageMinNum = opts.pageMin ? parseInt(opts.pageMin, 10) : undefined;
+        const pageMaxNum = opts.pageMax ? parseInt(opts.pageMax, 10) : undefined;
         const sort: "recent" | "popular" | "popular-today" | "popular-week" =
           opts.sort === "popular" ||
           opts.sort === "popular-today" ||
@@ -339,10 +348,14 @@ export default function HomeScreen() {
           const altPromises = altSources.map(async (sid) => {
             try {
               const r = await getSource(sid).search({
-                query: altQuery,
+                query: (sid === "ehentai" || sid === "rule34") ? userQuery || undefined : altQuery,
                 page: p,
                 sort,
                 language,
+                categories: opts.categories,
+                pageMin: pageMinNum,
+                pageMax: pageMaxNum,
+                minRating: opts.minRating,
               });
               // Map les cartes sources vers un pseudo-Gallery pour l'affichage.
               return r.cards.map((c) => ({
@@ -434,6 +447,10 @@ export default function HomeScreen() {
             page: p,
             sort,
             language: activeSource === "nhentai" ? undefined : language,
+            categories: opts.categories,
+            pageMin: pageMinNum,
+            pageMax: pageMaxNum,
+            minRating: opts.minRating,
           });
           if (requestId !== latestRequestRef.current) return;
           const mapped: Gallery[] = res.cards.map((c) => ({
@@ -1368,11 +1385,20 @@ export default function HomeScreen() {
       <FilterModal
         visible={isFilterModalOpen}
         onClose={() => setIsFilterModalOpen(false)}
-        options={filterOptions}
+        options={{
+          ...filterOptions,
+          keyword: filterOptions.keyword !== undefined ? filterOptions.keyword : activeQuery,
+        }}
         onChange={(newOpts) => {
           setFilterOptions(newOpts);
           setPage(1);
+          if (newOpts.keyword !== undefined && newOpts.keyword !== activeQuery) {
+            applySearchQuery(newOpts.keyword);
+          } else {
+            fetchGalleries(activeQuery, newOpts, 1);
+          }
         }}
+        source={activeSource}
       />
 
       {/* Reverse Image Search Modal */}

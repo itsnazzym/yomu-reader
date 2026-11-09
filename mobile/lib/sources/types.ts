@@ -54,6 +54,10 @@ export interface SourceSearchOptions {
   sort?: string;
   /** Filtre langue séparé de la requête ("english" | "japanese" | "all" | slug). */
   language?: string;
+  categories?: string[];
+  pageMin?: number;
+  pageMax?: number;
+  minRating?: number;
 }
 
 export interface SourceCapabilities {

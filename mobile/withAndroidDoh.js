@@ -45,23 +45,43 @@ private class DohFallbackDns(
 }
 
 private fun createDohNetworkClient(): OkHttpClient {
-  // The bootstrap client resolves only the DoH providers. Application traffic
-  // uses the DoH resolvers first and falls back to the system resolver if a
-  // provider is temporarily unavailable.
-  val bootstrapClient = OkHttpClient.Builder().build()
-  val dohResolvers = listOf(
-    "https://cloudflare-dns.com/dns-query",
-    "https://dns.google/dns-query",
-  ).map { endpoint ->
-    DnsOverHttps.Builder()
-      .client(bootstrapClient)
-      .url(endpoint.toHttpUrl())
-      .post(true)
-      .build()
-  }
+  // Le client bootstrap résout directement les hôtes DoH avec timeout rapide (2500ms)
+  // et adresses IP bootstrap directes pour éviter tout blocage réseau mobile physique.
+  val bootstrapClient = OkHttpClient.Builder()
+    .connectTimeout(2500, java.util.concurrent.TimeUnit.MILLISECONDS)
+    .readTimeout(2500, java.util.concurrent.TimeUnit.MILLISECONDS)
+    .build()
+
+  val cloudflareDns = DnsOverHttps.Builder()
+    .client(bootstrapClient)
+    .url("https://cloudflare-dns.com/dns-query".toHttpUrl())
+    .bootstrapDnsHosts(
+      listOf(
+        InetAddress.getByName("1.1.1.1"),
+        InetAddress.getByName("1.0.0.1"),
+        InetAddress.getByName("2606:4700:4700::1111"),
+        InetAddress.getByName("2606:4700:4700::1001")
+      )
+    )
+    .post(true)
+    .build()
+
+  val googleDns = DnsOverHttps.Builder()
+    .client(bootstrapClient)
+    .url("https://dns.google/dns-query".toHttpUrl())
+    .bootstrapDnsHosts(
+      listOf(
+        InetAddress.getByName("8.8.8.8"),
+        InetAddress.getByName("8.8.4.4"),
+        InetAddress.getByName("2001:4860:4860::8888"),
+        InetAddress.getByName("2001:4860:4860::8844")
+      )
+    )
+    .post(true)
+    .build()
 
   return OkHttpClientProvider.createClientBuilder()
-    .dns(DohFallbackDns(dohResolvers))
+    .dns(DohFallbackDns(listOf(cloudflareDns, googleDns)))
     .build()
 }
 `;
