@@ -1,10 +1,11 @@
+import { clearEhBrowserCookies, isEhAuthNavigation, readEhBrowserCookies, seedExBrowserCookies, type EhCookieJar } from "../lib/sources/ehentaiBrowserSession";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import { parseRule34CredentialInput, readRule34Response } from "../lib/sources/credentialInput";
 import { parseEhentaiNativeId, parseEhentaiListingCards } from "../lib/sources/ehentai";
 import { getEhentaiCategoryInfo, calculateCategoryBitmask } from "../lib/sources/ehentaiCategories";
 import { buildRule34Title, parseRule34Tags } from "../lib/sources/rule34";
-import { getSourceAuth, saveSourceAuth, clearSourceAuth, loginRule34, parseCookieString, formatCookieHeader } from "../lib/sources/authStore";
+import { getSourceAuth, saveSourceAuth, clearSourceAuth, loginEhentaiWithCookies, loginRule34, parseCookieString, formatCookieHeader } from "../lib/sources/authStore";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -351,4 +352,57 @@ test("Rule34 ne mémorise jamais une connexion refusée avec HTTP 200", async ()
     globalThis.fetch = async () => new Response("[]");
     assert.equal((await loginRule34("42", "fixture")).isLoggedIn, true);
   } finally { globalThis.fetch = previous; await clearSourceAuth("rule34"); }
+});
+
+
+test("E-Hentai refuse les fausses sessions et ne remplace pas une session valide", async () => {
+  await loginEhentaiWithCookies("ipb_member_id=42; ipb_pass_hash=fixture", false);
+  for (const value of ["ipb_member_id=session; ipb_pass_hash=session", "ipb_member_id=0; ipb_pass_hash=fixture", "ipb_member_id=42; ipb_pass_hash=session"]) {
+    await assert.rejects(loginEhentaiWithCookies(value, false));
+  }
+  await assert.rejects(loginEhentaiWithCookies({ ipb_member_id: "42", ipb_pass_hash: "fixture", igneous: "bad\r\nHeader" }, true));
+  assert.equal((await getSourceAuth("ehentai")).cookies?.ipb_pass_hash, "fixture");
+  await clearSourceAuth("ehentai");
+});
+
+test("ExHentai exige son propre cookie et conserve l'import JHentai", async () => {
+  for (const igneous of [undefined, "mystery", " mystery "]) {
+    await assert.rejects(loginEhentaiWithCookies({ ipb_member_id: "42", ipb_pass_hash: "fixture", igneous }, true));
+  }
+  const auth = await loginEhentaiWithCookies("ipb_member_id=42; ipb_pass_hash=fixture; igneous=fixture-panda", true);
+  assert.equal(auth.isExHentaiEnabled, true);
+  assert.equal(auth.cookies?.igneous, "fixture-panda");
+  await clearSourceAuth("ehentai");
+});
+
+test("la connexion intégrée refuse les domaines trompeurs et les schémas externes", () => {
+  for (const url of ["https://forums.e-hentai.org/index.php?act=Login", "https://e-hentai.org/", "https://exhentai.org/", "https://challenges.cloudflare.com/check"]) assert.equal(isEhAuthNavigation(url), true);
+  for (const url of ["http://e-hentai.org", "https://e-hentai.org.attacker.test", "https://attacker.test/?next=https://e-hentai.org", "javascript:alert(1)", "intent://test", "file:///tmp/test"]) assert.equal(isEhAuthNavigation(url), false);
+});
+
+test("la session native lit les cookies HttpOnly et prépare uniquement le domaine ExHentai", async () => {
+  const reads: string[] = [];
+  const writes: { url: string; name: string; domain: string; value: string }[] = [];
+  const jar: EhCookieJar = {
+    get: async (url, webkit) => { reads.push(url); assert.equal(webkit, true); return { ipb_member_id: { value: "42" }, ipb_pass_hash: { value: "fixture-http-only" }, unrelated: { value: "ignore" } }; },
+    set: async (url, cookie) => { writes.push({ url, ...cookie }); return true; },
+  };
+  const cookies = await readEhBrowserCookies(jar);
+  assert.deepEqual(cookies, { ipb_member_id: "42", ipb_pass_hash: "fixture-http-only" });
+  assert.ok(reads.every(url => !url.includes("exhentai")));
+  await seedExBrowserCookies(jar, cookies!);
+  assert.equal(writes.length, 2);
+  assert.ok(writes.every(cookie => cookie.domain === ".exhentai.org" && cookie.url === "https://exhentai.org"));
+  jar.get = async () => ({});
+  assert.equal(await readEhBrowserCookies(jar), null);
+});
+
+test("effacer la session navigateur ne touche jamais aux cookies nHentai ou Rule34", async () => {
+  const writes: { url: string; name: string; value: string; expires?: string }[] = [];
+  await clearEhBrowserCookies({ get: async () => ({}), set: async (url, cookie) => { writes.push({ url, ...cookie }); return true; } });
+  assert.ok(writes.length > 0);
+  assert.ok(writes.every(cookie => /https:\/\/(forums\.)?e-hentai\.org|https:\/\/exhentai\.org/.test(cookie.url)));
+  assert.ok(writes.every(cookie => cookie.value === "" && cookie.expires?.startsWith("1970")));
+  assert.ok(writes.every(cookie => !["sessionid", "api_key"].includes(cookie.name)));
+  await assert.rejects(clearEhBrowserCookies({ get: async () => ({}), set: async () => false }));
 });

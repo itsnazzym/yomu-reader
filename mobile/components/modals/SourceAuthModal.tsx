@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { StyleSheet, View, Text, TextInput, ActivityIndicator, Alert, Switch, TouchableOpacity, Linking, Keyboard, type TextInputProps } from "react-native";
+import { StyleSheet, View, Text, TextInput, ActivityIndicator, Alert, TouchableOpacity, Linking, Keyboard, type TextInputProps } from "react-native";
 import { AnimatePresence } from "moti";
 import { MotionSection } from "@/components/motion/MotionSection";
 import { AuthMotionFeedback } from "@/components/motion/AuthMotionFeedback";
@@ -9,9 +9,11 @@ import { CardPressable } from "@/components/ui/CardPressable";
 import { ButtonLabel } from "@/components/ui/ButtonLabel";
 import { AuthModalShell } from "@/components/auth/AuthModalShell";
 import { lightTap } from "@/lib/haptics";
-import { clearSourceAuth, loginEhentaiWithCookies, loginEhentaiWithCredentials, loginRule34, parseCookieString, useSourceAuth } from "@/lib/sources/authStore";
+import { clearSourceAuth, loginEhentaiWithCookies, loginRule34, parseCookieString, useSourceAuth } from "@/lib/sources/authStore";
 import { parseRule34CredentialInput } from "@/lib/sources/credentialInput";
 import type { SourceId } from "@/lib/sources/types";
+import { EhentaiLoginModal } from "./EhentaiLoginModal";
+import { clearEhBrowserCookies } from "@/lib/sources/ehentaiBrowserSession";
 import { AuthGuideModal, type GuideType } from "./AuthGuideModal";
 
 function AuthField({ label, ...props }: TextInputProps & { label: string }) {
@@ -43,14 +45,14 @@ export function SourceAuthModal({
 
   // E-Hentai form state
   const ehentaiAuth = useSourceAuth("ehentai");
-  const [ehentaiLoginMode, setEhentaiLoginMode] = useState<"cookies" | "forum">("cookies");
-  const [ehentaiUsername, setEhentaiUsername] = useState("");
-  const [ehentaiPassword, setEhentaiPassword] = useState("");
+  const [ehentaiLoginMode, setEhentaiLoginMode] = useState<"cookies" | "browser">("browser");
+  const [browserOpen, setBrowserOpen] = useState(false);
+  const [manualCookies, setManualCookies] = useState(false);
   const [rawCookieString, setRawCookieString] = useState("");
   const [ipbMemberId, setIpbMemberId] = useState("");
   const [ipbPassHash, setIpbPassHash] = useState("");
   const [igneousCookie, setIgneousCookie] = useState("");
-  const [exhentaiToggle, setExhentaiToggle] = useState(true);
+  const [exhentaiToggle, setExhentaiToggle] = useState(false);
 
   // Rule34 form state
   const rule34Auth = useSourceAuth("rule34");
@@ -68,7 +70,7 @@ export function SourceAuthModal({
     setErrorMessage(null);
     setSuccessMessage(null);
     setRawCookieString("");
-    setEhentaiPassword("");
+    if (!visible) setBrowserOpen(false);
   }, [visible, initialSource]);
 
   useEffect(() => {
@@ -84,7 +86,7 @@ export function SourceAuthModal({
   // Détection automatique lors du collage d'une chaîne complète de cookies
   const handleRawCookiePaste = (text: string) => {
     setRawCookieString(text);
-    if (text.includes("=") && text.includes(";")) {
+    if (text.includes("=")) {
       const parsed = parseCookieString(text);
       if (parsed.ipb_member_id) setIpbMemberId(parsed.ipb_member_id);
       if (parsed.ipb_pass_hash) setIpbPassHash(parsed.ipb_pass_hash);
@@ -99,22 +101,13 @@ export function SourceAuthModal({
     setErrorMessage(null);
     setSuccessMessage(null);
     try {
-      if (ehentaiLoginMode === "cookies") {
-        await loginEhentaiWithCookies(
-          {
-            ipb_member_id: ipbMemberId,
-            ipb_pass_hash: ipbPassHash,
-            igneous: igneousCookie,
-          },
-          exhentaiToggle
-        );
-        lightTap();
-        setSuccessMessage("Cookies E-Hentai enregistrés avec succès !");
-      } else {
-        await loginEhentaiWithCredentials(ehentaiUsername, ehentaiPassword);
-        lightTap();
-        setSuccessMessage("Connexion aux forums E-Hentai réussie !");
-      }
+      const result = await loginEhentaiWithCookies(rawCookieString.trim() || {
+        ipb_member_id: ipbMemberId,
+        ipb_pass_hash: ipbPassHash,
+        igneous: igneousCookie,
+      }, exhentaiToggle);
+      lightTap();
+      setSuccessMessage(result.isExHentaiEnabled ? "Session ExHentai enregistrée." : "Session E-Hentai enregistrée.");
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : String(err));
     } finally {
@@ -133,6 +126,8 @@ export function SourceAuthModal({
           style: "destructive",
           onPress: async () => {
             try {
+              const { default: cookies } = await import("react-native-nitro-cookies");
+              await clearEhBrowserCookies(cookies);
               await clearSourceAuth("ehentai");
               setIpbMemberId("");
               setIpbPassHash("");
@@ -211,7 +206,7 @@ export function SourceAuthModal({
   );
   const auth = activeTab === "rule34" ? rule34Auth : ehentaiAuth;
   return <>
-    <AuthModalShell visible={visible && guideModalType === null} onClose={onClose} title="Comptes et sources">
+    <AuthModalShell visible={visible && guideModalType === null && !browserOpen} onClose={onClose} title="Comptes et sources">
       <Text style={[styles.description, { color: colors.sub }]}>Chaque source utilise ses propres identifiants.</Text>
       <View style={styles.tabs}>
         {(["ehentai", "rule34"] as const).map(source => <TouchableOpacity key={source}
@@ -227,28 +222,39 @@ export function SourceAuthModal({
         {auth.isLoggedIn ? `Connecté · ${auth.username || (activeTab === "rule34" ? "Rule34" : "E-Hentai")}` : activeTab === "rule34" ? "Une clé API est nécessaire pour consulter cette source." : "Mode invité · Connectez-vous pour accéder à votre compte."}
       </Text>
       {activeTab === "ehentai" ? <>
+        <Text style={[styles.fieldLabel, { color: colors.txt }]}>Où voulez-vous vous connecter ?</Text>
         <View style={styles.tabs}>
-          {(["cookies", "forum"] as const).map(mode => <TouchableOpacity key={mode} disabled={loading}
+          {([false, true] as const).map(ex => <TouchableOpacity key={String(ex)} disabled={loading} accessibilityRole="radio"
+            accessibilityState={{ selected: exhentaiToggle === ex }} onPress={() => { setExhentaiToggle(ex); setErrorMessage(null); }}
+            style={[styles.tab, { backgroundColor: exhentaiToggle === ex ? colors.tagBg : colors.bg }]}>
+            <ButtonLabel style={[styles.tabText, { color: colors.txt }]}>{ex ? "ExHentai" : "E-Hentai"}</ButtonLabel>
+          </TouchableOpacity>)}
+        </View>
+        <View style={styles.tabs}>
+          {(["browser", "cookies"] as const).map(mode => <TouchableOpacity key={mode} disabled={loading}
             onPress={() => { Keyboard.dismiss(); setEhentaiLoginMode(mode); setErrorMessage(null); setSuccessMessage(null); }}
             accessibilityRole="tab" accessibilityState={{ selected: ehentaiLoginMode === mode, disabled: loading }}
             style={[styles.tab, { backgroundColor: ehentaiLoginMode === mode ? colors.tagBg : colors.bg }]}>
-            <ButtonLabel style={[styles.tabText, { color: colors.txt }]}>{mode === "cookies" ? "Cookies" : "Compte forum"}</ButtonLabel>
+            <ButtonLabel style={[styles.tabText, { color: colors.txt }]}>{mode === "browser" ? "Connexion directe" : "Importer des cookies"}</ButtonLabel>
           </TouchableOpacity>)}
         </View>
-        {guideLink(ehentaiLoginMode === "cookies" ? "ehentai_cookies" : "ehentai_forum")}
-        {ehentaiLoginMode === "cookies" ? <>
-          <AuthField label="Importer les cookies" value={rawCookieString} onChangeText={handleRawCookiePaste} secureTextEntry editable={!loading} placeholder="Collez la chaîne complète" />
-          <Text style={[styles.description, { color: colors.sub }]}>Ou renseignez les valeurs séparément :</Text>
-          <AuthField label="Identifiant membre · ipb_member_id" value={ipbMemberId} onChangeText={setIpbMemberId} keyboardType="number-pad" editable={!loading} />
-          <AuthField label="Cookie de connexion · ipb_pass_hash" value={ipbPassHash} onChangeText={setIpbPassHash} secureTextEntry editable={!loading} />
-          <AuthField label="Cookie ExHentai · igneous (facultatif)" value={igneousCookie} onChangeText={setIgneousCookie} secureTextEntry editable={!loading} />
-          <View style={styles.switchRow}>
-            <Text style={[styles.switchLabel, { color: colors.txt }]}>Utiliser ExHentai</Text>
-            <Switch value={exhentaiToggle} onValueChange={setExhentaiToggle} disabled={loading} accessibilityLabel="Utiliser ExHentai" />
-          </View>
+        {ehentaiLoginMode === "browser" ? <>
+          <Text style={[styles.description, { color: colors.txt }]}>Un seul compte pour les deux sites.</Text>
+          <Text style={[styles.description, { color: colors.sub }]}>Ouvrez la page officielle, connectez-vous, puis Yomu récupère votre session. Aucun cookie à chercher ni mot de passe à enregistrer.</Text>
+          {exhentaiToggle && <Text style={[styles.description, { color: colors.sub }]}>ExHentai reste soumis aux droits d’accès de votre compte.</Text>}
         </> : <>
-          <AuthField label="Nom d’utilisateur du forum" value={ehentaiUsername} onChangeText={setEhentaiUsername} textContentType="username" editable={!loading} />
-          <AuthField label="Mot de passe du forum" value={ehentaiPassword} onChangeText={setEhentaiPassword} secureTextEntry textContentType="password" editable={!loading} />
+          <Text style={[styles.description, { color: colors.sub }]}>Collez vos cookies de navigateur ou de JHentai. Les champs sont remplis automatiquement.</Text>
+          <AuthField label="Cookies de session" value={rawCookieString} onChangeText={handleRawCookiePaste} secureTextEntry editable={!loading} placeholder="ipb_member_id=…; ipb_pass_hash=…" />
+          <TouchableOpacity accessibilityRole="button" accessibilityState={{ expanded: manualCookies }} style={styles.help} onPress={() => setManualCookies(value => !value)}>
+            <ButtonLabel style={[styles.helpText, { color: colors.txt }]}>{manualCookies ? "Masquer les valeurs séparées" : "Renseigner les valeurs séparément"}</ButtonLabel>
+          </TouchableOpacity>
+          {manualCookies && <>
+            <AuthField label="Identifiant membre · ipb_member_id" value={ipbMemberId} onChangeText={setIpbMemberId} keyboardType="number-pad" editable={!loading} />
+            <AuthField label="Cookie de connexion · ipb_pass_hash" value={ipbPassHash} onChangeText={setIpbPassHash} secureTextEntry editable={!loading} />
+            <AuthField label="Cookie ExHentai · igneous" value={igneousCookie} onChangeText={setIgneousCookie} secureTextEntry editable={!loading} />
+          </>}
+          {exhentaiToggle && <Text style={[styles.description, { color: colors.sub }]}>ExHentai demande aussi un cookie igneous valide.</Text>}
+          {guideLink("ehentai_cookies")}
         </>}
       </> : <>
         <Text style={[styles.description, { color: colors.sub }]}>Collez votre User ID et votre clé API, ou la ligne complète dans l’un des champs.</Text>
@@ -261,11 +267,11 @@ export function SourceAuthModal({
         <AuthField label="User ID Rule34" value={rule34UserId} onChangeText={text => updateRule34Field("userId", text)} editable={!loading} placeholder="Identifiant ou ligne complète" />
         <AuthField label="Clé API Rule34" value={rule34ApiKey} onChangeText={text => updateRule34Field("apiKey", text)} secureTextEntry editable={!loading} />
       </>}
-      <AuthMotionFeedback loading={loading} error={errorMessage} success={successMessage} active={visible && guideModalType === null} />
-      <CardPressable onPress={activeTab === "rule34" ? handleRule34Login : handleEhentaiLogin} disabled={loading}
+      <AuthMotionFeedback loading={loading} error={errorMessage} success={successMessage} active={visible && guideModalType === null && !browserOpen} />
+      <CardPressable onPress={activeTab === "rule34" ? handleRule34Login : ehentaiLoginMode === "browser" ? () => { Keyboard.dismiss(); setBrowserOpen(true); } : handleEhentaiLogin} disabled={loading}
         accessibilityRole="button" accessibilityState={{ busy: loading, disabled: loading }} style={styles.primaryBtn}>
         {loading && <ActivityIndicator color="#20252b" />}
-        <ButtonLabel style={styles.primaryText}>{loading ? "Connexion en cours…" : activeTab === "rule34" ? "Enregistrer la clé Rule34" : "Se connecter à E-Hentai"}</ButtonLabel>
+        <ButtonLabel style={styles.primaryText}>{loading ? "Connexion en cours…" : activeTab === "rule34" ? "Enregistrer la clé Rule34" : ehentaiLoginMode === "browser" ? `Ouvrir la connexion ${exhentaiToggle ? "ExHentai" : "E-Hentai"}` : "Enregistrer les cookies"}</ButtonLabel>
       </CardPressable>
       {auth.isLoggedIn && <TouchableOpacity disabled={loading} accessibilityRole="button" style={styles.help}
         onPress={activeTab === "rule34" ? handleRule34Logout : handleEhentaiLogout}>
@@ -279,6 +285,9 @@ export function SourceAuthModal({
       </MotionSection>
       </AnimatePresence>
     </AuthModalShell>
+    {visible && browserOpen && <EhentaiLoginModal target={exhentaiToggle ? "exhentai" : "ehentai"} onClose={() => setBrowserOpen(false)} onSuccess={ex => {
+      setBrowserOpen(false); setErrorMessage(null); setSuccessMessage(ex ? "Connecté à ExHentai." : "Connecté à E-Hentai."); lightTap();
+    }} />}
     <AuthGuideModal visible={visible && guideModalType !== null} guideType={guideModalType} onClose={() => setGuideModalType(null)} />
   </>;
 }

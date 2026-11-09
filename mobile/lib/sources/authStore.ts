@@ -232,7 +232,7 @@ export async function loginEhentaiWithCookies(
   const memberId = cookies.ipb_member_id?.trim();
   const passHash = cookies.ipb_pass_hash?.trim();
 
-  if (!memberId || !passHash) {
+  if (!memberId || !passHash || !/^[1-9]\d*$/.test(memberId) || passHash === "session" || /[;\r\n]/.test(passHash)) {
     throw new Error(
       "Les cookies 'ipb_member_id' et 'ipb_pass_hash' sont obligatoires pour la connexion E-Hentai."
     );
@@ -243,7 +243,9 @@ export async function loginEhentaiWithCookies(
     ipb_pass_hash: passHash,
   };
 
-  if (cookies.igneous && cookies.igneous.trim() && cookies.igneous !== "mystery") {
+  if (Object.values(cookies).some(value => value && /[;\r\n]/.test(value))) throw new Error("Format des cookies invalide. Collez uniquement leurs valeurs.");
+
+  if (cookies.igneous && cookies.igneous.trim() && cookies.igneous.trim() !== "mystery") {
     cleanCookies.igneous = cookies.igneous.trim();
   }
   if (cookies.star && cookies.star.trim()) {
@@ -254,102 +256,13 @@ export async function loginEhentaiWithCookies(
   }
 
   const hasPandaCookie = Boolean(cleanCookies.igneous && cleanCookies.igneous !== "mystery");
+  if (enableExHentai && !hasPandaCookie) throw new Error("Ajoutez le cookie igneous pour ExHentai, ou choisissez E-Hentai.");
 
   return await saveSourceAuth("ehentai", {
     isLoggedIn: true,
     username: `Membre #${memberId}`,
     cookies: cleanCookies,
     isExHentaiEnabled: enableExHentai && hasPandaCookie,
-  });
-}
-
-/**
- * Connexion à E-Hentai via identifiants forum IP.Board (forums.e-hentai.org).
- */
-export async function loginEhentaiWithCredentials(
-  username: string,
-  password: string
-): Promise<SourceAuthState> {
-  if (!username.trim() || !password) {
-    throw new Error("Nom d'utilisateur et mot de passe requis.");
-  }
-
-  const formBody = new URLSearchParams();
-  formBody.append("UserName", username.trim());
-  formBody.append("PassWord", password);
-  formBody.append("CookieDate", "1");
-
-  const response = await fetch("https://forums.e-hentai.org/index.php?act=Login&CODE=01", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Referer: "https://forums.e-hentai.org/index.php?act=Login&CODE=00",
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-    },
-    body: formBody.toString(),
-  });
-
-  const cookies: Record<string, string> = {};
-
-  // Extraction des Set-Cookie via l'API fetch (compatible Node.js et browsers/React Native)
-  const setCookieHeader = response.headers.get("set-cookie");
-  if (setCookieHeader) {
-    const rawPairs = setCookieHeader.split(/,\s*(?=[a-zA-Z0-9_-]+=)/);
-    for (const pair of rawPairs) {
-      const match = pair.match(/^\s*([a-zA-Z0-9_-]+)=([^;]+)/);
-      if (match) {
-        cookies[match[1]] = match[2];
-      }
-    }
-  }
-
-  const memberId = cookies.ipb_member_id;
-  const passHash = cookies.ipb_pass_hash;
-
-  if (!memberId || !passHash) {
-    // Si les en-têtes directs ne sont pas accessibles (CORS / web), on teste le corps HTML
-    const html = await response.text().catch(() => "");
-    if (html.includes("You are now logged in") || html.includes("Thanks,")) {
-      // Connexion réussie mais cookies masqués par le runtime
-      return await saveSourceAuth("ehentai", {
-        isLoggedIn: true,
-        username: username.trim(),
-        cookies: {
-          ipb_member_id: "session",
-          ipb_pass_hash: "session",
-        },
-        isExHentaiEnabled: false,
-      });
-    }
-    throw new Error(
-      "Échec de la connexion aux forums E-Hentai. Vérifiez vos identifiants ou utilisez l'import de cookies."
-    );
-  }
-
-  // Tente de récupérer le cookie igneous depuis exhentai.org
-  try {
-    const exResp = await fetch("https://exhentai.org", {
-      headers: {
-        Cookie: formatCookieHeader(cookies),
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-      },
-    });
-    const exSetCookie = exResp.headers.get("set-cookie");
-    if (exSetCookie) {
-      const igMatch = exSetCookie.match(/igneous=([^;]+)/);
-      if (igMatch) {
-        cookies.igneous = igMatch[1];
-      }
-    }
-  } catch {}
-
-  return await saveSourceAuth("ehentai", {
-    isLoggedIn: true,
-    username: username.trim(),
-    cookies,
-    isExHentaiEnabled: Boolean(cookies.igneous && cookies.igneous !== "mystery"),
   });
 }
 
