@@ -42,6 +42,8 @@ import {
   type SourceAuthState,
 } from "@/lib/sources/authStore";
 import type { SourceId } from "@/lib/sources/types";
+import { AuthGuideModal, type GuideType } from "./AuthGuideModal";
+import { IconBook } from "@tabler/icons-react-native";
 
 export interface SourceAuthModalProps {
   visible: boolean;
@@ -59,6 +61,7 @@ export function SourceAuthModal({
   const { colors } = useTheme();
 
   const [activeTab, setActiveTab] = useState<SourceId>(initialSource);
+  const [guideModalType, setGuideModalType] = useState<GuideType | null>(null);
 
   // E-Hentai form state
   const ehentaiAuth = useSourceAuth("ehentai");
@@ -295,6 +298,17 @@ export function SourceAuthModal({
               >
                 <Text style={[styles.tabChipText, { color: colors.txt }]}>nHentai ↗</Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  lightTap();
+                  setGuideModalType("nhentai_session");
+                }}
+                style={[styles.blueGuideBadge, { marginVertical: 0, paddingVertical: 6 }]}
+                activeOpacity={0.7}
+              >
+                <IconBook size={13} color="#38bdf8" />
+                <Text style={[styles.blueGuideText, { fontSize: 11 }]}>Guide nHentai</Text>
+              </TouchableOpacity>
             </View>
 
             {/* Status Messages */}
@@ -384,6 +398,19 @@ export function SourceAuthModal({
                       <Text style={[styles.fieldHint, { color: colors.sub }]}>
                         Collez la chaîne complète de cookies ou saisissez les champs obligatoires (ipb_member_id et ipb_pass_hash) :
                       </Text>
+                      <TouchableOpacity
+                        onPress={() => {
+                          lightTap();
+                          setGuideModalType("ehentai_cookies");
+                        }}
+                        style={styles.blueGuideBadge}
+                        activeOpacity={0.7}
+                      >
+                        <IconBook size={14} color="#38bdf8" />
+                        <Text style={styles.blueGuideText}>
+                          Guide illustré : trouver ses cookies (F12)
+                        </Text>
+                      </TouchableOpacity>
 
                       <TextInput
                         value={rawCookieString}
@@ -437,6 +464,19 @@ export function SourceAuthModal({
                       <Text style={[styles.fieldHint, { color: colors.sub }]}>
                         Connexion directe aux forums IP.Board E-Hentai :
                       </Text>
+                      <TouchableOpacity
+                        onPress={() => {
+                          lightTap();
+                          setGuideModalType("ehentai_forum");
+                        }}
+                        style={styles.blueGuideBadge}
+                        activeOpacity={0.7}
+                      >
+                        <IconBook size={14} color="#38bdf8" />
+                        <Text style={styles.blueGuideText}>
+                          Guide illustré : identifiants forum
+                        </Text>
+                      </TouchableOpacity>
 
                       <TextInput
                         value={ehentaiUsername}
@@ -533,6 +573,19 @@ export function SourceAuthModal({
                       Obtenir ma clé API gratuite sur rule34.xxx
                     </Text>
                   </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => {
+                      lightTap();
+                      setGuideModalType("rule34_api");
+                    }}
+                    style={styles.blueGuideBadge}
+                    activeOpacity={0.7}
+                  >
+                    <IconBook size={14} color="#38bdf8" />
+                    <Text style={styles.blueGuideText}>
+                      Guide illustré : obtenir la clé avec screenshots exacts
+                    </Text>
+                  </TouchableOpacity>
 
                   <View style={styles.inputsBlock}>
                     <TextInput
@@ -592,6 +645,11 @@ export function SourceAuthModal({
           </View>
         </KeyboardAvoidingView>
       </View>
+      <AuthGuideModal
+        visible={guideModalType !== null}
+        guideType={guideModalType}
+        onClose={() => setGuideModalType(null)}
+      />
     </Modal>
   );
 }
@@ -659,6 +717,26 @@ const styles = StyleSheet.create({
   },
   sectionWrap: {
     gap: 16,
+  },
+  blueGuideBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(56, 189, 248, 0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.45)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  blueGuideText: {
+    color: "#38bdf8",
+    fontSize: 13,
+    fontWeight: "700",
+    textDecorationLine: "underline",
+    textDecorationColor: "#38bdf8",
   },
   statusBanner: {
     padding: 14,

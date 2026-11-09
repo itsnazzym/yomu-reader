@@ -34,6 +34,7 @@ export const IconArrowsShuffle = makeFeatherIcon("shuffle");
 export const IconBan = makeFeatherIcon("slash");
 export const IconBell = makeFeatherIcon("bell");
 export const IconBolt = makeFeatherIcon("zap");
+export const IconBook = makeFeatherIcon("book");
 export const IconBook2 = makeFeatherIcon("book-open");
 export const IconBookmark = makeFeatherIcon("bookmark");
 export const IconBox = makeFeatherIcon("box");
