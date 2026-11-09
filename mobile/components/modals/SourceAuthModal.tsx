@@ -167,7 +167,23 @@ export function SourceAuthModal({
     setErrorMessage(null);
     setSuccessMessage(null);
     try {
-      await loginRule34(rule34UserId, rule34ApiKey);
+      let cleanUid = rule34UserId.trim();
+      let cleanKey = rule34ApiKey.trim();
+      if (cleanUid.includes("user_id=") || cleanUid.includes("api_key=")) {
+        const uMatch = cleanUid.match(/user_id=([^&\s]+)/);
+        const kMatch = cleanUid.match(/api_key=([^&\s]+)/);
+        if (uMatch) cleanUid = uMatch[1];
+        if (kMatch && !cleanKey) cleanKey = kMatch[1];
+      }
+      if (cleanKey.includes("user_id=") || cleanKey.includes("api_key=")) {
+        const uMatch = cleanKey.match(/user_id=([^&\s]+)/);
+        const kMatch = cleanKey.match(/api_key=([^&\s]+)/);
+        if (kMatch) cleanKey = kMatch[1];
+        if (uMatch && !cleanUid) cleanUid = uMatch[1];
+      }
+      setRule34UserId(cleanUid);
+      setRule34ApiKey(cleanKey);
+      await loginRule34(cleanUid, cleanKey);
       lightTap();
       setSuccessMessage("Compte Rule34 lié avec succès !");
     } catch (err) {
