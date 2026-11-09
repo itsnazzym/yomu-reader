@@ -1,98 +1,16 @@
+/* eslint-env node */
+const fs = require("fs");
+const path = require("path");
 const {
   createRunOncePlugin,
   withAppBuildGradle,
   withMainApplication,
   withGradleProperties,
+  withDangerousMod,
 } = require("@expo/config-plugins");
 
 const DOH_DEPENDENCY =
   'implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:4.9.2")';
-
-const DOH_IMPORTS = [
-  "import java.io.IOException",
-  "import java.net.InetAddress",
-  "import com.facebook.react.modules.network.OkHttpClientFactory",
-  "import com.facebook.react.modules.network.OkHttpClientProvider",
-  "import okhttp3.Dns",
-  "import okhttp3.OkHttpClient",
-  "import okhttp3.dnsoverhttps.DnsOverHttps",
-  "import okhttp3.HttpUrl.Companion.toHttpUrl",
-].join("\n");
-
-const DOH_SUPPORT = `
-private class DohFallbackDns(
-  private val resolvers: List<Dns>,
-  private val systemDns: Dns = Dns.SYSTEM,
-) : Dns {
-  override fun lookup(hostname: String): List<InetAddress> {
-    var lastError: IOException? = null
-    for (resolver in resolvers) {
-      try {
-        val addresses = resolver.lookup(hostname)
-        if (addresses.isNotEmpty()) return addresses
-      } catch (error: IOException) {
-        lastError = error
-      }
-    }
-
-    return try {
-      systemDns.lookup(hostname)
-    } catch (error: IOException) {
-      lastError?.let { error.addSuppressed(it) }
-      throw error
-    }
-  }
-}
-
-private fun createDohNetworkClient(): OkHttpClient {
-  // Le client bootstrap résout directement les hôtes DoH avec timeout rapide (2500ms)
-  // et adresses IP bootstrap directes pour éviter tout blocage réseau mobile physique.
-  val bootstrapClient = OkHttpClient.Builder()
-    .connectTimeout(2500, java.util.concurrent.TimeUnit.MILLISECONDS)
-    .readTimeout(2500, java.util.concurrent.TimeUnit.MILLISECONDS)
-    .build()
-
-  val cloudflareDns = DnsOverHttps.Builder()
-    .client(bootstrapClient)
-    .url("https://cloudflare-dns.com/dns-query".toHttpUrl())
-    .bootstrapDnsHosts(
-      listOf(
-        InetAddress.getByName("1.1.1.1"),
-        InetAddress.getByName("1.0.0.1"),
-        InetAddress.getByName("2606:4700:4700::1111"),
-        InetAddress.getByName("2606:4700:4700::1001")
-      )
-    )
-    .post(true)
-    .build()
-
-  val googleDns = DnsOverHttps.Builder()
-    .client(bootstrapClient)
-    .url("https://dns.google/dns-query".toHttpUrl())
-    .bootstrapDnsHosts(
-      listOf(
-        InetAddress.getByName("8.8.8.8"),
-        InetAddress.getByName("8.8.4.4"),
-        InetAddress.getByName("2001:4860:4860::8888"),
-        InetAddress.getByName("2001:4860:4860::8844")
-      )
-    )
-    .post(true)
-    .build()
-
-  return OkHttpClientProvider.createClientBuilder()
-    .dns(DohFallbackDns(listOf(cloudflareDns, googleDns)))
-    .build()
-}
-`;
-
-const DOH_INSTALL = `
-    OkHttpClientProvider.setOkHttpClientFactory(object : OkHttpClientFactory {
-      override fun createNewNetworkModuleClient(): OkHttpClient {
-        return createDohNetworkClient()
-      }
-    })
-`;
 
 const FILE_SUPPRESS = '@file:Suppress("DEPRECATION")';
 const CLASS_MARKER =
@@ -144,63 +62,33 @@ function patchMainApplicationKt(contents) {
   source = source.split(FILE_SUPPRESS).join("").replace(/\n{3,}/g, "\n\n");
   source = `${FILE_SUPPRESS}\n${source.replace(/^\n+/, "")}`;
 
-  if (!source.includes("DohFallbackDns")) {
-    if (!source.includes(CLASS_MARKER)) {
-      throw new Error("MainApplication Android utilise un format inattendu");
-    }
-
-    const lines = source.split("\n");
-    const existing = new Set(lines.map((line) => line.trim()));
-    const importsToAdd = DOH_IMPORTS.split("\n").filter(
-      (line) => line.length > 0 && !existing.has(line)
-    );
-
-    let lastImportIndex = -1;
-    let packageIndex = -1;
-    for (let i = 0; i < lines.length; i += 1) {
-      const trimmed = lines[i].trim();
-      if (trimmed.startsWith("package ")) {
-        packageIndex = i;
-      }
-      if (trimmed.startsWith("import ")) {
-        lastImportIndex = i;
-      }
-    }
-    if (packageIndex < 0) {
-      throw new Error("MainApplication.kt sans déclaration package");
-    }
-
-    const insertAt = lastImportIndex >= 0 ? lastImportIndex + 1 : packageIndex + 1;
-    lines.splice(insertAt, 0, ...importsToAdd, "", DOH_SUPPORT.trim(), "");
-    source = lines.join("\n");
-
-    if (!source.includes(ON_CREATE_MARKER)) {
-      throw new Error("Impossible de trouver onCreate dans MainApplication.kt");
-    }
-    if (!source.includes("OkHttpClientProvider.setOkHttpClientFactory")) {
-      source = source.replace(ON_CREATE_MARKER, `${ON_CREATE_MARKER}${DOH_INSTALL}`);
-    }
+  // Upgrade already-generated Android trees as well as clean prebuilds.
+  // The old guard only installed once and silently kept outdated DNS code.
+  const legacyStart = source.indexOf("private class DohFallbackDns");
+  if (legacyStart >= 0) {
+    const application = source.indexOf(CLASS_MARKER, legacyStart);
+    if (application < 0) throw new Error("MainApplication Android utilise un format inattendu");
+    source = source.slice(0, legacyStart) + source.slice(application);
   }
-
-  // Expo Image otherwise bypasses the DNS policy used by fetch.
-  if (!source.includes("private fun installDohImageNetworking")) {
-    const support = `
-private fun installDohImageNetworking(context: android.content.Context) {
-  val client = createDohNetworkClient()
-  val registry = com.bumptech.glide.Glide.get(context).registry
-  registry.replace(com.bumptech.glide.load.model.GlideUrl::class.java, java.io.InputStream::class.java,
-    com.bumptech.glide.integration.okhttp3.OkHttpUrlLoader.Factory(client))
-  registry.prepend(expo.modules.image.okhttp.GlideUrlWrapper::class.java, java.io.InputStream::class.java,
-    expo.modules.image.okhttp.GlideUrlWrapperLoader.Factory(client))
-}
-`;
-    source = source.replace(CLASS_MARKER, `${support}\n${CLASS_MARKER}`);
-    source = source.replace(ON_CREATE_MARKER, `${ON_CREATE_MARKER}\n    installDohImageNetworking(this)\n`);
+  source = source.replace(/\n\s*installDohImageNetworking\(this\)\n/g, "\n");
+  source = source.replace(/\n\s*OkHttpClientProvider\.setOkHttpClientFactory\(object : OkHttpClientFactory \{[\s\S]*?\n\s*\}\)\n/g, "\n");
+  if (!source.includes("YomuNetworking.install(this)")) {
+    if (!source.includes(ON_CREATE_MARKER)) throw new Error("Impossible de trouver onCreate dans MainApplication.kt");
+    source = source.replace(ON_CREATE_MARKER, ON_CREATE_MARKER + "    YomuNetworking.install(this)\n");
+  }
+  if (!source.includes("add(YomuNetworkPackage())")) {
+    source = source.replace(/PackageList\(this\)\.packages\.apply\s*\{/, "$&\n              add(YomuNetworkPackage())");
   }
   return source.replace(/\n{3,}/g, "\n\n");
 }
 
 function withAndroidDoh(config) {
+  config = withDangerousMod(config, ["android", async (next) => {
+    const packageDir = path.join(next.modRequest.platformProjectRoot, "app/src/main/java/com/nhentaidownlo/mobile");
+    fs.mkdirSync(packageDir, { recursive: true });
+    fs.copyFileSync(path.join(__dirname, "native/YomuNetworkModule.kt"), path.join(packageDir, "YomuNetworkModule.kt"));
+    return next;
+  }]);
   config = withGradleProperties(config, (modConfig) => {
     applyDohGradleProperties(modConfig.modResults);
     return modConfig;
@@ -240,7 +128,7 @@ function withAndroidDoh(config) {
   });
 }
 
-const plugin = createRunOncePlugin(withAndroidDoh, "with-android-doh", "1.0.2");
+const plugin = createRunOncePlugin(withAndroidDoh, "with-android-doh", "2.0.0");
 plugin.patchMainApplicationKt = patchMainApplicationKt;
 plugin.applyDohGradleProperties = applyDohGradleProperties;
 module.exports = plugin;

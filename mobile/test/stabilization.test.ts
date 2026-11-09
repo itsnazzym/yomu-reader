@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import AsyncStorage, { __mockReset, __mockSet } from "./mockAsyncStorage";
-import { PermissionsAndroid } from "./mockReactNative";
+import { PermissionsAndroid, NativeModules } from "./mockReactNative";
+import { getDnsMode, setDnsMode } from "@/lib/networkDns";
 import { initPrivacyCaptureStore, getPreventScreenCapture } from "@/lib/privacyCaptureStore";
 import { requestNotificationPermissions } from "@/lib/permissions";
 import { initHistory, recordReadingProgress, findHistoryEntry, getHistory, flushHistoryPersist } from "@/lib/historyStore";
@@ -9,6 +10,27 @@ import { sourceGalleryToGallery } from "@/lib/sources/galleryMapper";
 import { createSyncBaseline, mergeBackups, backupsEqual } from "@/lib/cloudSync/merge";
 import { userFacingError } from "@/lib/userFacingError";
 import type { BackupData } from "@/lib/backupStore";
+
+test("les réglages DNS refusent une ancienne build sans module et les choix inconnus", async () => {
+  await assert.rejects(getDnsMode(), /nouvelle version Android/);
+  let calls = 0;
+  NativeModules.YomuNetwork = { setDnsMode: async () => { calls++; return "system"; } };
+  try {
+    await assert.rejects(setDnsMode("unknown" as "system"), /invalide/);
+    assert.equal(calls, 0);
+  } finally { delete NativeModules.YomuNetwork; }
+});
+
+test("un échec natif de changement DNS est visible et une réponse inconnue est rejetée", async () => {
+  NativeModules.YomuNetwork = {
+    setDnsMode: async () => { throw new Error("Enregistrement impossible"); },
+    getDnsMode: async () => "unknown",
+  };
+  try {
+    await assert.rejects(setDnsMode("system"), /Enregistrement impossible/);
+    await assert.rejects(getDnsMode(), /invalide/);
+  } finally { delete NativeModules.YomuNetwork; }
+});
 
 test("l'initialisation concurrente des captures attend la préférence persistée", async () => {
   const original = AsyncStorage.getItem;

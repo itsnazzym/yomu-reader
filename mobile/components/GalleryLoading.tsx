@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { IconArrowLeft, IconBook2 } from "@tabler/icons-react-native";
 import { useTheme } from "@/lib/ThemeContext";
+import { ButtonLabel } from "./ui/ButtonLabel";
 
 export function GalleryLoading({ title, source, onBack }: {
   title?: string;
@@ -20,7 +21,7 @@ export function GalleryLoading({ title, source, onBack }: {
       <Pressable onPress={onBack} accessibilityRole="button" accessibilityLabel="Retour"
         style={styles.back}>
         <IconArrowLeft size={22} color={colors.txt} />
-        <Text style={[styles.backText, { color: colors.txt }]}>Retour</Text>
+        <ButtonLabel style={[styles.backText, { color: colors.txt }]}>Retour</ButtonLabel>
       </Pressable>
       <View style={styles.content}>
         <Text style={[styles.eyebrow, { color: colors.sub }]}>{source}</Text>
@@ -56,8 +57,8 @@ export function GalleryLoading({ title, source, onBack }: {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, paddingHorizontal: 24 },
-  back: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 48, alignSelf: "flex-start" },
-  backText: { fontSize: 16, fontWeight: "600" },
+  back: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 48, minWidth: 128, paddingVertical: 8, paddingRight: 16, alignSelf: "flex-start" },
+  backText: { fontSize: 16, lineHeight: 24, fontWeight: "600", paddingRight: 4 },
   content: { width: "100%", maxWidth: 480, alignSelf: "center", flex: 1, justifyContent: "center", paddingBottom: 64 },
   eyebrow: { fontSize: 12, letterSpacing: 1.6, textTransform: "uppercase", fontWeight: "700", marginBottom: 12 },
   title: { fontSize: 26, lineHeight: 34, fontWeight: "700", marginBottom: 28 },

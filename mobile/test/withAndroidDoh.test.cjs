@@ -82,8 +82,8 @@ test("patchMainApplicationKt keeps Kotlin imports after package on Expo 54 templ
   assert.equal(typeof patchMainApplicationKt, "function");
   const patched = patchMainApplicationKt(EXPO_54_MAIN_APPLICATION);
   assertValidKotlinHeader(patched, "expo54");
-  assert.match(patched, /DohFallbackDns/);
-  assert.match(patched, /OkHttpClientProvider\.setOkHttpClientFactory/);
+  assert.match(patched, /YomuNetworking.install\(this\)/);
+  assert.match(patched, /add\(YomuNetworkPackage\(\)\)/);
   assert.match(patched, /loadReactNative\(this\)/);
 });
 
@@ -102,7 +102,34 @@ class MainApplication : Application(), ReactApplication {
 `;
   const patched = patchMainApplicationKt(broken);
   assertValidKotlinHeader(patched, "repaired");
-  assert.match(patched, /DohFallbackDns/);
+  assert.match(patched, /YomuNetworking.install\(this\)/);
+});
+
+test("le prebuild migre une ancienne installation forcée et reste idempotent", () => {
+  const legacy = EXPO_54_MAIN_APPLICATION.replace("class MainApplication", `private class DohFallbackDns {}
+private fun createDohNetworkClient() = client
+private fun installDohImageNetworking(context: Context) {}
+class MainApplication`).replace("    super.onCreate()", `    super.onCreate()
+    installDohImageNetworking(this)
+    OkHttpClientProvider.setOkHttpClientFactory(object : OkHttpClientFactory {
+      override fun createNewNetworkModuleClient(): OkHttpClient {
+        return createDohNetworkClient()
+      }
+    })`);
+  const migrated = patchMainApplicationKt(legacy);
+  assert.doesNotMatch(migrated, /DohFallbackDns|createDohNetworkClient|installDohImageNetworking|setOkHttpClientFactory/);
+  assert.equal(patchMainApplicationKt(migrated), migrated);
+  assert.match(migrated, /add\(YomuNetworkPackage\(\)\)/);
+});
+
+test("le réseau natif utilise Android par défaut et borne DNS, connexion et réponse", () => {
+  const source = require("node:fs").readFileSync(path.join(__dirname, "../native/YomuNetworkModule.kt"), "utf8");
+  assert.match(source, /getString\("dns_mode", "system"\)/);
+  assert.match(source, /if \(value == "system"\) return Dns.SYSTEM/);
+  assert.match(source, /callTimeout\(3, TimeUnit.SECONDS\)/);
+  assert.match(source, /callTimeout\(18, TimeUnit.SECONDS\)/);
+  assert.match(source, /connectionPool\?\.evictAll/);
+  assert.match(source, /GlideUrlWrapperLoader.Factory\(client\)/);
 });
 
 test("DoH gradle properties disable configure-on-demand for New Architecture codegen", () => {

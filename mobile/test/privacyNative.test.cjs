@@ -32,7 +32,6 @@ test("la fenêtre est protégée avant la création de l'activité et le prebuil
 test("le client d'images et fetch utilisent la même politique DNS, sans perdre le loader Expo", () => {
   const source = "package fixture\nclass MainApplication : Application(), ReactApplication {\n  override fun onCreate() {\n    super.onCreate()\n  }\n}";
   const patched = patchMainApplicationKt(source);
-  assert.match(patched, /GlideUrlWrapperLoader.Factory\(client\)/);
-  assert.match(patched, /installDohImageNetworking\(this\)/);
+  assert.match(patched, /YomuNetworking.install\(this\)/);
   assert.equal(patchMainApplicationKt(patched), patched);
 });

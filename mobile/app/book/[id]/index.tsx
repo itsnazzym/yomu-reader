@@ -358,6 +358,12 @@ export default function BookDetailScreen() {
           <ButtonLabel style={styles.backBtnText}>Réessayer</ButtonLabel>
         </Pressable>
         <Pressable
+          onPress={() => router.push("/settings")}
+          style={[styles.backBtn, { backgroundColor: colors.tagBg, marginTop: 10 }]}
+        >
+          <ButtonLabel style={[styles.backBtnText, { color: colors.txt }]}>Réglages réseau et DNS</ButtonLabel>
+        </Pressable>
+        <Pressable
           onPress={() => router.back()}
           style={[styles.backBtn, { backgroundColor: colors.tagBg, marginTop: 10 }]}
         >

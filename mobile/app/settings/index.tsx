@@ -58,6 +58,7 @@ import { CardPressable } from "@/components/ui/CardPressable";
 import { SmoothSlider } from "@/components/ui/SmoothSlider";
 import { IconBtn } from "@/components/ui/IconBtn";
 import { ButtonLabel } from "@/components/ui/ButtonLabel";
+import { NetworkDnsSettings } from "@/components/NetworkDnsSettings";
 import {
   getDownloadQueueSnapshot,
   setMaxConcurrent,
@@ -1594,19 +1595,7 @@ export default function SettingsScreen() {
           </View>
 
           <View style={styles.groupCard}>
-            {/* Mirror status */}
-            <View style={styles.mirrorStatusRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.rowToggleTitle}>Proxy Photon nHentai</Text>
-                <Text style={styles.rowToggleSub}>
-                  DNS sécurisé pour le catalogue et les images. La disponibilité dépend des sources.
-                </Text>
-              </View>
-              <View style={styles.onlineBadge}>
-                <View style={styles.onlineDot} />
-                <Text style={styles.onlineBadgeText}>Actif</Text>
-              </View>
-            </View>
+            <NetworkDnsSettings />
 
             <View style={styles.divider} />
 
