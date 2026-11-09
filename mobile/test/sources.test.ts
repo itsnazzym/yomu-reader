@@ -9,6 +9,82 @@ import {
   clearSourceGalleryCache,
   loadSourceGallery,
 } from "../lib/sources/galleryLoader";
+import { EhentaiSource } from "../lib/sources/ehentai";
+import { getSourceFilterSupport, hasAnyFilterSupport } from "../lib/sources/sourceFilterSupport";
+
+const ehHtml = `<h1 id="gn">Fixture gallery</h1><div id="gd1"><div style="background: url(https://example.test/cover.jpg)"></div></div>
+  <td class="gdt2">2 pages</td><a href="https://e-hentai.org/s/abcdef/123-1">1</a><a href="https://e-hentai.org/s/bcdefa/123-2">2</a>`;
+
+test("E-Hentai démarre le HTML sans attendre son API et ouvre malgré une API bloquée", async () => {
+  const original = globalThis.fetch;
+  let htmlRequested = false;
+  let apiSignal: AbortSignal | null | undefined;
+  globalThis.fetch = (async (url: string, init?: RequestInit) => {
+    if (String(url).includes("api.php")) {
+      apiSignal = init?.signal;
+      // Simule un transport qui ignore même AbortController.
+      return new Promise(() => {});
+    }
+    htmlRequested = true;
+    return new Response(ehHtml);
+  }) as typeof fetch;
+  try {
+    const pending = new EhentaiSource().getGallery("123_abcdef");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.equal(htmlRequested, true, "le domaine API ne doit pas bloquer la page principale");
+    const gallery = await pending;
+    assert.equal(gallery.title, "Fixture gallery");
+    assert.equal(gallery.numPages, 2);
+    assert.equal(gallery.coverUrl, "https://example.test/cover.jpg");
+    assert.equal(apiSignal?.aborted, true);
+  } finally { globalThis.fetch = original; }
+});
+
+test("E-Hentai refuse une page d'erreur au lieu de mettre une galerie vide en cache", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = (async () => new Response("Service unavailable")) as typeof fetch;
+  try {
+    await assert.rejects(new EhentaiSource().getGallery("123_abcdef"), /indisponible|accès/i);
+  } finally { globalThis.fetch = original; }
+});
+
+test("E-Hentai borne aussi un corps HTML bloqué et annule le transport", async (t) => {
+  const original = globalThis.fetch;
+  let htmlSignal: AbortSignal | null | undefined;
+  globalThis.fetch = (async (url: string, init?: RequestInit) => {
+    if (String(url).includes("api.php")) return new Response('{"gmetadata":[]}');
+    htmlSignal = init?.signal;
+    return { ok: true, text: () => new Promise(() => {}) } as Response;
+  }) as typeof fetch;
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    const pending = new EhentaiSource().getGallery("123_abcdef");
+    for (let i = 0; i < 30 && !htmlSignal; i++) await Promise.resolve();
+    assert.ok(htmlSignal, "la demande HTML a démarré");
+    const rejected = assert.rejects(pending, /ne répond pas/);
+    t.mock.timers.tick(14_000);
+    await rejected;
+    assert.equal(htmlSignal.aborted, true);
+  } finally { globalThis.fetch = original; t.mock.timers.reset(); }
+});
+
+test("E-Hentai transmet la langue et conserve les opérateurs de recherche", async () => {
+  const original = globalThis.fetch;
+  let search = "";
+  globalThis.fetch = (async (url: string) => {
+    search = new URL(url).searchParams.get("f_search") || "";
+    return new Response("");
+  }) as typeof fetch;
+  try {
+    const source = new EhentaiSource();
+    await source.search({ query: 'artist:"fixture"', language: "french" });
+    assert.equal(search, 'artist:"fixture" language:french');
+    await source.search({ query: "language:japanese", language: "french" });
+    assert.equal(search, "language:japanese");
+    await source.search({ language: "all" });
+    assert.equal(search, "");
+  } finally { globalThis.fetch = original; }
+});
 
 test("makeGlobalId/splitGlobalId : aller-retour", () => {
   const id = makeGlobalId("3hentai", 719690);
@@ -108,14 +184,13 @@ test("galleryLoader forceRefresh ne réutilise pas une requête bloquée", async
 });
 
 
-import { getSourceFilterSupport, hasAnyFilterSupport } from "../lib/sources/sourceFilterSupport";
-
 test("sourceFilterSupport: E-Hentai a le filtre complet (catégories, pages, rating)", () => {
   const eh = getSourceFilterSupport("ehentai");
   assert.equal(eh.supportsCategories, true);
   assert.equal(eh.supportedCategories.length, 10);
   assert.equal(eh.supportsPages, true);
   assert.equal(eh.supportsRating, true);
+  assert.equal(eh.supportsLanguage, true);
 });
 
 test("sourceFilterSupport: nHentai adapte les filtres (pages et catégories OK, note exclue)", () => {

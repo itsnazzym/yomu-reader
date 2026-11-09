@@ -41,6 +41,34 @@ const BASE_EXHENTAI = "https://exhentai.org";
 const API_URL = "https://api.e-hentai.org/api.php";
 const TIMEOUT_MS = 14000;
 
+// Le délai couvre aussi le corps de réponse et les transports qui ignorent
+// l'annulation native (DNS/réseau mobile). L'API secondaire reste optionnelle.
+async function requestWithDeadline<T>(
+  url: string,
+  init: RequestInit,
+  read: (response: Response) => Promise<T>,
+  timeoutMs = TIMEOUT_MS
+): Promise<T> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      fetch(url, { ...init, signal: controller.signal }).then((response) => {
+        if (!response.ok) throw new Error("E-Hentai est indisponible. Réessayez dans un instant.");
+        return read(response);
+      }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error("E-Hentai ne répond pas. Vérifiez votre connexion puis réessayez."));
+          controller.abort();
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const BASE_HEADERS: Record<string, string> = {
   "User-Agent":
     Platform.OS === "android"
@@ -310,14 +338,19 @@ export class EhentaiSource implements SourceAdapter {
     const { baseUrl, headers } = await this.getRequestConfig();
     const pageNum = Math.max(1, opts.page || 1);
 
-    const cacheKey = `${baseUrl}|${opts.query || ""}|${(opts.categories || []).join(",")}|${opts.pageMin || ""}|${opts.pageMax || ""}|${opts.minRating || ""}|${opts.sort || ""}`;
+    const queryParts = [opts.query?.trim() || ""];
+    if (opts.language && opts.language !== "all" && !/\blanguage:/i.test(queryParts[0])) {
+      queryParts.push(`language:${opts.language}`);
+    }
+    const query = queryParts.filter(Boolean).join(" ");
+    const cacheKey = `${baseUrl}|${query}|${(opts.categories || []).join(",")}|${opts.pageMin || ""}|${opts.pageMax || ""}|${opts.minRating || ""}|${opts.sort || ""}`;
 
     const params = new URLSearchParams();
     // inline_set=dm_m force l'affichage en mode tableau Minimal+ prévisible
     params.append("inline_set", "dm_m");
 
-    if (opts.query?.trim()) {
-      params.append("f_search", opts.query.trim());
+    if (query) {
+      params.append("f_search", query);
     }
 
     // Gestion du curseur nextGid pour pagination E-Hentai (JHenTai style)
@@ -415,41 +448,26 @@ export class EhentaiSource implements SourceAdapter {
 
     const { baseUrl, headers } = await this.getRequestConfig();
 
-    // 1. Appel API JSON officiel pour les métadonnées de la galerie
-    let meta: EhentaiApiMetadata | null = null;
-    try {
-      const apiRes = await fetch(API_URL, {
+    // Les deux domaines sont indépendants : une API inaccessible sur le
+    // réseau du téléphone ne doit jamais empêcher le scraping principal.
+    const metadata = requestWithDeadline(
+      API_URL,
+      {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          method: "gdata",
-          gidlist: [[parseInt(gid, 10), token]],
-          namespace: 1,
-        }),
-      });
-
-      if (apiRes.ok) {
-        const json = await apiRes.json();
-        if (json?.gmetadata?.[0] && !json.gmetadata[0].error) {
-          meta = json.gmetadata[0] as EhentaiApiMetadata;
-        }
-      }
-    } catch {}
-
-    // 2. Scraping HTML de la page 0 de la galerie pour extraire les liens des pages
-    const galleryHtmlUrl = `${baseUrl}/g/${gid}/${token}/?p=0`;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
-    let galleryHtml = "";
-    try {
-      const htmlRes = await fetch(galleryHtmlUrl, { headers, signal: controller.signal });
-      if (htmlRes.ok) {
-        galleryHtml = await htmlRes.text();
-      }
-    } finally {
-      clearTimeout(timer);
-    }
+        body: JSON.stringify({ method: "gdata", gidlist: [[parseInt(gid, 10), token]], namespace: 1 }),
+      },
+      async (response): Promise<EhentaiApiMetadata | null> => {
+        const json = await response.json();
+        const entry = json?.gmetadata?.[0];
+        return entry && !entry.error ? entry as EhentaiApiMetadata : null;
+      },
+      3_000
+    ).catch(() => null);
+    const html = requestWithDeadline(
+      `${baseUrl}/g/${gid}/${token}/?p=0`, { headers }, (response) => response.text()
+    );
+    const [meta, galleryHtml] = await Promise.all([metadata, html]);
 
     // Extraction des URLs de lecteur /s/<page_token>/<gid>-<page_num>
     const readerPageLinks: { url: string; pageNum: number }[] = [];
@@ -467,12 +485,16 @@ export class EhentaiSource implements SourceAdapter {
     }
     readerPageLinks.sort((a, b) => a.pageNum - b.pageNum);
 
+    if (readerPageLinks.length === 0) {
+      throw new Error("Galerie E-Hentai indisponible ou accès refusé. Vérifiez la connexion à la source.");
+    }
+    const htmlPageCount = galleryHtml.match(/class=["']gdt2["'][^>]*>\s*([\d,]+) pages/i)?.[1];
     const totalPages =
       typeof meta?.filecount === "number"
         ? meta.filecount
         : typeof meta?.filecount === "string"
         ? parseInt(meta.filecount, 10)
-        : readerPageLinks.length || 1;
+        : Number(htmlPageCount?.replace(/,/g, "")) || readerPageLinks.length;
 
     // Normalisation des tags avec leurs namespaces (JHenTai style)
     const tags: SourceTag[] = [];
@@ -514,8 +536,10 @@ export class EhentaiSource implements SourceAdapter {
       }
     }
 
-    const title = meta?.title_jpn || meta?.title || `E-Hentai #${gid}`;
-    const coverUrl = meta?.thumb || `${baseUrl}/g/blank.gif`;
+    const htmlTitle = galleryHtml.match(/<h1[^>]*id=["']gn["'][^>]*>([\s\S]*?)<\/h1>/i)?.[1];
+    const htmlCover = galleryHtml.match(/id=["']gd1["'][\s\S]*?url\(["']?([^\s"')]+)["']?\)/i)?.[1];
+    const title = meta?.title_jpn || meta?.title || (htmlTitle ? stripTags(htmlTitle) : `E-Hentai #${gid}`);
+    const coverUrl = meta?.thumb || (htmlCover ? decodeEntities(htmlCover) : "");
     const rating = meta?.rating ? parseFloat(String(meta.rating)) : undefined;
     const uploadDate = meta?.posted ? parseInt(String(meta.posted), 10) * 1000 : undefined;
 

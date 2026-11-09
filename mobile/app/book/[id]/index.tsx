@@ -6,7 +6,6 @@ import {
   ScrollView,
   Pressable,
   TouchableOpacity,
-  ActivityIndicator,
   Animated,
   useWindowDimensions,
   Modal,
@@ -57,6 +56,8 @@ import { makeGlobalId } from "@/lib/sources/types";
 import { CollectionPickerModal } from "@/components/modals/CollectionPickerModal";
 import { GalleryTagChip } from "@/components/ui/GalleryTagChip";
 import { getEhentaiCategoryInfo } from "@/lib/sources/ehentaiCategories";
+import { GalleryLoading } from "@/components/GalleryLoading";
+import { getSource } from "@/lib/sources/registry";
 import {
   findDuplicateGroups,
   galleryToDuplicateCandidate,
@@ -173,7 +174,6 @@ export default function BookDetailScreen() {
       const knownTitle = typeof titleParam === "string" ? titleParam : undefined;
       void loadSourceGallery(sourceId, id, knownTitle, {
         forceRefresh: reloadNonce > 0,
-        timeoutMs: 10_000,
       })
         .then((sg) => {
           // Map vers Gallery (mapper partagé) pour réutiliser toute l'UI.
@@ -333,11 +333,12 @@ export default function BookDetailScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.centerContainer, { backgroundColor: colors.bg }]}>
-        <ActivityIndicator size="large" color={colors.accent} />
-        <Text style={[styles.loadingText, { color: colors.sub }]}>
-          Chargement de la galerie #{id}...
-        </Text>
+      <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top, paddingBottom: insets.bottom }}>
+        <GalleryLoading
+          title={typeof titleParam === "string" ? titleParam : undefined}
+          source={getSource(sourceId).meta.label}
+          onBack={() => router.back()}
+        />
       </View>
     );
   }

@@ -39,7 +39,7 @@ export function getSourceFilterSupport(sourceId?: SourceId | "all"): SourceFilte
         supportsPages: true,
         supportsRating: true,
         supportsSort: false,
-        supportsLanguage: false,
+        supportsLanguage: true,
         supportsDate: false,
       };
 
