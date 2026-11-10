@@ -3,8 +3,9 @@ function architectureOf(name) {
   if (/universal/i.test(name)) return "universal";
   if (/arm64|aarch64/i.test(name)) return "arm64";
   if (/armeabi|armv7/i.test(name)) return "armv7";
-  if (/x86_64|x64|\.exe$/i.test(name)) return "x64";
+  if (/x86_64|x64/i.test(name)) return "x64";
   if (/x86|ia32/i.test(name)) return "x86";
+  if (/\.exe$/i.test(name)) return "x64";
   return "unknown";
 }
 async function createReleaseManifest(directory,version) {

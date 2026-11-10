@@ -47,9 +47,9 @@ async function loadDownloadSettings(): Promise<void> {
     if (prompted === "true") {
       currentSettings = { ...currentSettings, folderPrompted: true };
     }
-  } catch {
+  } catch (error) {
     // Keep defaults if storage is unavailable.
-  } finally {
+   throw error; } finally {
     settingsReady = true;
     notify();
   }
@@ -146,7 +146,7 @@ export function useDownloadSettings(): {
       setReady(settingsReady);
     };
     listeners.add(update);
-    initDownloadSettings();
+    void initDownloadSettings().catch(() => {});
     return () => {
       listeners.delete(update);
     };
@@ -162,4 +162,4 @@ export function useDownloadSettings(): {
   };
 }
 
-initDownloadSettings();
+void initDownloadSettings().catch(() => {});

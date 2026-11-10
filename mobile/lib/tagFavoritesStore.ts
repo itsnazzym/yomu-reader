@@ -32,7 +32,7 @@ async function loadFromStorage() {
       favTagsState = JSON.parse(raw);
       notify();
     }
-  } catch {}
+  } catch (error) { throw error; }
 }
 
 export const initTagFavs = createInitOnce(loadFromStorage);
@@ -81,7 +81,7 @@ export function useTagFavs() {
   useEffect(() => {
     const update = () => setFavMap({ ...favTagsState });
     listeners.add(update);
-    void initTagFavs();
+    void initTagFavs().catch(() => {});
     return () => {
       listeners.delete(update);
     };
@@ -103,4 +103,4 @@ export function useTagFavs() {
   };
 }
 
-void initTagFavs();
+void initTagFavs().catch(() => {});

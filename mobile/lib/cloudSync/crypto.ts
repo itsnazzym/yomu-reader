@@ -64,7 +64,10 @@ export function compactCloudBackup(data: BackupData): BackupData {
   const { localAvatarBase64: _avatar, localAvatarMime: _mime, ...portable } = data;
   return { ...portable, favorites: data.favorites?.map(gallery => {
     const images = gallery.images && typeof gallery.images === "object" ? gallery.images as Record<string, unknown> : {};
-    return { ...gallery, images: { ...images, pages: [] } };
+    const id = Number(gallery.id);
+    const title = gallery.title && typeof gallery.title === "object" ? gallery.title as Record<string, unknown> : { pretty: typeof gallery.title === "string" ? gallery.title : `Gallery #${id}`, english: "", japanese: "" };
+    const placeholder = { t: "j", w: 0, h: 0 };
+    return { ...gallery, id, globalId: gallery.globalId || `nhentai:${id}`, media_id: gallery.media_id || String(id), title, tags: Array.isArray(gallery.tags) ? gallery.tags : [], images: { ...images, cover: images.cover || placeholder, thumbnail: images.thumbnail || images.cover || placeholder, pages: [] } };
   }) };
 }
 

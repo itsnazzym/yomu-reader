@@ -11,7 +11,7 @@ import type { SourceId } from "./sources/types";
 import { ensureNoMediaFile, libraryRoot, makeLocalId, sanitizeTitle, writeLocalManifest } from "./localLibrary";
 import { decodeBase64Header, isCompleteDownload } from "./imageIntegrity";
 import { createInitOnce, createWriteQueue } from "./persistQueue";
-import { getDownloadSettings } from "./downloadSettingsStore";
+import { getDownloadSettings, initDownloadSettings } from "./downloadSettingsStore";
 import { copyLocalGalleryToSaf } from "./safCopy";
 import { requestNotificationPermissions } from "./permissions";
 import { notifyDownloadFinished } from "./downloadNotifications";
@@ -425,7 +425,9 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
       gallery = await getGallery(item.id);
     }
     const rawTitle = gallery.title.pretty || gallery.title.english;
-    const localId = makeLocalId(gallery.id, `${item.src || "nhentai"}_${rawTitle}`); // identité stable = dossier
+    const nativeId = item.nativeId || gallery.globalId?.slice(gallery.globalId.indexOf(":") + 1) || String(gallery.id);
+    const namespace = nativeId === String(gallery.id) ? item.src || "nhentai" : `${item.src || "nhentai"}_${nativeId}`;
+    const localId = makeLocalId(gallery.id, `${namespace}_${rawTitle}`);
     const baseDir = `${FileSystem.documentDirectory}NHAppAndroid/`;
     const targetDir = `${baseDir}${localId}/`;
 
@@ -637,7 +639,7 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Échec du téléchargement";
     if (message === "__PAUSED__") {
-      updateItem(qKey, { status: "paused" });
+      if (state.items.find(item => queueKeyOf(item) === qKey)?.status !== "queued") updateItem(qKey, { status: "paused" });
     } else {
       console.error(`[downloadQueue] Failed gallery ${qKey}:`, err);
       updateItem(qKey, {
@@ -670,8 +672,9 @@ function updateItem(key: string, patch: Partial<QueueItem>) {
 }
 
 async function canStartDownloads(): Promise<boolean> {
-  if (!getDownloadSettings().wifiOnly) return true;
   try {
+    await initDownloadSettings();
+    if (!getDownloadSettings().wifiOnly) return true;
     const net = await NetInfo.fetch();
     return net.type === "wifi" && net.isConnected === true;
   } catch {

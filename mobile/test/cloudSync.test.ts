@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import * as VaultCrypto from "../lib/cloudSync/crypto";
 import test from "node:test";
 import { assertRecoveryKey, decryptVault, encryptVault, generateRecoveryKey, vaultRecordKey } from "@/lib/cloudSync/crypto";
+import { isValidBackupData } from "../lib/backupValidation";
 
 test("la sauvegarde portable est chiffrée avec un mot de passe et refuse une clé incorrecte", async () => {
   const crypto = VaultCrypto as Record<string, any>;
@@ -32,6 +33,11 @@ test("10 000 favoris synthétiques riches restent dans la limite du coffre sans 
   const reduced=await crypto.encryptCloudVault({version:3,exportedAt:data.exportedAt,favorites:[]},key,"user-load",true);
   assert.equal(reduced.schemaVersion,2,"la réduction du coffre ne doit pas réactiver les anciens clients");
   t.diagnostic(`10 000 favoris synthétiques : ${JSON.stringify(data).length} caractères avant, ${JSON.stringify(compact).length} après, ${encrypted.ciphertext.length} caractères chiffrés`);
+});
+
+test("les favoris legacy pauvres restent restaurables après la préparation du coffre",()=>{
+  const data=VaultCrypto.compactCloudBackup({version:3,exportedAt:"2026-11-10T10:00:00Z",favorites:[{id:123}]});
+  assert.equal(isValidBackupData(data),true);assert.equal(data.favorites?.[0].globalId,"nhentai:123");
 });
 
 test("le nonce Google est aléatoire, URL-safe et haché pour Credential Manager", async () => {

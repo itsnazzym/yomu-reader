@@ -82,7 +82,7 @@ async function loadReaderSettings() {
     if (raw) {
       currentSettings = { ...defaultSettings, ...JSON.parse(raw) };
     }
-  } catch {} finally {
+  } catch (error) { currentSettings = { ...currentSettings, blurNsfwCovers: true }; throw error; } finally {
     ready = true;
     notify();
   }
@@ -115,7 +115,7 @@ export function useReaderSettings() {
       setInitialized(ready);
     };
     listeners.add(update);
-    initReaderSettings();
+    void initReaderSettings().catch(() => {});
     return () => {
       listeners.delete(update);
     };

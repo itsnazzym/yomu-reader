@@ -405,6 +405,7 @@ export default function BookDetailScreen() {
     findHistoryEntry({
       id: gallery.id,
       source: sourceId,
+      globalId: gallery.globalId,
       localId: typeof localIdParam === "string" && localIdParam ? localIdParam : undefined,
     }) ||
     // Fallback: ancienne entrée sans source (nhentai uniquement).

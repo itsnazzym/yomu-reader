@@ -14,6 +14,6 @@ test("le site conserve les deux APK et choisit la version la plus récente de ch
 test("le manifeste calcule les empreintes des installateurs et décrit leur architecture",async()=>{
   let create;try{create=require("./create-release-manifest.cjs").createReleaseManifest;}catch{}
   assert.equal(typeof create,"function");const dir=fs.mkdtempSync(path.join(os.tmpdir(),"yomu-manifest-test-"));
-  try {fs.writeFileSync(path.join(dir,"YomuReader-arm64-v8a-release.apk"),"fixture");const manifest=await create(dir,"2.0.8");assert.equal(manifest.files[0].architecture,"arm64");assert.equal(manifest.files[0].sizeBytes,7);assert.equal(Buffer.from(manifest.files[0].sha512,"base64").length,64);assert.equal(JSON.parse(fs.readFileSync(path.join(dir,"release-manifest.json"),"utf8")).version,"2.0.8");}
+  try {fs.writeFileSync(path.join(dir,"YomuReader-arm64-v8a-release.apk"),"fixture");fs.writeFileSync(path.join(dir,"YomuReader-x86.exe"),"fixture");const manifest=await create(dir,"2.0.8");assert.equal(manifest.files[0].architecture,"arm64");assert.equal(manifest.files[0].sizeBytes,7);assert.equal(Buffer.from(manifest.files[0].sha512,"base64").length,64);assert.equal(manifest.files.find(f=>f.fileName.endsWith(".exe")).architecture,"x86");assert.equal(JSON.parse(fs.readFileSync(path.join(dir,"release-manifest.json"),"utf8")).version,"2.0.8");}
   finally {fs.rmSync(dir,{recursive:true,force:true});}
 });

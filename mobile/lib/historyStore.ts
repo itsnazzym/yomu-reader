@@ -39,6 +39,7 @@ export interface HistoryEntry {
 export interface RecordProgressOptions {
   source?: string;
   localId?: string;
+  globalId?: string;
 }
 
 let historyList: HistoryEntry[] = [];
@@ -166,7 +167,7 @@ function normalizeEntry(raw: unknown): HistoryEntry | null {
 }
 
 function gallerySource(gallery: HistoryGallery, source?: string): string {
-  const known = new Set(["nhentai", "3hentai", "doujins", "hitomi"]);
+  const known = new Set(["nhentai", "3hentai", "doujins", "hitomi", "ehentai", "rule34"]);
   const prefix = gallery.globalId?.split(":")[0];
   if (prefix && known.has(prefix)) return prefix;
   if (source && known.has(source)) return source;
@@ -179,7 +180,12 @@ function entryMatches(
   opts?: RecordProgressOptions
 ): boolean {
   if (opts?.localId && entry.localId === opts.localId) return true;
+  if (opts?.globalId) return historyIdentity(entry) === opts.globalId;
   return Number(entry.gallery?.id) === targetId && gallerySource(entry.gallery, entry.source) === (opts?.source || "nhentai");
+}
+
+function historyIdentity(entry: HistoryEntry): string {
+  return entry.gallery.globalId || `${gallerySource(entry.gallery, entry.source)}:${entry.gallery.id}`;
 }
 
 function persistHistory(): Promise<void> {
@@ -239,7 +245,7 @@ async function loadHistoryFromStorage(): Promise<void> {
       const merged = new Map<string, HistoryEntry>();
       for (const entry of [...historyList].sort((a, b) => b.readAt - a.readAt)) {
         entry.source = gallerySource(entry.gallery, entry.source);
-        const key = `${entry.source}:${entry.gallery.id}`;
+        const key = historyIdentity(entry);
         const current = merged.get(key);
         if (!current) merged.set(key, entry);
         else if (!current.localId && entry.localId) current.localId = entry.localId;
@@ -247,12 +253,12 @@ async function loadHistoryFromStorage(): Promise<void> {
       historyList = [...merged.values()];
       notify();
     }
-  } catch {}
+  } catch (error) { throw error; }
 }
 
 export function initHistory(forceReload = false): Promise<void> {
   if (forceReload || !historyInitPromise) {
-    historyInitPromise = loadHistoryFromStorage();
+    historyInitPromise = loadHistoryFromStorage().catch(error => { historyInitPromise = null; throw error; });
   }
   return historyInitPromise;
 }
@@ -278,7 +284,7 @@ export async function recordReadingProgress(
   const nextTotal = totalPages || preview.num_pages || 1;
   const source = gallerySource(preview, opts?.source);
   const localId = opts?.localId;
-  const matchOpts: RecordProgressOptions = { source, localId };
+  const matchOpts: RecordProgressOptions = { source, localId, globalId: preview.globalId || `${source}:${targetId}` };
 
   const existingIndex = historyList.findIndex((entry) =>
     entryMatches(entry, targetId, matchOpts)
@@ -320,11 +326,14 @@ export function findHistoryEntry(opts: {
   id?: number | string;
   source?: string;
   localId?: string;
+  globalId?: string;
 }): HistoryEntry | undefined {
   if (opts.localId) {
     const local = historyList.find((entry) => entry.localId === opts.localId);
     if (local) return local;
   }
+  const globalId = opts.globalId || (typeof opts.id === "string" && opts.id.includes(":") ? opts.id : undefined);
+  if (globalId) return historyList.find(entry => historyIdentity(entry) === globalId);
   const targetId = Number(opts.id);
   if (!Number.isFinite(targetId)) return undefined;
   return historyList.find((entry) =>
@@ -344,8 +353,8 @@ export async function clearHistory(): Promise<void> {
 export async function removeHistoryItem(id: number | string): Promise<void> {
   return withLibraryMutation(async () => {
   await initHistory();
-  const targetId = Number(id);
-  historyList = historyList.filter((entry) => Number(entry.gallery?.id) !== targetId);
+  const target = typeof id === "string" && id.includes(":") ? id : `nhentai:${id}`;
+  historyList = historyList.filter((entry) => historyIdentity(entry) !== target);
   await flushHistoryPersist();
 
   });
@@ -357,7 +366,7 @@ export function useHistory() {
   useEffect(() => {
     const update = () => setItems([...historyList]);
     listeners.add(update);
-    void initHistory();
+    void initHistory().catch(() => {});
     return () => {
       listeners.delete(update);
     };
@@ -371,4 +380,4 @@ export function useHistory() {
   };
 }
 
-void initHistory();
+void initHistory().catch(() => {});

@@ -22,7 +22,7 @@ async function loadBlacklist(): Promise<void> {
     if (raw) {
       cachedTags = JSON.parse(raw);
     }
-  } catch {}
+  } catch (error) { throw error; }
   notify();
 }
 
@@ -78,7 +78,7 @@ export function useBlacklist() {
   useEffect(() => {
     const update = () => setTags([...cachedTags]);
     listeners.add(update);
-    initBlacklist();
+    void initBlacklist().catch(() => {});
     return () => {
       listeners.delete(update);
     };
@@ -92,4 +92,4 @@ export function useBlacklist() {
   };
 }
 
-initBlacklist();
+void initBlacklist().catch(() => {});

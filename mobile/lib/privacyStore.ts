@@ -40,9 +40,9 @@ async function loadPrivacySettings(): Promise<void> {
       allowImageRelay: parsed.allowImageRelay === true,
     };
     notify();
-  } catch {
+  } catch (error) {
     currentSettings = { ...defaultSettings, incognito: true };
-  } finally {
+   throw error; } finally {
     ready = true;
     notify();
   }
@@ -86,7 +86,7 @@ export function usePrivacy(): {
       setInitialized(ready);
     };
     listeners.add(update);
-    void initPrivacySettings();
+    void initPrivacySettings().catch(() => {});
     return () => {
       listeners.delete(update);
     };
@@ -100,4 +100,4 @@ export function usePrivacy(): {
   };
 }
 
-void initPrivacySettings();
+void initPrivacySettings().catch(() => {});

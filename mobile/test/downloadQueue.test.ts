@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { enqueueGalleries, getDownloadQueueSnapshot as getQueueState, initDownloadQueue, queueKeyOf, removeQueueItem, resumeQueueItem } from "../lib/downloadQueueStore";
 import { updateDownloadSettings } from "../lib/downloadSettingsStore";
 import { __network, __onTransfer, transfers, __failSaf } from "./mockQueueRuntime";
+import { getSource } from "../lib/sources/registry";
 
 async function until(check: () => boolean) {
   for (let i=0;i<200;i++) { if (check()) return; await new Promise(resolve=>setTimeout(resolve,5)); }
@@ -36,4 +37,21 @@ test("une copie externe échouée reste visible et se relance sans retélécharg
   __failSaf(false); resumeQueueItem(queueKeyOf(item));
   await until(()=>getQueueState().items.find(i=>i.id===124)?.status==="completed");
   assert.equal(transfers.length,before);
+});
+
+test("une reconnexion Wi-Fi immédiate ne reste pas bloquée par l'ancien worker annulé",async()=>{
+  await updateDownloadSettings({wifiOnly:true,mode:"app"});__network("wifi");let first=true;
+  __onTransfer(()=>{if(first){first=false;__network("cellular");__network("wifi");}});
+  try{enqueueGalleries([{id:126,title:"Fixture"}]);await until(()=>getQueueState().items.find(i=>i.id===126)?.status==="completed");}
+  finally{__onTransfer(()=>{});}
+});
+
+test("deux identifiants E-Hentai complets ne partagent pas un dossier local",async()=>{
+  await updateDownloadSettings({wifiOnly:false,mode:"app"});const source=getSource("ehentai"),original=source.getGallery;
+  source.getGallery=async nativeId=>({nativeId,globalId:`ehentai:${nativeId}`,title:"Same title",coverUrl:"",numPages:1,tags:[],pageUrls:[{url:`https://example.test/${nativeId}.jpg`}]});
+  try{
+    enqueueGalleries([{id:125,title:"Same title",src:"ehentai",nativeId:"125_abcdef"},{id:125,title:"Same title",src:"ehentai",nativeId:"125_fedcba"}]);
+    await until(()=>getQueueState().items.filter(i=>i.id===125&&i.status==="completed").length===2);
+    const ids=getQueueState().items.filter(i=>i.id===125).map(i=>i.localId);assert.equal(new Set(ids).size,2);
+  }finally{source.getGallery=original;}
 });

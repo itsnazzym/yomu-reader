@@ -120,7 +120,7 @@ export default function HistoryScreen() {
           <Pressable
             onPress={(e) => {
               e.stopPropagation();
-              removeHistoryItem(item.gallery.id);
+              removeHistoryItem(item.gallery.globalId || `${item.source || "nhentai"}:${item.gallery.id}`);
             }}
             style={({ pressed }) => [styles.deleteBtn, { opacity: pressed ? 0.6 : 1 }]}
             accessibilityRole="button"

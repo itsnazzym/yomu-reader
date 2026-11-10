@@ -5,7 +5,7 @@ import { PermissionsAndroid, NativeModules } from "./mockReactNative";
 import { getDnsMode, setDnsMode } from "@/lib/networkDns";
 import { initPrivacyCaptureStore, getPreventScreenCapture } from "@/lib/privacyCaptureStore";
 import { requestNotificationPermissions } from "@/lib/permissions";
-import { initHistory, recordReadingProgress, findHistoryEntry, getHistory, flushHistoryPersist } from "@/lib/historyStore";
+import { initHistory, recordReadingProgress, findHistoryEntry, getHistory, flushHistoryPersist, removeHistoryItem, HISTORY_STORAGE_KEY } from "@/lib/historyStore";
 import { sourceGalleryToGallery } from "@/lib/sources/galleryMapper";
 import * as GalleryMapping from "@/lib/sources/galleryMapper";
 import { createSyncBaseline, mergeBackups, backupsEqual } from "@/lib/cloudSync/merge";
@@ -17,6 +17,12 @@ import * as Persistence from "@/lib/persistQueue";
 import { isValidBackupData } from "@/lib/backupValidation";
 import { initAppLock, isAppUnlocked, setAppLockPin, verifyAppLockPin } from "@/lib/appLockStore";
 import { notifyDownloadFinished } from "@/lib/downloadNotifications";
+import { initTagFavs } from "@/lib/tagFavoritesStore";
+import { initTagCollections } from "@/lib/tagCollectionsStore";
+import { initLibraryCollections } from "@/lib/libraryCollectionsStore";
+import { initBlacklist } from "@/lib/blacklistFilter";
+import { initDownloadSettings } from "@/lib/downloadSettingsStore";
+import { initFollowsFeed } from "@/lib/followsFeedStore";
 import { findDuplicateSourcesForGallery } from "@/lib/duplicateMatch";
 
 test("la fiche compare 10 000 favoris sans bloquer les timers ni comparer les favoris entre eux", async (t) => {
@@ -324,4 +330,31 @@ test("la carte d'accueil conserve l'identité E-Hentai et normalise la date", ()
   assert.equal(typeof map,"function");
   const result=map({globalId:"ehentai:123_abcdef",title:"Fixture",coverUrl:"https://example.test/c.jpg",numPages:2,uploadDate:1700000000000,tags:[]});
   assert.equal(result.globalId,"ehentai:123_abcdef");assert.equal(result.media_id,"123_abcdef");assert.equal(result.upload_date,1700000000);
+});
+
+test("une erreur de lecture des favoris ou de l'historique ne valide pas leur initialisation", async () => {
+  const original=AsyncStorage.getItem;
+  AsyncStorage.getItem=async()=>{throw new Error("read unavailable");};
+  try {await assert.rejects(initFavorites(true),/read unavailable/);await assert.rejects(initHistory(true),/read unavailable/);}
+  finally {AsyncStorage.getItem=original;}
+  __mockSet(FAVORITES_STORAGE_KEY,[gallery(900)]);await initFavorites();
+  assert.equal(isFavorite("nhentai:900"),true);
+});
+
+test("les autres collections refusent de muter un état dont le chargement a échoué",async()=>{
+  const original=AsyncStorage.getItem;AsyncStorage.getItem=async()=>{throw new Error("read unavailable");};
+  try{const results=await Promise.allSettled([initTagFavs(true),initTagCollections(true),initLibraryCollections(true),initBlacklist(true),initDownloadSettings(true),initFollowsFeed(true)]);assert.deepEqual(results.map(r=>r.status),Array(6).fill("rejected"));}
+  finally{AsyncStorage.getItem=original;}
+});
+
+test("l'historique distingue les tokens E-Hentai et supprime uniquement l'identité demandée",async()=>{
+  __mockSet(HISTORY_STORAGE_KEY,[]);await initHistory(true);
+  const first={...gallery(900,"ehentai"),globalId:"ehentai:900_abcdef"};
+  const second={...gallery(900,"ehentai"),globalId:"ehentai:900_fedcba"};
+  await recordReadingProgress(first,2,10);await recordReadingProgress(second,6,10);
+  await recordReadingProgress(gallery(900),4,10);
+  assert.equal(getHistory().length,3);
+  assert.equal(findHistoryEntry({id:"ehentai:900_abcdef"})?.lastPage,2);
+  await removeHistoryItem("ehentai:900_abcdef");
+  assert.equal(getHistory().length,2);assert.ok(getHistory().some(h=>h.gallery.globalId==="nhentai:900"));
 });

@@ -48,7 +48,7 @@ async function loadCollections(): Promise<void> {
     }
   } catch (e) {
     console.warn("[tagCollections] init error:", e);
-  }
+   throw e; }
 }
 
 export const initTagCollections = createInitOnce(loadCollections);
@@ -155,7 +155,7 @@ export function useTagCollections() {
   useEffect(() => {
     const update = () => setCollections([...currentCollections]);
     listeners.add(update);
-    initTagCollections();
+    void initTagCollections().catch(() => {});
     return () => {
       listeners.delete(update);
     };

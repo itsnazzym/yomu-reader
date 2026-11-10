@@ -117,7 +117,7 @@ async function loadFollows(): Promise<void> {
     notify();
   } catch (error) {
     console.warn("[followsFeed] load failed:", error);
-  }
+   throw error; }
 }
 
 export const initFollowsFeed = createInitOnce(loadFollows);
@@ -338,7 +338,7 @@ export function useFollowsFeed(): {
       setPinned([...persistState.pinned]);
     };
     listeners.add(update);
-    void initFollowsFeed();
+    void initFollowsFeed().catch(() => {});
     return () => {
       listeners.delete(update);
     };
@@ -358,4 +358,4 @@ export function useFollowsFeed(): {
   };
 }
 
-void initFollowsFeed();
+void initFollowsFeed().catch(() => {});

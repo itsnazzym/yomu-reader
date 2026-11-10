@@ -165,6 +165,7 @@ async function readVault(userId: string, recoveryKey: string): Promise<{ row: Va
 
 async function writeVault(userId: string, recoveryKey: string, data: BackupData, expectedRevision: number, previousSchema = 1): Promise<number> {
   const session = await requireUser(userId);
+  if (!isValidBackupData(compactCloudBackup(data))) throw new Error("Certaines données locales sont incompatibles. Exportez une sauvegarde avant de les corriger.");
   const encrypted = await encryptCloudVault(compactCloudBackup(data), recoveryKey, aad(userId), previousSchema === 2);
   lastVaultBytes = Math.floor(encrypted.ciphertext.length * 3 / 4);
   const { data: result, error } = await getClient().rpc("save_yomu_vault", {

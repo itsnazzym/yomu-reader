@@ -73,7 +73,9 @@ async function loadFavoritesFromStorage(): Promise<void> {
     await favoritesWritePromise.catch(() => {});
     const raw = await AsyncStorage.getItem(FAVORITES_STORAGE_KEY);
     if (raw) {
-      favoritesList = JSON.parse(raw);
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed) || parsed.some(item => !item || typeof item !== "object")) throw new Error("Favoris illisibles. Exportez les données avant toute modification.");
+      favoritesList = parsed;
       // Migration : inférer la source des anciens favoris (sans champ source).
       // Un titre placeholder « Gallery #id » = importé du cloud (données pauvres
       // de l'ancien proxy) ; un vrai titre = ajouté localement via l'app.
@@ -91,12 +93,12 @@ async function loadFavoritesFromStorage(): Promise<void> {
       }
       notify();
     }
-  } catch {}
+  } catch (error) { throw error; }
 }
 
 export function initFavorites(forceReload = false): Promise<void> {
   if (forceReload || !favoritesInitPromise) {
-    favoritesInitPromise = loadFavoritesFromStorage();
+    favoritesInitPromise = loadFavoritesFromStorage().catch(error => { favoritesInitPromise = null; throw error; });
   }
   return favoritesInitPromise;
 }
@@ -206,7 +208,7 @@ export function useFavorites() {
   useEffect(() => {
     const update = () => setFavs([...favoritesList]);
     listeners.add(update);
-    initFavorites();
+    void initFavorites().catch(() => {});
     return () => {
       listeners.delete(update);
     };
@@ -226,4 +228,4 @@ export function useFavorites() {
   };
 }
 
-initFavorites();
+void initFavorites().catch(() => {});

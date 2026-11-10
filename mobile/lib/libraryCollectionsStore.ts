@@ -125,7 +125,7 @@ async function loadCollections(): Promise<void> {
     notify();
   } catch (error) {
     console.warn("[libraryCollections] load failed:", error);
-  }
+   throw error; }
 }
 
 export const initLibraryCollections = createInitOnce(loadCollections);
@@ -318,7 +318,7 @@ export function useLibraryCollections(): {
       setCollections([...currentCollections]);
     };
     listeners.add(update);
-    void initLibraryCollections();
+    void initLibraryCollections().catch(() => {});
     return () => {
       listeners.delete(update);
     };
@@ -333,4 +333,4 @@ export function useLibraryCollections(): {
   };
 }
 
-void initLibraryCollections();
+void initLibraryCollections().catch(() => {});
