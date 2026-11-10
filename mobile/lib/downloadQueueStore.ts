@@ -30,7 +30,7 @@ import {
 const QUEUE_KEY = "@nhentai_download_queue";
 const CONCURRENCY_KEY = "@nhentai_download_concurrency";
 
-export type QueueItemStatus = "queued" | "downloading" | "completed" | "error" | "paused";
+export type QueueItemStatus = "queued" | "downloading" | "completed" | "error" | "paused" | "export_error" | "exporting";
 
 export interface QueueItem {
   id: number;
@@ -44,6 +44,7 @@ export interface QueueItem {
   totalPages: number;
   downloadedPages: number;
   errorMessage?: string;
+  pauseReason?: "user" | "network";
   /** Identifiant local (dossier NHAppAndroid/<localId>/), défini à la complétion. */
   localId?: string;
   addedAt: number;
@@ -80,7 +81,7 @@ function notify() {
 function persistQueue(): Promise<void> {
   const toSave = state.items.map((i) => ({
     ...i,
-    status: i.status === "downloading" ? ("queued" as QueueItemStatus) : i.status,
+    status: i.status === "downloading" ? ("queued" as QueueItemStatus) : i.status === "exporting" ? ("export_error" as QueueItemStatus) : i.status,
   }));
   const serialized = JSON.stringify(toSave);
   return writes.enqueue(() => AsyncStorage.setItem(QUEUE_KEY, serialized));
@@ -101,7 +102,7 @@ async function loadDownloadQueue() {
       const parsed: QueueItem[] = JSON.parse(raw);
       state.items = parsed.map((item) => ({
         ...item,
-        status: item.status === "downloading" ? "queued" : item.status,
+        status: item.status === "downloading" ? "queued" : item.status === "exporting" ? "export_error" : item.status,
       }));
       notify();
     }
@@ -191,7 +192,7 @@ export function pauseQueueItem(key: string) {
   }
   state.items = state.items.map((item) =>
     queueKeyOf(item) === key && (item.status === "queued" || item.status === "downloading")
-      ? { ...item, status: "paused" }
+      ? { ...item, status: "paused", pauseReason: "user" }
       : item
   );
   persistQueue();
@@ -199,14 +200,33 @@ export function pauseQueueItem(key: string) {
 }
 
 export function resumeQueueItem(key: string) {
+  if (state.items.find(item => queueKeyOf(item) === key)?.status === "export_error") {
+    void retryQueueExport(key);
+    return;
+  }
   state.items = state.items.map((item) =>
     queueKeyOf(item) === key && (item.status === "paused" || item.status === "error")
-      ? { ...item, status: "queued", errorMessage: undefined }
+      ? { ...item, status: "queued", errorMessage: undefined, pauseReason: undefined }
       : item
   );
   persistQueue();
   notify();
   processQueue();
+}
+
+async function retryQueueExport(key: string): Promise<void> {
+  const item = state.items.find(item => queueKeyOf(item) === key);
+  if (!item?.localId || item.status !== "export_error") return;
+  updateItem(key, { status: "exporting", errorMessage: undefined });
+  try {
+    const destination = getDownloadSettings().safDirectoryUri;
+    if (!destination) throw new Error("Choisissez un dossier avant de relancer la copie.");
+    await copyLocalGalleryToSaf(item.localId, destination);
+    updateItem(key, { status: "completed" });
+    void notifyDownloadFinished({ title: item.title, ok: true });
+  } catch {
+    updateItem(key, { status: "export_error", errorMessage: "Copie vers le dossier impossible. Le livre reste disponible dans Yomu." });
+  } finally { await persistQueue(); notify(); }
 }
 
 export function removeQueueItem(key: string) {
@@ -339,18 +359,27 @@ async function isLocalImageComplete(uri: string, expectedSize?: number): Promise
   const info = await FileSystem.getInfoAsync(uri);
   if (!info.exists) return false;
   let headerBytes: Uint8Array | null = null;
+  let tailBytes: Uint8Array | null = null;
   try {
+    if (!expectedSize) {
+      try { expectedSize = Number(await FileSystem.readAsStringAsync(`${uri}.size`)) || undefined; } catch {}
+    }
     const header = await FileSystem.readAsStringAsync(uri, {
       encoding: FileSystem.EncodingType.Base64,
       length: 16,
       position: 0,
     });
     headerBytes = decodeBase64Header(header, 16);
+    if (!expectedSize) {
+      const tail = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64, length: 12, position: Math.max(0, (info.size ?? 0) - 12) });
+      tailBytes = decodeBase64Header(tail, 12);
+    }
   } catch {}
   return isCompleteDownload({
     size: info.size ?? 0,
     expectedSize,
     headerBytes,
+    tailBytes,
   });
 }
 
@@ -417,6 +446,10 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
     });
 
     for (let i = 0; i < total; i++) {
+      if (!(await canStartDownloads())) {
+        updateItem(qKey, { pauseReason: "network" });
+        throw new Error("__PAUSED__");
+      }
       const cur = state.items.find((x) => queueKeyOf(x) === qKey);
       if (!cur || cur.status === "paused") {
         throw new Error("__PAUSED__");
@@ -542,6 +575,8 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
           throw new Error(`Fichier incomplet ou corrompu pour la page ${i + 1}.`);
         }
         await FileSystem.moveAsync({ from: partUri, to: fileUri });
+        const finalInfo = await FileSystem.getInfoAsync(fileUri);
+        if (finalInfo.exists) await FileSystem.writeAsStringAsync(`${fileUri}.size`, String(finalInfo.size));
       }
 
       pagesCopy[i] = {
@@ -583,21 +618,22 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
     }
 
     updateItem(qKey, {
-      status: "completed",
       progress: 1,
       downloadedPages: total,
       localId,
     });
-    void notifyDownloadFinished({ title: item.title, ok: true });
 
     const downloadSettings = getDownloadSettings();
     if (downloadSettings.mode === "saf" && downloadSettings.safDirectoryUri) {
       try {
         await copyLocalGalleryToSaf(localId, downloadSettings.safDirectoryUri);
-      } catch (copyError) {
-        console.warn("[downloadQueue] SAF copy failed, sandbox copy kept:", copyError);
+      } catch {
+        updateItem(qKey, { status: "export_error", errorMessage: "Copie vers le dossier impossible. Le livre reste disponible dans Yomu." });
+        return;
       }
     }
+    updateItem(qKey, { status: "completed" });
+    void notifyDownloadFinished({ title: item.title, ok: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Échec du téléchargement";
     if (message === "__PAUSED__") {
@@ -715,7 +751,18 @@ async function processQueueAsync(): Promise<void> {
 function onNetworkChange(state: NetInfoState): void {
   if (!getDownloadSettings().wifiOnly) return;
   if (state.type === "wifi" && state.isConnected) {
+    for (const item of [...getDownloadQueueSnapshot().items]) {
+      if (item.status === "paused" && item.pauseReason === "network") resumeQueueItem(queueKeyOf(item));
+    }
     processQueue();
+  } else {
+    for (const item of [...getDownloadQueueSnapshot().items]) {
+      if (item.status === "downloading") {
+        const key = queueKeyOf(item);
+        pauseQueueItem(key);
+        updateItem(key, { pauseReason: "network" });
+      }
+    }
   }
 }
 

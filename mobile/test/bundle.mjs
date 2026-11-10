@@ -4,7 +4,7 @@ import path from "node:path";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-const testEntries = ["engine.test.ts", "sessionSecurity.test.ts"];
+const testEntries = ["engine.test.ts", "sessionSecurity.test.ts", "downloadQueue.test.ts"];
 try {
   const fs = await import("node:fs");
   for (const extra of ["resumable.test.ts", "sourcesHtml.test.ts", "sources.test.ts", "cloudSync.test.ts", "stabilization.test.ts", "uiUx.test.tsx", "tagCatalog.test.ts"]) {
@@ -28,6 +28,10 @@ for (const entry of testEntries) {
       {
         name: "mock-rn-and-nhentai",
         setup(b) {
+          if (entry === "downloadQueue.test.ts") {
+            b.onResolve({ filter: /^(?:expo-file-system\/legacy|expo-keep-awake|@react-native-community\/netinfo|\.\/api\/nhentai|\.\/avatarPersist|\.\/accountStore)$/ },
+              () => ({ path: path.join(here, "mockQueueRuntime.ts") }));
+          }
           if (entry === "uiUx.test.tsx") {
             b.onResolve({ filter: /^(?:expo-image|@\/lib\/readerSettingsStore|@\/lib\/sources\/ehentai)$/ },
               () => ({ path: path.join(here, "mockImageRuntime.tsx") }));

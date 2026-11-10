@@ -41,11 +41,24 @@ export function isCompleteDownload(params: {
   size: number;
   expectedSize?: number | null;
   headerBytes?: Uint8Array | number[] | null;
+  tailBytes?: Uint8Array | number[] | null;
 }): boolean {
   if (!Number.isFinite(params.size) || params.size < MIN_IMAGE_BYTES) return false;
   if (params.expectedSize && params.expectedSize > 0 && params.size !== params.expectedSize) {
     return false;
   }
-  if (params.headerBytes && !isValidImageMagic(params.headerBytes)) return false;
+  if (!params.headerBytes || !isValidImageMagic(params.headerBytes)) return false;
+  if (!params.expectedSize) {
+    const header = Array.from(params.headerBytes);
+    const tail = Array.from(params.tailBytes ?? []);
+    if (startsWith(Uint8Array.from(header), JPEG)) return tail.at(-2) === 255 && tail.at(-1) === 217;
+    if (startsWith(Uint8Array.from(header), GIF)) return tail.at(-1) === 0x3b;
+    if (startsWith(Uint8Array.from(header), PNG)) return tail.slice(-8).join(",") === "73,69,78,68,174,66,96,130";
+    if (header.length >= 12 && startsWith(Uint8Array.from(header), RIFF)) {
+      const declared = (header[4] | (header[5] << 8) | (header[6] << 16) | (header[7] << 24)) >>> 0;
+      return declared + 8 === params.size;
+    }
+    return false;
+  }
   return true;
 }

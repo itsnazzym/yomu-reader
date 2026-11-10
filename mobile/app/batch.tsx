@@ -312,7 +312,7 @@ export default function BatchScreen() {
     const isDownloading = item.status === "downloading";
     const isPaused = item.status === "paused";
     const isCompleted = item.status === "completed";
-    const isError = item.status === "error";
+    const isError = item.status === "error" || item.status === "export_error";
 
     const verify = verifyResults[item.id];
     const verifyChecking = verify === "checking";
@@ -327,7 +327,9 @@ export default function BatchScreen() {
       ? colors.accent
       : colors.sub;
 
-    const statusLabel = isDownloading
+    const statusLabel = item.status === "export_error" ? "Copie à relancer · livre conservé dans Yomu"
+      : item.status === "exporting" ? "Copie vers le dossier..."
+      : isDownloading
       ? "Téléchargement..."
       : isPaused
       ? "En pause"
@@ -416,6 +418,8 @@ export default function BatchScreen() {
           )}
           {(isPaused || isError) && (
             <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={item.status === "export_error" ? "Relancer la copie vers le dossier" : "Reprendre le téléchargement"}
               onPress={() => resumeQueueItem(queueKeyOf(item))}
               style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.6 : 1 }]}
             >

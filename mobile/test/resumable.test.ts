@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { isCompleteDownload } from "../lib/imageIntegrity";
 import {
   computeResumeOffset,
   classifyResumeResponse,
@@ -7,6 +8,11 @@ import {
 
 test("calcule l'octet de reprise depuis un fichier partiel", () => {
   assert.equal(computeResumeOffset({ partialSize: 1024, totalBytes: -1 }), 1024);
+});
+
+test("un JPEG sans taille connue exige une fin de fichier valide", () => {
+  assert.equal(isCompleteDownload({ size:400, headerBytes:[255,216,255], tailBytes:[0,0,0] } as any), false);
+  assert.equal(isCompleteDownload({ size:400, headerBytes:[255,216,255], tailBytes:[255,217] } as any), true);
 });
 
 test("repart de zéro si le partiel est vide ou négatif", () => {

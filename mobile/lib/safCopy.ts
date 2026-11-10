@@ -12,7 +12,7 @@ function mimeForName(name: string): string {
 
 async function listReadableFiles(dirUri: string): Promise<string[]> {
   const names = await FileSystem.readDirectoryAsync(dirUri);
-  return names.filter((name) => !name.endsWith(".part") && name !== "." && name !== "..");
+  return names.filter((name) => !name.endsWith(".part") && !name.endsWith(".size") && name !== "." && name !== "..");
 }
 
 /**
