@@ -1516,7 +1516,7 @@ export default function SettingsScreen() {
                   );
                   return;
                 }
-                const res = await restoreBackupFromJson(clip);
+                const res = await restoreBackupFromJson(clip, { confirm: true });
                 if (res.success) {
                   Alert.alert(
                     "Restauration réussie !",

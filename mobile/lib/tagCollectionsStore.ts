@@ -1,4 +1,5 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { withLibraryMutation } from "./persistQueue";
+import AsyncStorage from "./durableStorage";
 import { useState, useEffect } from "react";
 import { createInitOnce, createWriteQueue } from "./persistQueue";
 
@@ -69,6 +70,7 @@ export async function createTagCollection(
     excludeTags?: TagCollectionItem[];
   }
 ): Promise<TagCollection> {
+  return withLibraryMutation(async () => {
   await initTagCollections();
   const newCol: TagCollection = {
     id: `col_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -85,12 +87,15 @@ export async function createTagCollection(
   notify();
   await saveCollections();
   return newCol;
+
+  });
 }
 
 export async function updateTagCollection(
   id: string,
   patch: Partial<Omit<TagCollection, "id" | "createdAt">>
 ): Promise<void> {
+  return withLibraryMutation(async () => {
   await initTagCollections();
   currentCollections = currentCollections.map((col) => {
     if (col.id === id) {
@@ -104,13 +109,18 @@ export async function updateTagCollection(
   });
   notify();
   await saveCollections();
+
+  });
 }
 
 export async function deleteTagCollection(id: string): Promise<void> {
+  return withLibraryMutation(async () => {
   await initTagCollections();
   currentCollections = currentCollections.filter((col) => col.id !== id);
   notify();
   await saveCollections();
+
+  });
 }
 
 export function formatCollectionSearchQuery(collection: TagCollection): string {

@@ -1,4 +1,5 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { withLibraryMutation } from "./persistQueue";
+import AsyncStorage from "./durableStorage";
 import { useState, useEffect } from "react";
 import { Gallery } from "./api/types";
 import { createInitOnce, createWriteQueue } from "./persistQueue";
@@ -32,24 +33,35 @@ export function getBlacklistedTags(): string[] {
 }
 
 export async function setBlacklistedTags(tags: string[]) {
+  return withLibraryMutation(() => writeBlacklistedTags(tags));
+}
+
+async function writeBlacklistedTags(tags: string[]) {
   await initBlacklist();
   cachedTags = tags.map((t) => t.trim().toLowerCase()).filter(Boolean);
   const serialized = JSON.stringify(cachedTags);
   await writes.enqueue(() => AsyncStorage.setItem(BLACKLIST_KEY, serialized));
   notify();
+
 }
 
 export async function addBlacklistTag(tag: string) {
+  return withLibraryMutation(async () => {
+  await initBlacklist();
   const clean = tag.trim().toLowerCase();
   if (!clean || cachedTags.includes(clean)) return;
   const next = [...cachedTags, clean];
-  await setBlacklistedTags(next);
+  await writeBlacklistedTags(next);
+  });
 }
 
 export async function removeBlacklistTag(tag: string) {
+  return withLibraryMutation(async () => {
+  await initBlacklist();
   const clean = tag.trim().toLowerCase();
   const next = cachedTags.filter((t) => t !== clean);
-  await setBlacklistedTags(next);
+  await writeBlacklistedTags(next);
+  });
 }
 
 export function isGalleryBlacklisted(gallery: Pick<Gallery, "tags"> | null | undefined): boolean {

@@ -1,4 +1,5 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { withLibraryMutation } from "./persistQueue";
+import AsyncStorage from "./durableStorage";
 import { useEffect, useState } from "react";
 import { createInitOnce, createWriteQueue } from "./persistQueue";
 
@@ -46,6 +47,7 @@ export function isTagFav(type: string, name: string): boolean {
 }
 
 export async function toggleTagFav(item: { type: string; name: string; category?: string; count?: number }) {
+  return withLibraryMutation(async () => {
   await initTagFavs();
   const k = tagKey(item.type, item.name);
   if (favTagsState[k]) {
@@ -65,6 +67,8 @@ export async function toggleTagFav(item: { type: string; name: string; category?
   }
   notify();
   await persistTagFavs();
+
+  });
 }
 
 export function getFavTagsList(): FavTagItem[] {

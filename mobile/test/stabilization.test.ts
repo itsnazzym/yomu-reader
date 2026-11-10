@@ -12,6 +12,8 @@ import { userFacingError } from "@/lib/userFacingError";
 import type { BackupData } from "@/lib/backupStore";
 import { toggleFavorite, getFavorites, initFavorites, isFavorite, removeFavorite, FAVORITES_STORAGE_KEY } from "@/lib/favoritesStore";
 import type { SourceId } from "@/lib/sources/types";
+import * as Persistence from "@/lib/persistQueue";
+import { isValidBackupData } from "@/lib/backupValidation";
 import { findDuplicateSourcesForGallery } from "@/lib/duplicateMatch";
 
 test("la fiche compare 10 000 favoris sans bloquer les timers ni comparer les favoris entre eux", async (t) => {
@@ -214,4 +216,51 @@ test("la migration des favoris renseigne origin sans réattribuer une source amb
   await initFavorites(true);
   assert.equal(getFavorites()[0].origin, "local");
   assert.equal(getFavorites()[0].globalId, "hitomi:42");
+});
+
+test("une restauration échouée revient à l'état précédent et récupère un arrêt entre écritures", async () => {
+  const create = (Persistence as Record<string, any>).createRecoverableStorage;
+  assert.equal(typeof create, "function", "le stockage doit fournir une application récupérable");
+  const data = new Map<string, string>([["favorites", "old-favorites"], ["history", "old-history"]]);
+  let fail = true;
+  const raw = {
+    getItem: async (key: string) => data.get(key) ?? null,
+    setItem: async (key: string, value: string) => { if (key === "history" && fail) { fail = false; throw new Error("disk failed"); } data.set(key, value); },
+    removeItem: async (key: string) => { data.delete(key); },
+  };
+  const storage = create(raw);
+  await assert.rejects(storage.replace([["favorites", "new"], ["history", "new"]]), /disk failed/);
+  assert.equal(await storage.getItem("favorites"), "old-favorites");
+  assert.equal(await storage.getItem("history"), "old-history");
+  // Une interruption laisse le journal et une seule nouvelle valeur sur disque.
+  data.set("@yomu_restore_journal_v1", JSON.stringify([["favorites", "old-favorites"], ["history", "old-history"]]));
+  data.set("favorites", "interrupted");
+  const restarted = create(raw);
+  assert.equal(await restarted.getItem("favorites"), "old-favorites");
+  await restarted.replace([["favorites", "new-favorites"], ["history", "new-history"]]);
+  assert.equal(await restarted.getItem("history"), "new-history");
+  assert.equal(data.has("@yomu_restore_journal_v1"), false);
+});
+
+test("l'import refuse les favoris incomplets et les réglages hors bornes avant toute écriture", () => {
+  const header = { version: 3, exportedAt: "2026-11-10T10:00:00Z" };
+  assert.equal(isValidBackupData({ ...header, favorites: [{ id: 123 }] }), false);
+  assert.equal(isValidBackupData({ ...header, favorites: [{ ...gallery(123), globalId: "unknown:123" }] }), false);
+  assert.equal(isValidBackupData({ ...header, readerSettings: { catalogColumnsPhonePortrait: -1 } }), false);
+  assert.equal(isValidBackupData({ ...header, privacy: { incognito: "true" } }), false);
+  assert.equal(isValidBackupData({ ...header, favorites: [gallery(123)], readerSettings: { defaultMode: "pager", catalogColumnsPhonePortrait: 3 } }), true);
+});
+
+test("la restauration et les mutations de bibliothèque sont exclusives", async () => {
+  const lock = (Persistence as Record<string, any>).withLibraryMutation;
+  assert.equal(typeof lock, "function");
+  const events: string[] = [];
+  let release!: () => void;
+  const first = lock(async () => { events.push("restore"); await new Promise<void>(resolve => { release = resolve; }); events.push("restored"); });
+  const second = lock(async () => { events.push("favorite"); });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.deepEqual(events, ["restore"]);
+  release();
+  await Promise.all([first, second]);
+  assert.deepEqual(events, ["restore", "restored", "favorite"]);
 });

@@ -1,4 +1,5 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { withLibraryMutation } from "./persistQueue";
+import AsyncStorage from "./durableStorage";
 import { useState, useEffect } from "react";
 import type { Gallery, GalleryImage, Tag } from "./api/types";
 import { isIncognito } from "./privacyStore";
@@ -266,6 +267,7 @@ export async function recordReadingProgress(
   totalPages?: number,
   opts?: RecordProgressOptions
 ): Promise<void> {
+  return withLibraryMutation(async () => {
   if (isIncognito()) return;
   await initHistory();
   const preview = toHistoryGallery(gallery);
@@ -309,6 +311,8 @@ export async function recordReadingProgress(
   historyList = [entry, ...remaining].slice(0, 200);
   schedulePersist();
   scheduleNotify(isNew);
+
+  });
 }
 
 /** Retrouve une entrée par localId ou (source + id). */
@@ -329,16 +333,22 @@ export function findHistoryEntry(opts: {
 }
 
 export async function clearHistory(): Promise<void> {
+  return withLibraryMutation(async () => {
   await initHistory();
   historyList = [];
   await flushHistoryPersist();
+
+  });
 }
 
 export async function removeHistoryItem(id: number | string): Promise<void> {
+  return withLibraryMutation(async () => {
   await initHistory();
   const targetId = Number(id);
   historyList = historyList.filter((entry) => Number(entry.gallery?.id) !== targetId);
   await flushHistoryPersist();
+
+  });
 }
 
 export function useHistory() {

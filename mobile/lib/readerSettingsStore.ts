@@ -1,4 +1,5 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { withLibraryMutation } from "./persistQueue";
+import AsyncStorage from "./durableStorage";
 import { useState, useEffect } from "react";
 import { createInitOnce, createWriteQueue } from "./persistQueue";
 
@@ -90,11 +91,14 @@ async function loadReaderSettings() {
 export const initReaderSettings = createInitOnce(loadReaderSettings);
 
 export async function updateReaderSettings(patch: Partial<ReaderSettings>) {
+  return withLibraryMutation(async () => {
   await initReaderSettings();
   currentSettings = { ...currentSettings, ...patch };
   notify();
   const serialized = JSON.stringify(currentSettings);
   await writes.enqueue(() => AsyncStorage.setItem(READER_SETTINGS_STORAGE_KEY, serialized));
+
+  });
 }
 
 export function getReaderSettings(): ReaderSettings {

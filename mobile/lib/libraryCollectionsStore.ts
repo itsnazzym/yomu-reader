@@ -1,9 +1,10 @@
+import { withLibraryMutation } from "./persistQueue";
 /**
  * Collections bibliothèque : étagères manuelles + smart (règles tags).
  * Identité multi-sources via globalIds (migration depuis galleryIds number[]).
  */
 
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import AsyncStorage from "./durableStorage";
 import { useEffect, useState } from "react";
 import type { Gallery } from "./api/types";
 import type { LocalLibraryEntry } from "./localLibrary";
@@ -150,6 +151,7 @@ export async function createLibraryCollection(
     rule?: SmartCollectionRule;
   }
 ): Promise<LibraryCollection> {
+  return withLibraryMutation(async () => {
   await initLibraryCollections();
   const mode = options?.mode === "smart" ? "smart" : "manual";
   const collection: LibraryCollection = {
@@ -168,6 +170,8 @@ export async function createLibraryCollection(
   notify();
   await persist();
   return collection;
+
+  });
 }
 
 export async function updateLibraryCollection(
@@ -176,19 +180,25 @@ export async function updateLibraryCollection(
     Pick<LibraryCollection, "name" | "color" | "hidden" | "mode" | "rule">
   >
 ): Promise<void> {
+  return withLibraryMutation(async () => {
   await initLibraryCollections();
   currentCollections = currentCollections.map((col) =>
     col.id === id ? { ...col, ...patch, updatedAt: Date.now() } : col
   );
   notify();
   await persist();
+
+  });
 }
 
 export async function deleteLibraryCollection(id: string): Promise<void> {
+  return withLibraryMutation(async () => {
   await initLibraryCollections();
   currentCollections = currentCollections.filter((col) => col.id !== id);
   notify();
   await persist();
+
+  });
 }
 
 export function collectionContains(
@@ -206,6 +216,7 @@ export async function toggleLibraryCollectionMembership(
   globalId: string,
   localId?: string
 ): Promise<void> {
+  return withLibraryMutation(async () => {
   await initLibraryCollections();
   currentCollections = currentCollections.map((col) => {
     if (col.id !== collectionId) return col;
@@ -231,6 +242,8 @@ export async function toggleLibraryCollectionMembership(
   });
   notify();
   await persist();
+
+  });
 }
 
 function tagMatches(gallery: Gallery, item: TagCollectionItem): boolean {

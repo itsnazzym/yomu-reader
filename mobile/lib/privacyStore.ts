@@ -1,4 +1,5 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { withLibraryMutation } from "./persistQueue";
+import AsyncStorage from "./durableStorage";
 import { useState, useEffect } from "react";
 import { createInitOnce, createWriteQueue } from "./persistQueue";
 
@@ -53,11 +54,14 @@ export function getPrivacySettings(): PrivacySettings {
 export async function updatePrivacySettings(
   patch: Partial<PrivacySettings>
 ): Promise<void> {
+  return withLibraryMutation(async () => {
   await initPrivacySettings();
   currentSettings = { ...currentSettings, ...patch };
   notify();
   const serialized = JSON.stringify(currentSettings);
   await writes.enqueue(() => AsyncStorage.setItem(PRIVACY_STORAGE_KEY, serialized));
+
+  });
 }
 
 export function usePrivacy(): {

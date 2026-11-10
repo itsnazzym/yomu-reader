@@ -1,4 +1,5 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { withLibraryMutation } from "./persistQueue";
+import AsyncStorage from "./durableStorage";
 import { useState, useEffect } from "react";
 import * as FileSystem from "expo-file-system/legacy";
 import { createInitOnce, createWriteQueue } from "./persistQueue";
@@ -57,6 +58,7 @@ async function loadDownloadSettings(): Promise<void> {
 export const initDownloadSettings = createInitOnce(loadDownloadSettings);
 
 export async function updateDownloadSettings(patch: Partial<DownloadSettings>): Promise<void> {
+  return withLibraryMutation(async () => {
   await initDownloadSettings();
   const previousSafUri = currentSettings.safDirectoryUri;
   currentSettings = { ...currentSettings, ...patch };
@@ -77,6 +79,8 @@ export async function updateDownloadSettings(patch: Partial<DownloadSettings>): 
   ) {
     void restoreAvatarAfterSafPick(nextSafUri);
   }
+
+  });
 }
 
 async function restoreAvatarAfterSafPick(treeUri: string): Promise<void> {

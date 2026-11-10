@@ -1,9 +1,13 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { withLibraryMutation } from "./persistQueue";
+import { isValidBackupData } from "./backupValidation";
+import { Alert } from "react-native";
+import AsyncStorage from "./durableStorage";
+import { flushPersistQueues } from "./persistQueue";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import * as Clipboard from "expo-clipboard";
-import { FAVORITES_STORAGE_KEY, initFavorites } from "./favoritesStore";
-import { HISTORY_STORAGE_KEY, initHistory } from "./historyStore";
+import { FAVORITES_STORAGE_KEY, initFavorites, flushFavoritesPersist } from "./favoritesStore";
+import { HISTORY_STORAGE_KEY, initHistory, flushHistoryPersist } from "./historyStore";
 import {
   TAG_FAVORITES_STORAGE_KEY,
   initTagFavs,
@@ -121,87 +125,10 @@ function parseJsonStringArray(raw: string | null): string[] {
   }
 }
 
-function isValidBackupData(value: unknown): value is BackupData {
-  if (!isPlainObject(value)) return false;
-  if (value.version !== 1 && value.version !== 2 && value.version !== 3) return false;
-  if (typeof value.exportedAt !== "string" || !Number.isFinite(Date.parse(value.exportedAt))) {
-    return false;
-  }
-  if (
-    value.favorites !== undefined &&
-    (!Array.isArray(value.favorites) ||
-      value.favorites.some((item) => {
-        if (!isPlainObject(item)) return true;
-        const hasNumericId = Number.isFinite(Number(item.id));
-        const hasGlobalId =
-          typeof item.globalId === "string" && item.globalId.includes(":");
-        return !hasNumericId && !hasGlobalId;
-      }))
-  ) {
-    return false;
-  }
-  if (
-    value.history !== undefined &&
-    (!Array.isArray(value.history) ||
-      value.history.some(
-        (item) =>
-          !isPlainObject(item) ||
-          !isPlainObject(item.gallery) ||
-          !Number.isFinite(Number(item.gallery.id)) ||
-          !Number.isFinite(Number(item.lastPage))
-      ))
-  ) {
-    return false;
-  }
-  if (value.tagFavorites !== undefined && !isPlainObject(value.tagFavorites)) return false;
-  if (
-    value.tagCollections !== undefined &&
-    (!Array.isArray(value.tagCollections) ||
-      value.tagCollections.some((item) => !isPlainObject(item)))
-  ) {
-    return false;
-  }
-  if (value.readerSettings !== undefined && !isPlainObject(value.readerSettings)) return false;
-  if (
-    value.blacklistTags !== undefined &&
-    (!Array.isArray(value.blacklistTags) ||
-      value.blacklistTags.some((item) => typeof item !== "string"))
-  ) {
-    return false;
-  }
-  if (value.downloadSettings !== undefined && !isPlainObject(value.downloadSettings)) return false;
-  if (
-    value.searchHistory !== undefined &&
-    (!Array.isArray(value.searchHistory) ||
-      value.searchHistory.some((item) => typeof item !== "string"))
-  ) {
-    return false;
-  }
-  if (value.privacy !== undefined && !isPlainObject(value.privacy)) return false;
-  if (
-    value.libraryCollections !== undefined &&
-    (!Array.isArray(value.libraryCollections) ||
-      value.libraryCollections.some((item) => !isPlainObject(item)))
-  ) {
-    return false;
-  }
-  if (value.followsFeed !== undefined && !isPlainObject(value.followsFeed)) return false;
-  if (
-    value.localAvatarBase64 !== undefined &&
-    typeof value.localAvatarBase64 !== "string"
-  ) {
-    return false;
-  }
-  if (
-    value.localAvatarMime !== undefined &&
-    typeof value.localAvatarMime !== "string"
-  ) {
-    return false;
-  }
-  return true;
-}
-
 export async function createBackupPayload(): Promise<BackupData> {
+  return withLibraryMutation(async () => {
+  await Promise.all([initFavorites(), initHistory()]);
+  await Promise.all([flushFavoritesPersist(), flushHistoryPersist(), flushPersistQueues()]);
   const [
     favRaw,
     histRaw,
@@ -214,18 +141,18 @@ export async function createBackupPayload(): Promise<BackupData> {
     privacyRaw,
     collectionsRaw,
     followsRaw,
-  ] = await Promise.all([
-    AsyncStorage.getItem(STORAGE_KEYS.favorites),
-    AsyncStorage.getItem(STORAGE_KEYS.history),
-    AsyncStorage.getItem(STORAGE_KEYS.tagFavorites),
-    AsyncStorage.getItem(STORAGE_KEYS.tagCollections),
-    AsyncStorage.getItem(STORAGE_KEYS.readerSettings),
-    AsyncStorage.getItem(STORAGE_KEYS.blacklist),
-    AsyncStorage.getItem(STORAGE_KEYS.downloadSettings),
-    AsyncStorage.getItem(STORAGE_KEYS.searchHistory),
-    AsyncStorage.getItem(STORAGE_KEYS.privacy),
-    AsyncStorage.getItem(STORAGE_KEYS.libraryCollections),
-    AsyncStorage.getItem(STORAGE_KEYS.followsFeed),
+  ] = await AsyncStorage.snapshot([
+    STORAGE_KEYS.favorites,
+    STORAGE_KEYS.history,
+    STORAGE_KEYS.tagFavorites,
+    STORAGE_KEYS.tagCollections,
+    STORAGE_KEYS.readerSettings,
+    STORAGE_KEYS.blacklist,
+    STORAGE_KEYS.downloadSettings,
+    STORAGE_KEYS.searchHistory,
+    STORAGE_KEYS.privacy,
+    STORAGE_KEYS.libraryCollections,
+    STORAGE_KEYS.followsFeed,
   ]);
 
   let localAvatarBase64: string | undefined;
@@ -258,6 +185,8 @@ export async function createBackupPayload(): Promise<BackupData> {
     localAvatarBase64,
     localAvatarMime,
   };
+
+  });
 }
 
 export async function exportBackupToFile(): Promise<{
@@ -306,12 +235,14 @@ function emptyRestoredCounts(): BackupRestoredCounts {
   };
 }
 
-export async function restoreBackupFromJson(jsonString: string): Promise<{
+export async function restoreBackupFromJson(jsonString: string, options?: { confirm?: boolean }): Promise<{
   success: boolean;
   restoredItems: BackupRestoredCounts;
   error?: string;
 }> {
+  return withLibraryMutation(async () => {
   try {
+    if (new TextEncoder().encode(jsonString).byteLength > 32 * 1024 * 1024) throw new Error("Sauvegarde trop volumineuse (32 Mio maximum).");
     const parsed: unknown = JSON.parse(jsonString);
 
     if (!isValidBackupData(parsed)) {
@@ -322,48 +253,55 @@ export async function restoreBackupFromJson(jsonString: string): Promise<{
       };
     }
     const data = parsed;
+    if (options?.confirm) {
+      const confirmed = await new Promise<boolean>(resolve => Alert.alert(
+        "Remplacer les données présentes ?",
+        `${data.favorites?.length ?? 0} favoris, ${data.history?.length ?? 0} lectures et ${data.tagCollections?.length ?? 0} packs. Les rubriques présentes dans ce fichier remplaceront les données actuelles.`,
+        [{ text: "Annuler", style: "cancel", onPress: () => resolve(false) }, { text: "Restaurer", style: "destructive", onPress: () => resolve(true) }],
+        { cancelable: true, onDismiss: () => resolve(false) },
+      ));
+      if (!confirmed) return { success: false, error: "Restauration annulée", restoredItems: emptyRestoredCounts() };
+    }
 
-    const tasks: Promise<void>[] = [];
+    const tasks: [string, string][] = [];
 
     if (Array.isArray(data.favorites)) {
-      tasks.push(AsyncStorage.setItem(STORAGE_KEYS.favorites, JSON.stringify(data.favorites)));
+      tasks.push([STORAGE_KEYS.favorites, JSON.stringify(data.favorites)]);
     }
     if (Array.isArray(data.history)) {
-      tasks.push(AsyncStorage.setItem(STORAGE_KEYS.history, JSON.stringify(data.history)));
+      tasks.push([STORAGE_KEYS.history, JSON.stringify(data.history)]);
     }
     if (isPlainObject(data.tagFavorites)) {
-      tasks.push(AsyncStorage.setItem(STORAGE_KEYS.tagFavorites, JSON.stringify(data.tagFavorites)));
+      tasks.push([STORAGE_KEYS.tagFavorites, JSON.stringify(data.tagFavorites)]);
     }
     if (Array.isArray(data.tagCollections)) {
-      tasks.push(AsyncStorage.setItem(STORAGE_KEYS.tagCollections, JSON.stringify(data.tagCollections)));
+      tasks.push([STORAGE_KEYS.tagCollections, JSON.stringify(data.tagCollections)]);
     }
     if (isPlainObject(data.readerSettings)) {
-      tasks.push(AsyncStorage.setItem(STORAGE_KEYS.readerSettings, JSON.stringify(data.readerSettings)));
+      tasks.push([STORAGE_KEYS.readerSettings, JSON.stringify(data.readerSettings)]);
     }
     if (Array.isArray(data.blacklistTags)) {
-      tasks.push(AsyncStorage.setItem(STORAGE_KEYS.blacklist, JSON.stringify(data.blacklistTags)));
+      tasks.push([STORAGE_KEYS.blacklist, JSON.stringify(data.blacklistTags)]);
     }
     if (isPlainObject(data.downloadSettings)) {
-      tasks.push(
-        AsyncStorage.setItem(STORAGE_KEYS.downloadSettings, JSON.stringify(data.downloadSettings))
-      );
+      tasks.push([STORAGE_KEYS.downloadSettings, JSON.stringify(data.downloadSettings)]);
     }
     if (Array.isArray(data.searchHistory)) {
-      tasks.push(AsyncStorage.setItem(STORAGE_KEYS.searchHistory, JSON.stringify(data.searchHistory)));
+      tasks.push([STORAGE_KEYS.searchHistory, JSON.stringify(data.searchHistory)]);
     }
     if (isPlainObject(data.privacy)) {
-      tasks.push(AsyncStorage.setItem(STORAGE_KEYS.privacy, JSON.stringify(data.privacy)));
+      tasks.push([STORAGE_KEYS.privacy, JSON.stringify(data.privacy)]);
     }
     if (Array.isArray(data.libraryCollections)) {
-      tasks.push(
-        AsyncStorage.setItem(STORAGE_KEYS.libraryCollections, JSON.stringify(data.libraryCollections))
-      );
+      tasks.push([STORAGE_KEYS.libraryCollections, JSON.stringify(data.libraryCollections)]);
     }
     if (isPlainObject(data.followsFeed)) {
-      tasks.push(AsyncStorage.setItem(STORAGE_KEYS.followsFeed, JSON.stringify(data.followsFeed)));
+      tasks.push([STORAGE_KEYS.followsFeed, JSON.stringify(data.followsFeed)]);
     }
 
-    await Promise.all(tasks);
+    await Promise.all([initFavorites(), initHistory()]);
+    await Promise.all([flushFavoritesPersist(), flushHistoryPersist(), flushPersistQueues()]);
+    await AsyncStorage.replace(tasks);
 
     if (typeof data.localAvatarBase64 === "string" && data.localAvatarBase64.trim() !== "") {
       try {
@@ -416,6 +354,8 @@ export async function restoreBackupFromJson(jsonString: string): Promise<{
       restoredItems: emptyRestoredCounts(),
     };
   }
+
+  });
 }
 
 export async function restoreBackupFromFile(): Promise<{
@@ -436,10 +376,12 @@ export async function restoreBackupFromFile(): Promise<{
         restoredItems: emptyRestoredCounts(),
       };
     }
+    const info = await FileSystem.getInfoAsync(result.assets[0].uri);
+    if (info.exists && info.size > 32 * 1024 * 1024) throw new Error("Sauvegarde trop volumineuse (32 Mio maximum).");
     const jsonString = await FileSystem.readAsStringAsync(result.assets[0].uri, {
       encoding: FileSystem.EncodingType.UTF8,
     });
-    return restoreBackupFromJson(jsonString);
+    return restoreBackupFromJson(jsonString, { confirm: true });
   } catch (error: unknown) {
     return {
       success: false,

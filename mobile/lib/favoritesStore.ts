@@ -1,4 +1,5 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { withLibraryMutation } from "./persistQueue";
+import AsyncStorage from "./durableStorage";
 import { useState, useEffect } from "react";
 import { Gallery } from "./api/types";
 import {
@@ -44,6 +45,8 @@ function persistFavorites(): Promise<void> {
     });
   return favoritesWritePromise;
 }
+
+export function flushFavoritesPersist(): Promise<void> { return favoritesWritePromise; }
 
 /** Un titre « Gallery #id » = données pauvres (ancien proxy / API v2 non mappée). */
 function isPlaceholderTitle(g: Gallery): boolean {
@@ -116,6 +119,7 @@ export function isFavorite(id: number | string | GlobalGalleryId): boolean {
 export async function toggleFavorite(
   gallery: Gallery & { sourceName?: SourceId }
 ) {
+  return withLibraryMutation(async () => {
   await initFavorites();
   const gid = gallery.globalId || (gallery.sourceName
     ? makeGlobalId(gallery.sourceName, gallery.media_id || gallery.id)
@@ -133,18 +137,24 @@ export async function toggleFavorite(
   }
   await persistFavorites();
   notify();
+
+  });
 }
 
 export async function removeFavorite(id: number | string | GlobalGalleryId) {
+  return withLibraryMutation(async () => {
   await initFavorites();
   const target =
     typeof id === "string" && id.includes(":") ? id : makeGlobalId("nhentai", Number(id));
   favoritesList = favoritesList.filter((g) => favoriteGlobalId(g) !== target);
   await persistFavorites();
   notify();
+
+  });
 }
 
 export async function importFavorites(importedList: Gallery[]) {
+  return withLibraryMutation(async () => {
   await initFavorites();
   // Fusion idempotente nhentai-cloud uniquement (les autres sources n'ont pas
   // de cloud). Les ids globaux non-nhentai sont préservés tels quels.
@@ -174,15 +184,20 @@ export async function importFavorites(importedList: Gallery[]) {
   favoritesList = [...byKey.values()];
   await persistFavorites();
   notify();
+
+  });
 }
 
 export async function removeCloudFavorites(): Promise<void> {
+  return withLibraryMutation(async () => {
   await initFavorites();
   const localOnly = favoritesList.filter((gallery) => gallery.origin !== "cloud");
   if (localOnly.length === favoritesList.length) return;
   favoritesList = localOnly;
   await persistFavorites();
   notify();
+
+  });
 }
 
 export function useFavorites() {

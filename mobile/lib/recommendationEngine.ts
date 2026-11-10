@@ -1,3 +1,4 @@
+import { withLibraryMutation } from "./persistQueue";
 /**
  * Client-side recommendation engine.
  *
@@ -10,7 +11,7 @@
  * nHentai, while the preference profile never leaves the device.
  */
 
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import AsyncStorage from "./durableStorage";
 import { Gallery, SearchResult } from "@/lib/api/types";
 import { searchGalleries } from "@/lib/api/nhentai";
 import { getFavorites, initFavorites } from "@/lib/favoritesStore";
@@ -117,6 +118,7 @@ export async function getSearchHistory(): Promise<string[]> {
 }
 
 export async function addToSearchHistory(query: string): Promise<void> {
+  return withLibraryMutation(async () => {
   try {
     if (isIncognito()) return;
     const clean = query.trim();
@@ -127,9 +129,12 @@ export async function addToSearchHistory(query: string): Promise<void> {
     const updated = [clean, ...filtered].slice(0, 50);
     await AsyncStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(updated));
   } catch {}
+
+  });
 }
 
 export async function removeFromSearchHistory(query: string): Promise<void> {
+  return withLibraryMutation(async () => {
   try {
     const clean = query.trim().toLowerCase();
     if (!clean) return;
@@ -137,6 +142,8 @@ export async function removeFromSearchHistory(query: string): Promise<void> {
     const updated = history.filter((item) => item.toLowerCase() !== clean);
     await AsyncStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(updated));
   } catch {}
+
+  });
 }
 
 // ── Profile builder ──

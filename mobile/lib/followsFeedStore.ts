@@ -1,4 +1,5 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { withLibraryMutation } from "./persistQueue";
+import AsyncStorage from "./durableStorage";
 import { useEffect, useState } from "react";
 import { searchGalleries } from "@/lib/api/nhentai";
 import type { Gallery } from "@/lib/api/types";
@@ -192,6 +193,7 @@ export function getPinnedSearches(): PinnedSearch[] {
 }
 
 export async function pinFollowSearch(query: string): Promise<PinnedSearch | null> {
+  return withLibraryMutation(async () => {
   await initFollowsFeed();
   const clean = query.trim();
   if (clean.length < 2) return null;
@@ -207,9 +209,12 @@ export async function pinFollowSearch(query: string): Promise<PinnedSearch | nul
   notify();
   await persist();
   return pin;
+
+  });
 }
 
 export async function unpinFollowSearch(id: string): Promise<void> {
+  return withLibraryMutation(async () => {
   await initFollowsFeed();
   persistState = {
     ...persistState,
@@ -217,9 +222,12 @@ export async function unpinFollowSearch(id: string): Promise<void> {
   };
   notify();
   await persist();
+
+  });
 }
 
 export async function markFollowSeen(sourceKey: string): Promise<void> {
+  return withLibraryMutation(async () => {
   await initFollowsFeed();
   const row = feedRows.find((item) => item.source.key === sourceKey);
   const maxId = row
@@ -240,6 +248,8 @@ export async function markFollowSeen(sourceKey: string): Promise<void> {
   );
   notify();
   await persist();
+
+  });
 }
 
 export async function refreshFollowsFeed(force = false): Promise<FollowFeedRow[]> {
@@ -291,14 +301,16 @@ export async function refreshFollowsFeed(force = false): Promise<FollowFeedRow[]
       }
     }
 
+    return await withLibraryMutation(async () => {
     persistState = {
       ...persistState,
-      cursors: nextCursors,
+      cursors: { ...nextCursors, ...persistState.cursors },
       lastRefreshAt: Date.now(),
     };
     feedRows = nextRows;
     await persist();
     return feedRows;
+    });
   } finally {
     refreshing = false;
     notify();
