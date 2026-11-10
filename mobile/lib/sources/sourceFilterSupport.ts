@@ -56,7 +56,7 @@ export function getSourceFilterSupport(sourceId?: SourceId | "all"): SourceFilte
 
     case "hitomi":
       return {
-        supportsCategories: true,
+        supportsCategories: false,
         // Hitomi supporte les types manga, doujinshi, gamecg, artistcg
         supportedCategories: ["Doujinshi", "Manga", "Artist CG", "Game CG"],
         supportsPages: false,
@@ -73,7 +73,7 @@ export function getSourceFilterSupport(sourceId?: SourceId | "all"): SourceFilte
         supportsPages: false,
         supportsRating: false,
         supportsSort: false,
-        supportsLanguage: true,
+        supportsLanguage: false,
         supportsDate: false,
       };
 

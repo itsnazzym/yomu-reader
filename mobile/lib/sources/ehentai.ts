@@ -275,8 +275,9 @@ export async function resolveEhentaiPageImage(
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
+    const auth = headers ? null : await getSourceAuth("ehentai");
     const res = await fetch(viewerUrl, {
-      headers: headers || { ...BASE_HEADERS, Cookie: "nw=1" },
+      headers: headers || { ...BASE_HEADERS, Cookie: formatCookieHeader({ nw: "1", ...(auth?.cookies || {}) }) },
       signal: controller.signal,
     });
     if (!res.ok) throw new Error(`HTTP ${res.status} sur ${viewerUrl}`);
@@ -496,6 +497,18 @@ export class EhentaiSource implements SourceAdapter {
         ? parseInt(meta.filecount, 10)
         : Number(htmlPageCount?.replace(/,/g, "")) || readerPageLinks.length;
 
+    const pageCount = Number(galleryHtml.match(/[?&](?:amp;)?p=(\d+)/g)?.map(x => Number(x.match(/(\d+)$/)?.[1])).reduce((a,b) => Math.max(a,b),0) || 0);
+    // Fetch every thumbnail index; never substitute a cover for missing pages.
+    for (let page = 1; page <= pageCount; page++) {
+      const nextHtml = await requestWithDeadline(`${baseUrl}/g/${gid}/${token}/?p=${page}`, { headers }, r => r.text());
+      for (const match of extractMatches(nextHtml, /href="(https?:\/\/(?:e-hentai|exhentai)\.org\/s\/[a-f0-9]+\/\d+-(\d+))"/g)) {
+        const pageNum = Number(match[2]);
+        if (!readerPageLinks.some(p => p.pageNum === pageNum)) readerPageLinks.push({ url: match[1], pageNum });
+      }
+    }
+    readerPageLinks.sort((a,b) => a.pageNum-b.pageNum);
+    if (readerPageLinks.length !== totalPages || readerPageLinks.some((p, i) => p.pageNum !== i + 1)) throw new Error(`E-Hentai : ${readerPageLinks.length} pages accessibles sur ${totalPages}. Réessayez.`);
+
     // Normalisation des tags avec leurs namespaces (JHenTai style)
     const tags: SourceTag[] = [];
     if (Array.isArray(meta?.tags)) {
@@ -532,7 +545,7 @@ export class EhentaiSource implements SourceAdapter {
       } else if (readerLink) {
         pageUrls.push({ url: readerLink });
       } else {
-        pageUrls.push({ url: meta?.thumb || `${baseUrl}/g/blank.gif` });
+        throw new Error("E-Hentai : lien de page manquant.");
       }
     }
 

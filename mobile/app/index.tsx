@@ -1,3 +1,4 @@
+import { withSourceDeadline } from "@/lib/sources/requestDeadline";
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   StyleSheet,
@@ -12,7 +13,6 @@ import {
   Easing,
   Modal,
   Pressable,
-  Alert,
 } from "react-native";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import {
@@ -40,10 +40,6 @@ import { SearchBar } from "@/components/SearchBar";
 import { TagLabel } from "@/components/ui/TagLabel";
 import { ButtonLabel } from "@/components/ui/ButtonLabel";
 import { FilterModal, FilterOptions } from "@/components/modals/FilterModal";
-import {
-  getSourceFilterSupport,
-  hasAnyFilterSupport,
-} from "@/lib/sources/sourceFilterSupport";
 import { ReverseImageSearchModal } from "@/components/modals/ReverseImageSearchModal";
 import { SourceAuthModal } from "@/components/modals/SourceAuthModal";
 import { searchGalleries } from "@/lib/api/nhentai";
@@ -58,9 +54,8 @@ import SmartImage from "@/components/SmartImage";
 import { addToSearchHistory } from "@/lib/recommendationEngine";
 import {
   checkAllSourcesHealth,
-  consumeFallbackToast,
-  pickFallbackSource,
   useSourceHealth,
+  getSourceHealth,
 } from "@/lib/sourceHealthStore";
 import {
   searchTaxonomy,
@@ -210,31 +205,8 @@ export default function HomeScreen() {
   const sourceMetas = React.useMemo(() => listSources(), []);
   const sourceHealth = useSourceHealth();
 
-  // Health-check au démarrage + fallback si source active down.
-  useEffect(() => {
-    let cancelled = false;
-    void checkAllSourcesHealth().then(() => {
-      if (cancelled) return;
-      setActiveSource((prev) => {
-        const fallback = pickFallbackSource(prev);
-        if (!fallback || fallback === prev) return prev;
-        if (consumeFallbackToast()) {
-          const label =
-            fallback === "all"
-              ? "toutes les sources"
-              : sourceMetas.find((m) => m.id === fallback)?.label ?? fallback;
-          Alert.alert(
-            "Source indisponible",
-            `Basculement automatique vers ${label}.`
-          );
-        }
-        return fallback;
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [sourceMetas]);
+  // Health indicators never override the user's source or restart its feed.
+  useEffect(() => { void checkAllSourcesHealth(); }, []);
 
   const { settings: readerSettings } = useReaderSettings();
 
@@ -343,7 +315,7 @@ export default function HomeScreen() {
         if (activeSource === "all") {
           const nhentaiPromise = searchGalleries(effectiveQuery, p, sort);
           const altSources = (["3hentai", "doujins", "hitomi", "ehentai", "rule34"] as SourceId[]).filter(
-            (sid) => sourceHealth[sid]?.status !== "down"
+            (sid) => getSourceHealth()[sid]?.status !== "down"
           );
           const altPromises = altSources.map(async (sid) => {
             try {
@@ -439,7 +411,7 @@ export default function HomeScreen() {
           });
         } else {
           const adapter = getSource(activeSource);
-          const res = await adapter.search({
+          const res = await withSourceDeadline(adapter.search({
             query:
               activeSource === "nhentai"
                 ? effectiveQuery || undefined
@@ -451,7 +423,7 @@ export default function HomeScreen() {
             pageMin: pageMinNum,
             pageMax: pageMaxNum,
             minRating: opts.minRating,
-          });
+          }));
           if (requestId !== latestRequestRef.current) return;
           const mapped: Gallery[] = res.cards.map((c) => ({
             id: Number.parseInt(c.globalId.split(":")[1], 10) || 0,
@@ -505,7 +477,7 @@ export default function HomeScreen() {
         }
       }
     },
-    [spinAnim, activeSource, sourceHealth]
+    [spinAnim, activeSource]
   );
 
   useEffect(() => {
@@ -630,7 +602,7 @@ export default function HomeScreen() {
   const handleResumeRead = () => {
     if (!resumeEntry) return;
     const params: Record<string, string> = {
-      id: String(resumeEntry.gallery.id),
+      id: resumeEntry.source && resumeEntry.source !== "nhentai" ? resumeEntry.gallery.media_id : String(resumeEntry.gallery.id),
       initialPage: String(resumeEntry.lastPage),
     };
     if (resumeEntry.localId) {
@@ -978,7 +950,7 @@ export default function HomeScreen() {
               });
             }}
             autoFocus
-            placeholder="Rechercher tags, artistes, parodies ou code..."
+            placeholder={activeSource === "hitomi" ? "Filtrer les titres et tags de cette page Hitomi..." : "Rechercher tags, artistes, parodies ou code..."}
           />
 
           {/* Live Tag Autocomplete Dropdown */}

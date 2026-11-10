@@ -83,8 +83,8 @@ export function getSmartImageUri(uri: string): string {
 export async function preloadSmartImage(uri: string): Promise<boolean> {
   if (!uri) return false;
   try {
-    const optimized = getSmartImageUri(uri);
-    return await Image.prefetch(optimized, "memory-disk");
+    const resolved = /hentai\.org\/s\//.test(uri) ? await resolveEhentaiPageImage(uri) : uri;
+    return await Image.prefetch(resolved, { cachePolicy: "memory-disk", headers: { Referer: refererForImage(resolved) } });
   } catch {
     return false;
   }

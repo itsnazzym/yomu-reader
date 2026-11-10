@@ -41,7 +41,7 @@ export default function HistoryScreen() {
     router.push({
       pathname: "/read",
       params: {
-        id: String(entry.gallery.id),
+        id: entry.source && entry.source !== "nhentai" ? entry.gallery.media_id : String(entry.gallery.id),
         initialPage: String(entry.lastPage),
         ...(local && entry.localId ? { localId: entry.localId } : {}),
         ...(entry.source && entry.source !== "nhentai" ? { src: entry.source } : {}),

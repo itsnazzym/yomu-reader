@@ -77,6 +77,7 @@ export default function ReaderScreen() {
 
   const [gallery, setGallery] = useState<Gallery | null>(null);
   const [loading, setLoading] = useState(true);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(() =>
     parseReaderInitialPage(initialPage)
@@ -135,7 +136,7 @@ export default function ReaderScreen() {
         // Sources alternatives (src=3hentai|doujins|ehentai|rule34) : chargement via
         // l'adaptateur, pages déjà résolues avec URLs fraîches.
         if (src && src !== "nhentai") {
-          const sg = await loadSourceGallery(src as SourceId, id);
+          const sg = await loadSourceGallery(src as SourceId, id, undefined, { forceRefresh: reloadNonce > 0 });
           if (!cancelled) {
             setGallery(sourceGalleryToGallery(sg, src as SourceId));
           }
@@ -168,7 +169,7 @@ export default function ReaderScreen() {
     return () => {
       cancelled = true;
     };
-  }, [id, local, localId, src]);
+  }, [id, local, localId, src, reloadNonce]);
 
   useEffect(() => {
     setCurrentPage(parseReaderInitialPage(initialPage));
@@ -447,6 +448,10 @@ export default function ReaderScreen() {
         <Text style={[styles.loadingText, { color: "#fff" }]}>
           {error || "Galerie introuvable"}
         </Text>
+        <TouchableOpacity onPress={() => setReloadNonce(value => value + 1)}
+          style={[styles.errorBackBtn, { backgroundColor: colors.accent }]}>
+          <ButtonLabel style={styles.errorBackText}>Réessayer</ButtonLabel>
+        </TouchableOpacity>
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={() => router.back()}

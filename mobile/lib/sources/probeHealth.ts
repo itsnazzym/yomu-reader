@@ -1,3 +1,4 @@
+import { resolveEhentaiPageImage } from "./ehentai";
 /**
  * Sonde légère réutilisée par SourceAdapter.healthCheck() et probe-sources.ts.
  * catalogue → fiche → téléchargement partiel de la première image.
@@ -14,7 +15,7 @@ export interface SourceHealthResult {
 const CATALOG_TIMEOUT_MS = 8000;
 const DETAIL_TIMEOUT_MS = 10000;
 const IMAGE_TIMEOUT_MS = 12000;
-const HEALTH_QUERY = "a";
+const HEALTH_QUERY = "";
 
 async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -73,7 +74,8 @@ export async function probeAdapterHealth(
       if (adapter.meta.id === "hitomi") {
         imageHeaders.Referer = "https://hitomi.la/";
       }
-      const image = await fetch(gal.pageUrls[0].url, {
+      const pageUrl = /hentai\.org\/s\//.test(gal.pageUrls[0].url) ? await resolveEhentaiPageImage(gal.pageUrls[0].url) : gal.pageUrls[0].url;
+      const image = await fetch(pageUrl, {
         signal: imageController.signal,
         headers: imageHeaders,
       });

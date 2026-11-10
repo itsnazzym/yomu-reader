@@ -1,3 +1,4 @@
+import { getSourceFilterSupport, hasAnyFilterSupport } from "../lib/sources/sourceFilterSupport";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -10,7 +11,37 @@ import {
   loadSourceGallery,
 } from "../lib/sources/galleryLoader";
 import { EhentaiSource } from "../lib/sources/ehentai";
-import { getSourceFilterSupport, hasAnyFilterSupport } from "../lib/sources/sourceFilterSupport";
+import { HitomiSource } from "../lib/sources/hitomi";
+
+test("Hitomi respecte la valeur par défaut et les branches de gg.js", async () => {
+  const original = globalThis.fetch;
+  const hash = "a".repeat(61) + "001";
+  globalThis.fetch = (async (url: string) => new Response(String(url).endsWith("gg.js")
+    ? "gg={m:function(g){var o = 1;switch(g){case 256:o = 0; break;}return o;},b:'123/'};"
+    : JSON.stringify({ id: "1", title: "Fixture", files: [{ hash }, { hash: "a".repeat(61) + "002" }] }))) as typeof fetch;
+  try {
+    const g = await new HitomiSource().getGallery("1");
+    assert.match(g.pageUrls[0].url, /^https:\/\/w1\./);
+    assert.match(g.pageUrls[1].url, /^https:\/\/w2\./);
+  } finally { globalThis.fetch = original; }
+});
+
+test("E-Hentai récupère les indices suivants sans substituer la couverture", async () => {
+  const original = globalThis.fetch;
+  const visited: string[] = [];
+  globalThis.fetch = (async (url: string) => {
+    visited.push(String(url));
+    if (String(url).includes("api.php")) return new Response(JSON.stringify({gmetadata:[{filecount:"2",title:"Fixture",thumb:"https://example.test/cover.jpg"}]}));
+    return new Response(String(url).includes("p=1") ? '<a href="https://e-hentai.org/s/bbbbbb/123-2">2</a>' : '<a href="?p=1">suite</a><a href="https://e-hentai.org/s/aaaaaa/123-1">1</a>');
+  }) as typeof fetch;
+  try {
+    const g = await new EhentaiSource().getGallery("123_abcdef");
+    assert.ok(visited.some(u => u.endsWith("p=1")));
+    assert.equal(g.pageUrls.length, 2);
+    assert.ok(g.pageUrls[1].url.endsWith("123-2"));
+    assert.ok(g.pageUrls.every(p => p.url !== g.coverUrl));
+  } finally { globalThis.fetch = original; }
+});
 
 const ehHtml = `<h1 id="gn">Fixture gallery</h1><div id="gd1"><div style="background: url(https://example.test/cover.jpg)"></div></div>
   <td class="gdt2">2 pages</td><a href="https://e-hentai.org/s/abcdef/123-1">1</a><a href="https://e-hentai.org/s/bcdefa/123-2">2</a>`;
@@ -202,7 +233,7 @@ test("sourceFilterSupport: nHentai adapte les filtres (pages et catégories OK, 
 
 test("sourceFilterSupport: Hitomi adapte aux sous-types sans pages ni note", () => {
   const hit = getSourceFilterSupport("hitomi");
-  assert.equal(hit.supportsCategories, true);
+  assert.equal(hit.supportsCategories, false);
   assert.equal(hit.supportedCategories.length, 4);
   assert.equal(hit.supportsPages, false);
   assert.equal(hit.supportsRating, false);
@@ -212,6 +243,6 @@ test("sourceFilterSupport: hasAnyFilterSupport distingue les sources compatibles
   assert.equal(hasAnyFilterSupport("ehentai"), true);
   assert.equal(hasAnyFilterSupport("nhentai"), true);
   assert.equal(hasAnyFilterSupport("hitomi"), true);
-  assert.equal(hasAnyFilterSupport("3hentai"), true);
+  assert.equal(hasAnyFilterSupport("3hentai"), false);
   assert.equal(hasAnyFilterSupport("doujins"), false);
 });

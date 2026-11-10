@@ -223,6 +223,7 @@ export default function BookDetailScreen() {
     enqueueGalleries([
       {
         id: gallery.id,
+        nativeId: isNhentai ? String(gallery.id) : gallery.media_id,
         title: bookTitle,
         cover: gallery.images?.cover?.url,
         src: sourceId !== "nhentai" ? sourceId : undefined,
@@ -236,7 +237,7 @@ export default function BookDetailScreen() {
     router.push({
       pathname: "/read",
       params: {
-        id: gallery.media_id || String(gallery.id),
+        id: isNhentai ? String(gallery.id) : gallery.media_id,
         initialPage: String(initialPage),
         ...(sourceId !== "nhentai" ? { src: sourceId } : {}),
       },

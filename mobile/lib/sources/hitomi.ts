@@ -37,6 +37,8 @@ interface GgTable {
   /** g → m(g) ; the switch branches in gg.js return 1. */
   oneSet: Set<number>;
   b: string;
+  defaultValue?: number;
+  caseValue?: number;
   fetchedAt: number;
 }
 
@@ -156,7 +158,10 @@ function parseGg(js: string): GgTable {
   if (!bMatch?.[1]) {
     throw new Error("Hitomi gg.js: champ b introuvable");
   }
-  return { oneSet, b: bMatch[1], fetchedAt: Date.now() };
+  const defaultMatch = js.match(/var\s+o\s*=\s*([01])/);
+  const caseMatch = js.match(/o\s*=\s*([01]);\s*break/);
+  if (!defaultMatch || !caseMatch) throw new Error("Hitomi : table de distribution inconnue.");
+  return { oneSet, b: bMatch[1], defaultValue: Number(defaultMatch[1]), caseValue: Number(caseMatch[1]), fetchedAt: Date.now() };
 }
 
 async function loadGg(force = false): Promise<GgTable> {
@@ -173,7 +178,7 @@ async function loadGg(force = false): Promise<GgTable> {
 }
 
 function ggM(table: GgTable, g: number): number {
-  return table.oneSet.has(g) ? 1 : 0;
+  return table.oneSet.has(g) ? (table.caseValue ?? 1) : (table.defaultValue ?? 0);
 }
 
 function ggS(hash: string): string {

@@ -1,3 +1,5 @@
+import { getFavorites, initFavorites } from "./favoritesStore";
+import { resolveEhentaiPageImage } from "./sources/ehentai";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { userFacingError } from "./userFacingError";
 import * as FileSystem from "expo-file-system/legacy";
@@ -36,6 +38,7 @@ export interface QueueItem {
   cover: string;
   /** Source d'origine ; absent = nhentai. Résolution par l'adaptateur dédié. */
   src?: SourceId;
+  nativeId?: string;
   status: QueueItemStatus;
   progress: number;
   totalPages: number;
@@ -51,8 +54,8 @@ export interface QueueItem {
  * sources (nhentai #29183 vs doujins #29183), donc toute identité interne
  * (dédup, workers, transferts en vol, reprise) passe par ce composite.
  */
-export function queueKeyOf(item: Pick<QueueItem, "id" | "src">): string {
-  return `${item.src ?? "nhentai"}:${item.id}`;
+export function queueKeyOf(item: Pick<QueueItem, "id" | "src" | "nativeId">): string {
+  return `${item.src ?? "nhentai"}:${item.nativeId || item.id}`;
 }
 
 export interface QueueState {
@@ -142,7 +145,7 @@ export function setMaxConcurrent(val: number) {
 let notificationAsked = false;
 
 export function enqueueGalleries(
-  galleries: { id: number; title: string; cover?: string; src?: SourceId }[]
+  galleries: { id: number; title: string; cover?: string; src?: SourceId; nativeId?: string }[]
 ) {
   if (!notificationAsked) {
     notificationAsked = true;
@@ -157,6 +160,7 @@ export function enqueueGalleries(
     newItems.push({
       id: g.id,
       src: g.src,
+      nativeId: g.nativeId,
       title: g.title || `Gallery #${g.id}`,
       cover: g.cover || "",
       status: "queued",
@@ -379,13 +383,20 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
     if (item.src && item.src !== "nhentai") {
       // Sources alternatives : résolution via l'adaptateur dédié (URLs de
       // pages fraîchement capturées, signées côté doujins).
-      const sg = await getSource(item.src).getGallery(String(item.id));
+      let nativeId = item.nativeId || String(item.id);
+      if (item.src === "ehentai" && !item.nativeId) {
+        await initFavorites();
+        const saved = getFavorites().find(g => g.globalId?.startsWith("ehentai:") && g.id === item.id);
+        nativeId = saved?.globalId?.slice("ehentai:".length) || saved?.media_id || "";
+        if (!nativeId.includes("_")) throw new Error("Ancien téléchargement E-Hentai : rouvrez la fiche et ajoutez-le à nouveau pour retrouver son token.");
+      }
+      const sg = await getSource(item.src).getGallery(nativeId);
       gallery = sourceGalleryToGallery(sg, item.src);
     } else {
       gallery = await getGallery(item.id);
     }
     const rawTitle = gallery.title.pretty || gallery.title.english;
-    const localId = makeLocalId(gallery.id, rawTitle); // identité stable = dossier
+    const localId = makeLocalId(gallery.id, `${item.src || "nhentai"}_${rawTitle}`); // identité stable = dossier
     const baseDir = `${FileSystem.documentDirectory}NHAppAndroid/`;
     const targetDir = `${baseDir}${localId}/`;
 
@@ -413,7 +424,8 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
 
       const p = pagesCopy[i];
       const pageNum = (i + 1).toString().padStart(3, "0");
-      const pageUrl = p?.url || resolvePageUrl(gallery.media_id, i, p);
+      let pageUrl = p?.url || resolvePageUrl(gallery.media_id, i, p);
+      if (/hentai\.org\/s\//.test(pageUrl)) pageUrl = await resolveEhentaiPageImage(pageUrl);
       if (!pageUrl) {
         throw new Error(`URL manquante pour la page ${i + 1}.`);
       }
@@ -452,7 +464,7 @@ async function downloadSingleGalleryWorker(item: QueueItem): Promise<void> {
                 ? "https://3hentai.net/"
                 : item.src === "hitomi"
                   ? "https://hitomi.la/"
-                  : "https://nhentai.net/",
+                  : item.src === "ehentai" ? "https://e-hentai.org/" : item.src === "rule34" ? "https://rule34.xxx/" : "https://nhentai.net/",
           "User-Agent":
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
         };

@@ -196,12 +196,6 @@ function folderToCard(it: FolderItem): SourceGalleryCard | null {
     tags,
     uploadDate: folderDateMs(it),
   });
-  // Enrichissement cumulatif : les tags rencontrés dans les listings
-  // complètent la liste officielle (36) de /tags. Fire-and-forget.
-  recordObservedTags([
-    ...tags.map((t) => t.name),
-    ...folderTagsArtists(it),
-  ]).catch(() => {});
   return {
     globalId: makeGlobalId("doujins", nativeId),
     title,
@@ -210,15 +204,6 @@ function folderToCard(it: FolderItem): SourceGalleryCard | null {
     uploadDate: folderDateMs(it),
     tags,
   };
-}
-
-/** Artistes + série d'un item folder, pour le cumul taxonomie. */
-function folderTagsArtists(it: FolderItem): string[] {
-  const out: string[] = [];
-  if (Array.isArray(it.artists)) out.push(...it.artists);
-  else if (it.artistList) out.push(...it.artistList.split(","));
-  if (it.series) out.push(it.series);
-  return out.filter((s): s is string => Boolean(s && s.trim()));
 }
 
 /** Parse les cartes HTML /list (href + img + titre, wrappers internes OK). */
@@ -398,6 +383,7 @@ export class DoujinsSource implements SourceAdapter {
     const cards = (json.folders || [])
       .map((item) => folderToCard(item))
       .filter((card): card is SourceGalleryCard => card !== null);
+    void recordObservedTags(cards.flatMap(card => (card.tags || []).map(tag => tag.name))).catch(() => {});
     return { cards, hasMore: true };
   }
 
@@ -469,7 +455,7 @@ export class DoujinsSource implements SourceAdapter {
 
     // Le site sert la home page (HTTP 200) pour les IDs inexistants : une
     // galerie valide expose toujours au moins une image extractible.
-    if (!cached && pageUrls.length === 0) {
+    if (pageUrls.length === 0) {
       throw new Error(`Doujins: galerie ${nativeId} introuvable`);
     }
 

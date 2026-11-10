@@ -85,6 +85,14 @@ function patchMainApplicationKt(contents) {
 function withAndroidDoh(config) {
   config = withDangerousMod(config, ["android", async (next) => {
     const packageDir = path.join(next.modRequest.platformProjectRoot, "app/src/main/java/com/nhentaidownlo/mobile");
+    const fsModule = path.join(__dirname, "node_modules/expo-file-system/android/src/main/java/expo/modules/filesystem/legacy/FileSystemLegacyModule.kt");
+    const original = fs.readFileSync(fsModule, "utf8");
+    const marker = "val builder = OkHttpClient.Builder()";
+    const policy = ".dns(com.facebook.react.modules.network.OkHttpClientProvider.getOkHttpClient().dns)";
+    if (!original.includes(policy)) {
+      if (!original.includes(marker)) throw new Error("Transport FileSystem a revarifier avant compilation");
+      fs.writeFileSync(fsModule, original.replace(marker, marker + "\n          " + policy));
+    }
     fs.mkdirSync(packageDir, { recursive: true });
     fs.copyFileSync(path.join(__dirname, "native/YomuNetworkModule.kt"), path.join(packageDir, "YomuNetworkModule.kt"));
     return next;
