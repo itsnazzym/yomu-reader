@@ -5,6 +5,7 @@ import {
   makeGlobalId,
   splitGlobalId,
   type GlobalGalleryId,
+  type SourceId,
 } from "./sources/types";
 
 export const FAVORITES_STORAGE_KEY = "@nhentai_favorites_v1";
@@ -77,7 +78,7 @@ async function loadFavoritesFromStorage(): Promise<void> {
       favoritesList = favoritesList.map((g) => {
         if (g.origin) return g;
         migrated = true;
-        return { ...g, source: isPlaceholderTitle(g) ? "cloud" : "local" };
+        return { ...g, origin: isPlaceholderTitle(g) ? "cloud" as const : "local" as const };
       });
       // Migration multi-sources : composer les ids globaux.
       const gm = migrateGlobalIds(favoritesList);
@@ -113,14 +114,13 @@ export function isFavorite(id: number | string | GlobalGalleryId): boolean {
 }
 
 export async function toggleFavorite(
-  gallery: Gallery & { sourceName?: "nhentai" | "3hentai" | "doujins" | "hitomi" }
+  gallery: Gallery & { sourceName?: SourceId }
 ) {
   await initFavorites();
-  const sourceName = gallery.sourceName || splitGlobalId(String(gallery.id)).source;
-  const gid =
-    String(gallery.id).includes(":")
-      ? (String(gallery.id) as GlobalGalleryId)
-      : makeGlobalId(sourceName, gallery.id);
+  const gid = gallery.globalId || (gallery.sourceName
+    ? makeGlobalId(gallery.sourceName, gallery.media_id || gallery.id)
+    : favoriteGlobalId(gallery));
+  splitGlobalId(gid);
   const exists = favoritesList.some((g) => favoriteGlobalId(g) === gid);
   if (exists) {
     favoritesList = favoritesList.filter((g) => favoriteGlobalId(g) !== gid);

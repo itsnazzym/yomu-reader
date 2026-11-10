@@ -37,7 +37,7 @@ const METAS: Record<SourceId, SourceMeta> = {
 const instances = new Map<SourceId, SourceAdapter>();
 
 function normalizeSource(ref: string): SourceId | null {
-  return (FACTORIES as Record<string, unknown>)[ref] ? (ref as SourceId) : null;
+  return Object.hasOwn(FACTORIES, ref) ? (ref as SourceId) : null;
 }
 
 /** Résout une source depuis son id OU depuis un globalId ("3hentai:719690"). */
@@ -45,9 +45,13 @@ export function getSource(sourceOrGlobalId: SourceId | GlobalGalleryId): SourceA
   let source: SourceId;
   if (sourceOrGlobalId.includes(":")) {
     const prefix = sourceOrGlobalId.slice(0, sourceOrGlobalId.indexOf(":"));
-    source = normalizeSource(prefix) ?? "nhentai";
+    const resolved = normalizeSource(prefix);
+    if (!resolved) throw new Error("Source inconnue.");
+    source = resolved;
   } else {
-    source = normalizeSource(sourceOrGlobalId) ?? "nhentai";
+    const resolved = normalizeSource(sourceOrGlobalId);
+    if (!resolved) throw new Error("Source inconnue.");
+    source = resolved;
   }
   let inst = instances.get(source);
   if (!inst) {

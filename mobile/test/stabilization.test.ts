@@ -10,6 +10,8 @@ import { sourceGalleryToGallery } from "@/lib/sources/galleryMapper";
 import { createSyncBaseline, mergeBackups, backupsEqual } from "@/lib/cloudSync/merge";
 import { userFacingError } from "@/lib/userFacingError";
 import type { BackupData } from "@/lib/backupStore";
+import { toggleFavorite, getFavorites, initFavorites, isFavorite, removeFavorite, FAVORITES_STORAGE_KEY } from "@/lib/favoritesStore";
+import type { SourceId } from "@/lib/sources/types";
 import { findDuplicateSourcesForGallery } from "@/lib/duplicateMatch";
 
 test("la fiche compare 10 000 favoris sans bloquer les timers ni comparer les favoris entre eux", async (t) => {
@@ -188,4 +190,28 @@ test("les erreurs visibles ne divulguent pas les adresses réseau ou les URL sig
   const visible = userFacingError(new Error("Failed to connect to cdn.example.test/[2001:db8::1]:443?token=fixture"));
   assert.match(visible, /Connexion/);
   assert.doesNotMatch(visible, /cdn\.|2001:|token=/);
+});
+
+test("les favoris conservent la source et l'identifiant natif après conversion et rechargement", async () => {
+  __mockSet(FAVORITES_STORAGE_KEY, []);
+  await initFavorites(true);
+  for (const source of ["nhentai", "3hentai", "doujins", "hitomi", "ehentai", "rule34"] as SourceId[]) {
+    const nativeId = source === "ehentai" ? "123_abcdef" : "123";
+    const converted = sourceGalleryToGallery({ nativeId, globalId: `${source}:${nativeId}`, title: "Audit fixture", coverUrl: "", tags: [], numPages: 1, pageUrls: [] }, source);
+    await toggleFavorite(converted);
+    assert.equal(isFavorite(`${source}:${nativeId}`), true, source);
+  }
+  await initFavorites(true);
+  assert.equal(getFavorites().length, 6);
+  assert.ok(getFavorites().some(g => g.globalId === "ehentai:123_abcdef" && g.media_id === "123_abcdef"));
+  await removeFavorite("hitomi:123");
+  assert.equal(isFavorite("hitomi:123"), false);
+  assert.equal(isFavorite("nhentai:123"), true);
+});
+
+test("la migration des favoris renseigne origin sans réattribuer une source ambiguë", async () => {
+  __mockSet(FAVORITES_STORAGE_KEY, [{ ...gallery(42), origin: undefined, globalId: "hitomi:42" }]);
+  await initFavorites(true);
+  assert.equal(getFavorites()[0].origin, "local");
+  assert.equal(getFavorites()[0].globalId, "hitomi:42");
 });

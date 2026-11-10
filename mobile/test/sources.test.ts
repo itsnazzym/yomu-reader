@@ -129,8 +129,9 @@ test("splitGlobalId: un id numérique nu (legacy) retombe sur nhentai", () => {
   assert.deepEqual(splitGlobalId("12345"), { source: "nhentai", nativeId: "12345" });
 });
 
-test("splitGlobalId: préfixe inconnu -> nhentai (pas de crash)", () => {
-  assert.deepEqual(splitGlobalId("mystery:99"), { source: "nhentai", nativeId: "mystery:99" });
+test("une source inconnue est refusée au lieu d'ouvrir un livre nHentai", () => {
+  assert.throws(() => splitGlobalId("mystery:99"), /source/i);
+  assert.throws(() => getSource("mystery:99"), /source/i);
 });
 
 test("registry: listSources retourne les 6 sources avec métadonnées", () => {

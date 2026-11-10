@@ -29,10 +29,10 @@ export function splitGlobalId(id: GlobalGalleryId): {
     return { source: "nhentai", nativeId: id };
   }
   const source = id.slice(0, idx);
-  // Un préfixe inconnu retombe sur nhentai plutôt que de crasher l'app.
   if (!["nhentai", "3hentai", "doujins", "hitomi", "ehentai", "rule34"].includes(source)) {
-    return { source: "nhentai", nativeId: id };
+    throw new Error("Source inconnue. Ce livre ne peut pas être ouvert.");
   }
+  if (!id.slice(idx + 1)) throw new Error("Identifiant de source vide.");
   return { source: source as SourceId, nativeId: id.slice(idx + 1) };
 }
 
