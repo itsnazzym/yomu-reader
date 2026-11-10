@@ -12,6 +12,58 @@ import {
 } from "../lib/sources/galleryLoader";
 import { EhentaiSource } from "../lib/sources/ehentai";
 import { HitomiSource } from "../lib/sources/hitomi";
+import { checkAllSourcesHealth, getSourceHealthEntry } from "../lib/sourceHealthStore";
+import { probeAdapterHealth } from "../lib/sources/probeHealth";
+
+test("une panne réseau conserve le dernier résultat de santé connu", async () => {
+  const originals = listSources().map(meta => { const adapter=getSource(meta.id); return { adapter,search:adapter.search,getGallery:adapter.getGallery }; });
+  const previousFetch=globalThis.fetch; let offline=false;
+  for(const {adapter} of originals) {
+    adapter.search=async()=>{ if(offline) throw new Error("network down"); return {cards:[{globalId:`${adapter.meta.id}:1`,title:"Fixture",coverUrl:"",numPages:1,tags:[]}],hasMore:false}; };
+    adapter.getGallery=async()=>({globalId:`${adapter.meta.id}:1`,nativeId:"1",title:"Fixture",coverUrl:"",numPages:1,tags:[],pageUrls:[{url:"https://example.test/page.jpg"}]});
+  }
+  globalThis.fetch=(async()=>new Response(new Uint8Array([255,216,255]),{headers:{"content-type":"image/jpeg"}})) as typeof fetch;
+  try {
+    await checkAllSourcesHealth(); assert.equal(getSourceHealthEntry("hitomi").status,"ok");
+    offline=true; await checkAllSourcesHealth(); assert.equal(getSourceHealthEntry("hitomi").status,"ok");
+  } finally { globalThis.fetch=previousFetch; for(const saved of originals){ saved.adapter.search=saved.search;saved.adapter.getGallery=saved.getGallery; } }
+});
+
+test("la sonde lit seulement la signature et annule le reste d'une image sans Range", async () => {
+  const previousFetch=globalThis.fetch; let cancelled=false;
+  const response=new Response(new ReadableStream({ start(controller){controller.enqueue(new Uint8Array([255,216,255,...new Array(50).fill(0)]));},cancel(){cancelled=true;} }),{headers:{"content-type":"image/jpeg"}});
+  response.arrayBuffer=async()=>{throw new Error("unbounded body read");};
+  globalThis.fetch=(async()=>response) as typeof fetch;
+  const adapter=getSource("hitomi");
+  try {
+    const result=await probeAdapterHealth({meta:adapter.meta,search:async()=>({cards:[{globalId:"hitomi:1",title:"Fixture",coverUrl:"",numPages:1,tags:[]}],hasMore:false}),getGallery:async()=>({globalId:"hitomi:1",nativeId:"1",title:"Fixture",coverUrl:"",numPages:1,tags:[],pageUrls:[{url:"https://example.test/huge.jpg"}]})});
+    assert.equal(result.ok,true);assert.equal(cancelled,true);
+  } finally {globalThis.fetch=previousFetch;}
+});
+
+test("le délai du chargeur annule le signal transmis à l'adaptateur", async () => {
+  clearSourceGalleryCache(); const adapter=getSource("hitomi");const original=adapter.getGallery;let signal:AbortSignal|undefined;
+  adapter.getGallery=(_id,_title,request)=>{signal=request?.signal;return new Promise(()=>{});};
+  try { await assert.rejects(loadSourceGallery("hitomi","timeout-audit",undefined,{timeoutMs:5}));assert.equal(signal?.aborted,true); }
+  finally {adapter.getGallery=original;clearSourceGalleryCache();}
+});
+
+test("les adaptateurs transmettent l'annulation jusqu'aux requêtes HTTP de fiche", async () => {
+  const originalFetch=globalThis.fetch;
+  globalThis.fetch=((_url:unknown,init?:RequestInit)=>new Promise<Response>((_resolve,reject)=>{
+    const stop=()=>{const error=new Error("cancelled");error.name="AbortError";reject(error);};
+    if(init?.signal?.aborted)stop();else init?.signal?.addEventListener("abort",stop,{once:true});
+  })) as typeof fetch;
+  try {
+    for(const source of ["3hentai","doujins","hitomi","ehentai"] as const){
+      const controller=new AbortController();
+      const pending=getSource(source).getGallery(source==="ehentai"?"123_abcdef":"987654321",undefined,{signal:controller.signal});
+      const result=assert.rejects(pending);
+      await new Promise(resolve=>setTimeout(resolve,5));controller.abort();
+      await Promise.race([result,new Promise((_,reject)=>setTimeout(()=>reject(new Error(`${source}: cancellation not forwarded`)),100))]);
+    }
+  } finally {globalThis.fetch=originalFetch;}
+});
 
 test("Hitomi respecte la valeur par défaut et les branches de gg.js", async () => {
   const original = globalThis.fetch;

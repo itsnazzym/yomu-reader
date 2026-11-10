@@ -51,8 +51,9 @@ export function loadSourceGallery(
   source: SourceId,
   nativeId: string,
   knownTitle?: string,
-  options?: { forceRefresh?: boolean; timeoutMs?: number }
+  options?: { forceRefresh?: boolean; timeoutMs?: number; signal?: AbortSignal }
 ): Promise<SourceGallery> {
+  if (options?.signal?.aborted) return Promise.reject(new Error("Chargement annulé."));
   const key = keyOf(source, nativeId);
   if (!options?.forceRefresh) {
     const cached = peekSourceGallery(source, nativeId);
@@ -60,12 +61,14 @@ export function loadSourceGallery(
   }
 
   const pending = inFlight.get(key);
-  if (pending && !options?.forceRefresh) return pending;
+  if (pending && !options?.forceRefresh && !options?.signal) return pending;
   // Un nouvel essai ne doit pas rester captif d'une requête qui a dépassé
   // son délai. L'ancienne réponse tardive est volontairement ignorée.
   if (pending) inFlight.delete(key);
 
   const timeoutMs = options?.timeoutMs ?? DEFAULT_LOAD_TIMEOUT_MS;
+  const controller = new AbortController();
+  let removeAbortListener = () => {};
   let request!: Promise<SourceGallery>;
   request = new Promise<SourceGallery>((resolve, reject) => {
     let settled = false;
@@ -73,17 +76,22 @@ export function loadSourceGallery(
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      removeAbortListener();
       callback();
     };
     const timer = setTimeout(() => {
       settle(() => reject(new Error("Le chargement de la galerie a pris trop de temps. Réessayez.")));
+      controller.abort();
     }, timeoutMs);
+    const abort = () => { settle(() => reject(new Error("Chargement annulé."))); controller.abort(); };
+    options?.signal?.addEventListener("abort", abort, { once: true });
+    removeAbortListener = () => options?.signal?.removeEventListener("abort", abort);
 
     void getSource(source)
-      .getGallery(nativeId, knownTitle)
+      .getGallery(nativeId, knownTitle, { signal: controller.signal })
       .then((gallery) => {
         settle(() => {
-          remember(
+          if (inFlight.get(key) === request) remember(
             key,
             gallery,
             source === "doujins" || source === "hitomi" ? SIGNED_URL_TTL_MS : DEFAULT_TTL_MS
@@ -93,6 +101,7 @@ export function loadSourceGallery(
       })
       .catch((error) => settle(() => reject(error)));
   }).finally(() => {
+    controller.abort();
     if (inFlight.get(key) === request) inFlight.delete(key);
   });
 

@@ -126,7 +126,7 @@ export default function BookDetailScreen() {
     return () => { cancelled = true; };
   }, [gallery, favorites]);
 
-  const fav = gallery ? isFavorite(gallery.id) : false;
+  const fav = gallery ? isFavorite(gallery.globalId || makeGlobalId(sourceId, gallery.id)) : false;
 
   useEffect(() => {
     if (!id) {
@@ -135,6 +135,7 @@ export default function BookDetailScreen() {
       return;
     }
     let cancelled = false;
+    const controller = new AbortController();
     setLoading(true);
     setError(null);
     setGallery(null);
@@ -147,7 +148,7 @@ export default function BookDetailScreen() {
     if (isNhentai) {
       // La galerie est le seul prérequis de cet écran. Les compléments ne
       // doivent jamais empêcher Lire maintenant d'apparaître.
-      void getGallery(id)
+      void getGallery(id, controller.signal)
         .then((g) => {
           if (!cancelled) setGallery(g);
         })
@@ -184,6 +185,7 @@ export default function BookDetailScreen() {
       const knownTitle = typeof titleParam === "string" ? titleParam : undefined;
       void loadSourceGallery(sourceId, id, knownTitle, {
         forceRefresh: reloadNonce > 0,
+        signal: controller.signal,
       })
         .then((sg) => {
           // Map vers Gallery (mapper partagé) pour réutiliser toute l'UI.
@@ -205,6 +207,7 @@ export default function BookDetailScreen() {
     }
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [id, sourceId, titleParam, reloadNonce, isNhentai]);
 

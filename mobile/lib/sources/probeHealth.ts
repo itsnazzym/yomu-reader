@@ -17,13 +17,13 @@ const DETAIL_TIMEOUT_MS = 10000;
 const IMAGE_TIMEOUT_MS = 12000;
 const HEALTH_QUERY = "";
 
-async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+async function withTimeout<T>(promise: Promise<T>, ms: number, abort?: () => void): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
       promise,
       new Promise<T>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`Timeout ${ms}ms`)), ms);
+        timer = setTimeout(() => { reject(new Error(`Timeout ${ms}ms`)); abort?.(); }, ms);
       }),
     ]);
   } finally {
@@ -41,13 +41,15 @@ export async function probeAdapterHealth(
   const catalogTimeoutMs = opts?.timeoutMs ?? CATALOG_TIMEOUT_MS;
   const query = opts?.query ?? HEALTH_QUERY;
   const t0 = Date.now();
+  const controller = new AbortController();
+  const abort = () => controller.abort();
   try {
     // query "" → browse (index /folders), pas search.html avec un mot factice.
     const searchOpts =
       query === ""
         ? { page: 1 as const }
         : { query, page: 1 as const };
-    const search = await withTimeout(adapter.search(searchOpts), catalogTimeoutMs);
+    const search = await withTimeout(adapter.search(searchOpts, { signal: controller.signal }), catalogTimeoutMs, abort);
     const first = search.cards[0];
     if (!first) {
       return {
@@ -59,7 +61,7 @@ export async function probeAdapterHealth(
     const nativeId = first.globalId.includes(":")
       ? first.globalId.slice(first.globalId.indexOf(":") + 1)
       : first.globalId;
-    const gal = await withTimeout(adapter.getGallery(nativeId), DETAIL_TIMEOUT_MS);
+    const gal = await withTimeout(adapter.getGallery(nativeId, undefined, { signal: controller.signal }), DETAIL_TIMEOUT_MS, abort);
     if (!gal.pageUrls[0]?.url || gal.numPages <= 0) {
       return {
         ok: false,
@@ -67,20 +69,36 @@ export async function probeAdapterHealth(
         error: "Pas d'URL de page",
       };
     }
-    const imageController = new AbortController();
+    const imageController = controller;
     const imageTimer = setTimeout(() => imageController.abort(), IMAGE_TIMEOUT_MS);
     try {
       const imageHeaders: Record<string, string> = { Range: "bytes=0-31" };
       if (adapter.meta.id === "hitomi") {
         imageHeaders.Referer = "https://hitomi.la/";
       }
-      const pageUrl = /hentai\.org\/s\//.test(gal.pageUrls[0].url) ? await resolveEhentaiPageImage(gal.pageUrls[0].url) : gal.pageUrls[0].url;
+      const pageUrl = /hentai\.org\/s\//.test(gal.pageUrls[0].url) ? await withTimeout(resolveEhentaiPageImage(gal.pageUrls[0].url, undefined, controller.signal), IMAGE_TIMEOUT_MS, abort) : gal.pageUrls[0].url;
       const image = await fetch(pageUrl, {
         signal: imageController.signal,
         headers: imageHeaders,
       });
       const contentType = image.headers.get("content-type") || "";
-      const bytes = new Uint8Array(await image.arrayBuffer());
+      let bytes: Uint8Array;
+      const reader = image.body?.getReader();
+      if (reader) {
+        const parts: number[] = [];
+        try {
+          while (parts.length < 32) {
+            const part = await reader.read();
+            if (part.done) break;
+            parts.push(...part.value.slice(0, 32 - parts.length));
+          }
+          bytes = Uint8Array.from(parts);
+        } finally { await reader.cancel().catch(() => {}); }
+      } else {
+        const length = Number(image.headers.get("content-length"));
+        if (!length || length > 32) throw new Error("Sonde indisponible : lecture partielle non prise en charge.");
+        bytes = new Uint8Array(await image.arrayBuffer());
+      }
       const isImage = contentType.startsWith("image/");
       const hasSignature =
         (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) ||
@@ -100,7 +118,7 @@ export async function probeAdapterHealth(
     return {
       ok: false,
       latencyMs: Date.now() - t0,
-      error: err instanceof Error ? err.message : String(err),
+      error: controller.signal.aborted ? "Timeout de la sonde" : err instanceof Error ? err.message : String(err),
     };
   }
 }

@@ -1,3 +1,4 @@
+import { linkSourceSignal } from "./requestDeadline";
 import { fetchEhTagDatabase } from "./tagCatalogFetchers";
 /**
  * Adaptateur E-Hentai & ExHentai (JHenTai style).
@@ -47,9 +48,10 @@ async function requestWithDeadline<T>(
   url: string,
   init: RequestInit,
   read: (response: Response) => Promise<T>,
-  timeoutMs = TIMEOUT_MS
+  timeoutMs = TIMEOUT_MS, signal?: AbortSignal
 ): Promise<T> {
   const controller = new AbortController();
+  const unlink = linkSourceSignal(signal, controller);
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
@@ -66,6 +68,7 @@ async function requestWithDeadline<T>(
     ]);
   } finally {
     clearTimeout(timer);
+    unlink();
   }
 }
 
@@ -266,12 +269,13 @@ export function parseEhentaiListingCards(html: string): SourceGalleryCard[] {
 
 export async function resolveEhentaiPageImage(
   viewerUrl: string,
-  headers?: Record<string, string>
+  headers?: Record<string, string>, signal?: AbortSignal
 ): Promise<string> {
   const cached = getCachedEhentaiPageImage(viewerUrl);
   if (cached) return cached;
 
   const controller = new AbortController();
+  const unlink = linkSourceSignal(signal, controller);
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
@@ -292,6 +296,7 @@ export async function resolveEhentaiPageImage(
     throw new Error("Balise <img id='img'> introuvable dans la page E-Hentai");
   } finally {
     clearTimeout(timer);
+    unlink();
   }
 }
 
@@ -335,7 +340,7 @@ export class EhentaiSource implements SourceAdapter {
     return { baseUrl, headers };
   }
 
-  async search(opts: SourceSearchOptions): Promise<{ cards: SourceGalleryCard[]; hasMore: boolean }> {
+  async search(opts: SourceSearchOptions, request?: { signal?: AbortSignal }): Promise<{ cards: SourceGalleryCard[]; hasMore: boolean }> {
     const { baseUrl, headers } = await this.getRequestConfig();
     const pageNum = Math.max(1, opts.page || 1);
 
@@ -406,6 +411,7 @@ export class EhentaiSource implements SourceAdapter {
 
     const url = `${baseUrl}/?${params.toString()}`;
     const controller = new AbortController();
+    const unlink = linkSourceSignal(request?.signal, controller);
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
     try {
@@ -438,10 +444,11 @@ export class EhentaiSource implements SourceAdapter {
       };
     } finally {
       clearTimeout(timer);
+      unlink();
     }
   }
 
-  async getGallery(nativeId: string): Promise<SourceGallery> {
+  async getGallery(nativeId: string, _knownTitle?: string, request?: { signal?: AbortSignal }): Promise<SourceGallery> {
     const { gid, token } = parseEhentaiNativeId(nativeId);
     if (!gid || !token) {
       throw new Error(`Identifiant E-Hentai invalide: '${nativeId}'`);
@@ -463,10 +470,10 @@ export class EhentaiSource implements SourceAdapter {
         const entry = json?.gmetadata?.[0];
         return entry && !entry.error ? entry as EhentaiApiMetadata : null;
       },
-      3_000
+      3_000, request?.signal
     ).catch(() => null);
     const html = requestWithDeadline(
-      `${baseUrl}/g/${gid}/${token}/?p=0`, { headers }, (response) => response.text()
+      `${baseUrl}/g/${gid}/${token}/?p=0`, { headers }, (response) => response.text(), TIMEOUT_MS, request?.signal
     );
     const [meta, galleryHtml] = await Promise.all([metadata, html]);
 
@@ -500,7 +507,7 @@ export class EhentaiSource implements SourceAdapter {
     const pageCount = Number(galleryHtml.match(/[?&](?:amp;)?p=(\d+)/g)?.map(x => Number(x.match(/(\d+)$/)?.[1])).reduce((a,b) => Math.max(a,b),0) || 0);
     // Fetch every thumbnail index; never substitute a cover for missing pages.
     for (let page = 1; page <= pageCount; page++) {
-      const nextHtml = await requestWithDeadline(`${baseUrl}/g/${gid}/${token}/?p=${page}`, { headers }, r => r.text());
+      const nextHtml = await requestWithDeadline(`${baseUrl}/g/${gid}/${token}/?p=${page}`, { headers }, r => r.text(), TIMEOUT_MS, request?.signal);
       for (const match of extractMatches(nextHtml, /href="(https?:\/\/(?:e-hentai|exhentai)\.org\/s\/[a-f0-9]+\/\d+-(\d+))"/g)) {
         const pageNum = Number(match[2]);
         if (!readerPageLinks.some(p => p.pageNum === pageNum)) readerPageLinks.push({ url: match[1], pageNum });
@@ -532,7 +539,7 @@ export class EhentaiSource implements SourceAdapter {
     // Pré-résolution asynchrone non-bloquante pour affichage instantané de la fiche
     const preResolveCount = Math.min(2, readerPageLinks.length);
     readerPageLinks.slice(0, preResolveCount).forEach((p) => {
-      void this.resolvePageImageUrl(p.url, headers).catch(() => "");
+      void this.resolvePageImageUrl(p.url, headers, request?.signal).catch(() => "");
     });
 
     // Construction de la liste des pages pour le lecteur
@@ -571,8 +578,8 @@ export class EhentaiSource implements SourceAdapter {
     };
   }
 
-  async resolvePageImageUrl(viewerUrl: string, headers?: Record<string, string>): Promise<string> {
-    return resolveEhentaiPageImage(viewerUrl, headers);
+  async resolvePageImageUrl(viewerUrl: string, headers?: Record<string, string>, signal?: AbortSignal): Promise<string> {
+    return resolveEhentaiPageImage(viewerUrl, headers, signal);
   }
 
   async getTags(): Promise<SourceTaxonomyItem[]> {

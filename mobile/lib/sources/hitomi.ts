@@ -1,3 +1,4 @@
+import { linkSourceSignal } from "./requestDeadline";
 import { fetchHitomiTagDirectory } from "./tagCatalogFetchers";
 /**
  * Adaptateur hitomi.la — URLs images fraîches via gg.js (jamais persistées).
@@ -64,8 +65,9 @@ interface GalleryInfo {
 
 let ggCache: GgTable | null = null;
 
-async function fetchText(url: string): Promise<string> {
+async function fetchText(url: string, signal?: AbortSignal): Promise<string> {
   const controller = new AbortController();
+  const unlink = linkSourceSignal(signal, controller);
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
     const res = await fetch(url, {
@@ -78,15 +80,17 @@ async function fetchText(url: string): Promise<string> {
     return await res.text();
   } finally {
     clearTimeout(timer);
+    unlink();
   }
 }
 
 /** Fetch binaire (nozomi) avec Range optionnel — Hitomi pagine en 25 IDs × 4 octets. */
 async function fetchBinary(
   url: string,
-  range?: { start: number; end: number }
+  range?: { start: number; end: number }, signal?: AbortSignal
 ): Promise<{ buffer: ArrayBuffer; totalBytes: number | null }> {
   const controller = new AbortController();
+  const unlink = linkSourceSignal(signal, controller);
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
     const headers: Record<string, string> = { ...HEADERS };
@@ -107,6 +111,7 @@ async function fetchBinary(
     return { buffer, totalBytes };
   } finally {
     clearTimeout(timer);
+    unlink();
   }
 }
 
@@ -164,7 +169,7 @@ function parseGg(js: string): GgTable {
   return { oneSet, b: bMatch[1], defaultValue: Number(defaultMatch[1]), caseValue: Number(caseMatch[1]), fetchedAt: Date.now() };
 }
 
-async function loadGg(force = false): Promise<GgTable> {
+async function loadGg(force = false, signal?: AbortSignal): Promise<GgTable> {
   if (
     !force &&
     ggCache &&
@@ -172,7 +177,7 @@ async function loadGg(force = false): Promise<GgTable> {
   ) {
     return ggCache;
   }
-  const js = await fetchText(`${LTN}/gg.js`);
+  const js = await fetchText(`${LTN}/gg.js`, signal);
   ggCache = parseGg(js);
   return ggCache;
 }
@@ -246,10 +251,10 @@ function tagsFromInfo(info: GalleryInfo): SourceTag[] {
 
 async function cardFromGalleryId(
   nativeId: string,
-  gg: GgTable
+  gg: GgTable, signal?: AbortSignal
 ): Promise<SourceGalleryCard | null> {
   try {
-    const js = await fetchText(`${LTN}/galleries/${nativeId}.js`);
+    const js = await fetchText(`${LTN}/galleries/${nativeId}.js`, signal);
     const info = parseGalleryInfo(js);
     const hash = info.files?.[0]?.hash;
     const coverUrl = hash ? thumbUrl(gg, hash, "webpsmalltn") : "";
@@ -306,7 +311,7 @@ export class HitomiSource implements SourceAdapter {
     supportsComments: false,
   };
 
-  async search(opts: SourceSearchOptions): Promise<{
+  async search(opts: SourceSearchOptions, request?: { signal?: AbortSignal }): Promise<{
     cards: SourceGalleryCard[];
     hasMore: boolean;
   }> {
@@ -319,8 +324,8 @@ export class HitomiSource implements SourceAdapter {
     const end = start + PAGE_SIZE * 4 - 1;
 
     const [{ buffer, totalBytes }, gg] = await Promise.all([
-      fetchBinary(nozomiUrl, { start, end }),
-      loadGg(),
+      fetchBinary(nozomiUrl, { start, end }, request?.signal),
+      loadGg(false, request?.signal),
     ]);
     const ids = parseNozomiIds(buffer);
     if (ids.length === 0) {
@@ -329,7 +334,7 @@ export class HitomiSource implements SourceAdapter {
 
     // Metadata lookups are deliberately capped: Hitomi returns a compact
     // nozomi index, while each card is a separate endpoint.
-    const settled = await mapWithConcurrency(ids, 4, (id) => cardFromGalleryId(id, gg));
+    const settled = await mapWithConcurrency(ids, 4, (id) => cardFromGalleryId(id, gg, request?.signal));
     const cards = settled.filter(
       (card): card is SourceGalleryCard => card !== null
     ).filter((card) => matchesQuery(card, opts.query));
@@ -346,10 +351,10 @@ export class HitomiSource implements SourceAdapter {
     return { cards, hasMore };
   }
 
-  async getGallery(nativeId: string): Promise<SourceGallery> {
+  async getGallery(nativeId: string, _knownTitle?: string, request?: { signal?: AbortSignal }): Promise<SourceGallery> {
     const [gg, js] = await Promise.all([
-      loadGg(true),
-      fetchText(`${LTN}/galleries/${nativeId}.js`),
+      loadGg(true, request?.signal),
+      fetchText(`${LTN}/galleries/${nativeId}.js`, request?.signal),
     ]);
     const info = parseGalleryInfo(js);
     const files = info.files || [];

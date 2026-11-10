@@ -115,6 +115,7 @@ export default function ReaderScreen() {
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     const rawLocal = typeof localId === "string" && localId ? localId : local;
     setLoading(true);
     setError(null);
@@ -136,7 +137,7 @@ export default function ReaderScreen() {
         // Sources alternatives (src=3hentai|doujins|ehentai|rule34) : chargement via
         // l'adaptateur, pages déjà résolues avec URLs fraîches.
         if (src && src !== "nhentai") {
-          const sg = await loadSourceGallery(src as SourceId, id, undefined, { forceRefresh: reloadNonce > 0 });
+          const sg = await loadSourceGallery(src as SourceId, id, undefined, { forceRefresh: reloadNonce > 0, signal: controller.signal });
           if (!cancelled) {
             setGallery(sourceGalleryToGallery(sg, src as SourceId));
           }
@@ -148,7 +149,7 @@ export default function ReaderScreen() {
           return;
         }
 
-        const remoteGallery = await getGallery(id);
+        const remoteGallery = await getGallery(id, controller.signal);
         if (!cancelled) setGallery(remoteGallery);
       } catch (err) {
         if (cancelled) return;
@@ -168,6 +169,7 @@ export default function ReaderScreen() {
     void loadGallery();
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [id, local, localId, src, reloadNonce]);
 

@@ -56,15 +56,15 @@ export class NhentaiSource implements SourceAdapter {
     supportsComments: true,
   };
 
-  async search(opts: SourceSearchOptions) {
+  async search(opts: SourceSearchOptions, request?: { signal?: AbortSignal }) {
     const sort = (opts.sort as Parameters<typeof api.searchGalleries>[2]) || "recent";
-    const res = await api.searchGalleries(opts.query || "", opts.page || 1, sort);
+    const res = await api.searchGalleries(opts.query || "", opts.page || 1, sort, request?.signal);
     const galleries = res.result || [];
     return { cards: galleries.map(toCard), hasMore: galleries.length >= 20 };
   }
 
-  async getGallery(nativeId: string): Promise<SourceGallery> {
-    return toFull(await api.getGallery(Number(nativeId)));
+  async getGallery(nativeId: string, _knownTitle?: string, request?: { signal?: AbortSignal }): Promise<SourceGallery> {
+    return toFull(await api.getGallery(Number(nativeId), request?.signal));
   }
 
   async getRandomNativeId(): Promise<string> {

@@ -18,7 +18,7 @@ export interface SearchParams {
 const BROWSE_MATCH_ALL = "*";
 
 export async function searchGalleries(
-  params: SearchParams
+  params: SearchParams, signal?: AbortSignal
 ): Promise<Paginated<GalleryCard>> {
   const q = (params.query ?? "").trim();
   const sort = params.sort ?? "date";
@@ -27,7 +27,7 @@ export async function searchGalleries(
 
   if (!q) {
     if (sort === "date" || sort === "recent") {
-      return getGalleries({ page, per_page });
+      return getGalleries({ page, per_page }, signal);
     }
     return nhApi.get(
       `/search${buildQuery({
@@ -36,7 +36,7 @@ export async function searchGalleries(
         page,
         ...(per_page != null ? { per_page } : {}),
       })}`,
-      { public: true, timeoutMs: 7_000, maxRateLimitRetries: 0 }
+      { public: true, timeoutMs: 7_000, maxRateLimitRetries: 0, signal }
     );
   }
 
@@ -47,6 +47,6 @@ export async function searchGalleries(
       page,
       ...(per_page != null ? { per_page } : {}),
     })}`,
-    { public: true, timeoutMs: 7_000, maxRateLimitRetries: 0 }
+    { public: true, timeoutMs: 7_000, maxRateLimitRetries: 0, signal }
   );
 }

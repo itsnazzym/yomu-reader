@@ -1,3 +1,4 @@
+import { linkSourceSignal } from "../../sources/requestDeadline";
 /**
  * nhentai API v2 — HTTP Client
  *
@@ -150,6 +151,7 @@ export class ApiError extends Error {
 }
 
 export interface RequestOptions {
+  signal?: AbortSignal;
   public?: boolean;
   apiKey?: string;
   headers?: Record<string, string>;
@@ -166,6 +168,7 @@ async function fetchWithTimeout(
   timeoutMs: number
 ): Promise<Response> {
   const controller = new AbortController();
+  linkSourceSignal(init.signal, controller);
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, { ...init, signal: controller.signal });
@@ -258,6 +261,7 @@ async function request<T>(
   const init: RequestInit = {
     method,
     headers,
+    signal: opts.signal,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   };
 

@@ -1,3 +1,4 @@
+import { linkSourceSignal } from "./requestDeadline";
 /**
  * Adaptateur doujins.com (scraping HTML + listing JSON /folders).
  *
@@ -106,8 +107,9 @@ function rememberPaywalledGallery(nativeId: string): void {
   void AsyncStorage.setItem(PAYWALLED_GALLERIES_KEY, JSON.stringify(ids)).catch(() => {});
 }
 
-async function fetchHtml(url: string): Promise<string> {
+async function fetchHtml(url: string, signal?: AbortSignal): Promise<string> {
   const controller = new AbortController();
+  const unlink = linkSourceSignal(signal, controller);
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
     const res = await fetch(url, { headers: HEADERS, signal: controller.signal });
@@ -115,11 +117,13 @@ async function fetchHtml(url: string): Promise<string> {
     return await res.text();
   } finally {
     clearTimeout(timer);
+    unlink();
   }
 }
 
-async function fetchJson<T>(url: string): Promise<T> {
+async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   const controller = new AbortController();
+  const unlink = linkSourceSignal(signal, controller);
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
     const res = await fetch(url, {
@@ -130,6 +134,7 @@ async function fetchJson<T>(url: string): Promise<T> {
     return (await res.json()) as T;
   } finally {
     clearTimeout(timer);
+    unlink();
   }
 }
 
@@ -341,7 +346,7 @@ export class DoujinsSource implements SourceAdapter {
     supportsComments: false,
   };
 
-  async search(opts: SourceSearchOptions): Promise<{
+  async search(opts: SourceSearchOptions, request?: { signal?: AbortSignal }): Promise<{
     cards: SourceGalleryCard[];
     hasMore: boolean;
   }> {
@@ -358,13 +363,13 @@ export class DoujinsSource implements SourceAdapter {
     if (wantPopular && !query) {
       const sortParam = sort === "popular-today" ? "views" : "popular";
       const url = `${BASE}/list?sort=${sortParam}`;
-      const html = await fetchHtml(url);
+      const html = await fetchHtml(url, request?.signal);
       return { cards: parseDoujinsListCards(html), hasMore: false };
     }
 
     if (query) {
       const url = `${BASE}/list?search=${encodeURIComponent(query)}&sort=newest`;
-      const html = await fetchHtml(url);
+      const html = await fetchHtml(url, request?.signal);
       return { cards: parseDoujinsListCards(html), hasMore: false };
     }
 
@@ -377,7 +382,7 @@ export class DoujinsSource implements SourceAdapter {
     );
 
     const json = await fetchJson<{ folders?: FolderItem[]; premium?: FolderItem[] }>(
-      `${BASE}/folders?start=${startSec}&end=${endSec}`
+      `${BASE}/folders?start=${startSec}&end=${endSec}`, request?.signal
     );
     // `premium` est réservé aux abonnés. `folders` est le catalogue normal.
     const cards = (json.folders || [])
@@ -387,7 +392,7 @@ export class DoujinsSource implements SourceAdapter {
     return { cards, hasMore: true };
   }
 
-  async getGallery(nativeId: string, knownTitle?: string): Promise<SourceGallery> {
+  async getGallery(nativeId: string, knownTitle?: string, request?: { signal?: AbortSignal }): Promise<SourceGallery> {
     await loadPaywalledGalleryIds();
     if (paywalledGalleryIds.has(nativeId)) {
       throw new Error("Doujins: lecture réservée aux abonnés.");
@@ -396,7 +401,7 @@ export class DoujinsSource implements SourceAdapter {
 
     let html = "";
     try {
-      html = await this.fetchGalleryHtml(nativeId, cached?.path);
+      html = await this.fetchGalleryHtml(nativeId, cached?.path, request?.signal);
     } catch {
       html = "";
     }
@@ -479,16 +484,17 @@ export class DoujinsSource implements SourceAdapter {
    */
   private async fetchGalleryHtml(
     nativeId: string,
-    knownPath?: string
+    knownPath?: string, signal?: AbortSignal
   ): Promise<string> {
     const candidates: string[] = [];
     if (knownPath) candidates.push(knownPath);
     candidates.push(`/hentai-manga/x-${nativeId}`);
     for (const path of candidates) {
       try {
-        return await fetchHtml(`${BASE}${path}`);
+        return await fetchHtml(`${BASE}${path}`, signal);
       } catch {
-        // candidat suivant
+        if (signal?.aborted) throw new Error("Chargement annulé.");
+          // candidat suivant
       }
     }
     throw new Error(`Doujins: chemin HTML introuvable pour ${nativeId}`);

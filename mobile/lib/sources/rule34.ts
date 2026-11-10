@@ -1,3 +1,4 @@
+import { linkSourceSignal } from "./requestDeadline";
 import { fetchRule34TagPage } from "./tagCatalogFetchers";
 /**
  * Adaptateur Rule34 (rule34.xxx booru API).
@@ -111,7 +112,7 @@ export class Rule34Source implements SourceAdapter {
     return "";
   }
 
-  async search(opts: SourceSearchOptions): Promise<{ cards: SourceGalleryCard[]; hasMore: boolean }> {
+  async search(opts: SourceSearchOptions, request?: { signal?: AbortSignal }): Promise<{ cards: SourceGalleryCard[]; hasMore: boolean }> {
     const pageIndex = Math.max(0, (opts.page || 1) - 1);
     const authParams = await this.getAuthQueryParams();
 
@@ -129,6 +130,7 @@ export class Rule34Source implements SourceAdapter {
     )}${authParams}`;
 
     const controller = new AbortController();
+    const unlink = linkSourceSignal(request?.signal, controller);
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
     try {
@@ -159,10 +161,11 @@ export class Rule34Source implements SourceAdapter {
       };
     } finally {
       clearTimeout(timer);
+      unlink();
     }
   }
 
-  async getGallery(nativeId: string): Promise<SourceGallery> {
+  async getGallery(nativeId: string, _knownTitle?: string, request?: { signal?: AbortSignal }): Promise<SourceGallery> {
     const cleanId = nativeId.trim();
     const authParams = await this.getAuthQueryParams();
     if (!authParams) {
@@ -175,6 +178,7 @@ export class Rule34Source implements SourceAdapter {
     const url = `${API_URL}?page=dapi&s=post&q=index&json=1&id=${encodeURIComponent(cleanId)}${authParams}`;
 
     const controller = new AbortController();
+    const unlink = linkSourceSignal(request?.signal, controller);
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
     try {
@@ -210,6 +214,7 @@ export class Rule34Source implements SourceAdapter {
       };
     } finally {
       clearTimeout(timer);
+      unlink();
     }
   }
 

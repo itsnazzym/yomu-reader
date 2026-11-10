@@ -6,3 +6,10 @@ export async function withSourceDeadline<T>(request: Promise<T>, ms = 20_000): P
     })]);
   } finally { clearTimeout(timer!); }
 }
+
+export function linkSourceSignal(signal: AbortSignal | null | undefined, controller: AbortController): () => void {
+  const abort = () => controller.abort();
+  if (signal?.aborted) abort();
+  else signal?.addEventListener("abort", abort, { once: true });
+  return () => signal?.removeEventListener("abort", abort);
+}

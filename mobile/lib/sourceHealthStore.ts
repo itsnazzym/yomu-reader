@@ -27,7 +27,6 @@ function emptyMap(): HealthMap {
 }
 
 let healthMap: HealthMap = emptyMap();
-let checking = false;
 let fallbackToastShown = false;
 const listeners = new Set<() => void>();
 
@@ -70,18 +69,18 @@ export function useSourceHealthEntry(id: SourceId): SourceHealthEntry {
 /**
  * Sonde toutes les sources en parallèle. Idempotent si déjà en cours.
  */
-export async function checkAllSourcesHealth(): Promise<HealthMap> {
-  if (checking) return healthMap;
-  checking = true;
+export async function checkAllSourcesHealth(ids?: SourceId[]): Promise<HealthMap> {
+  const selected = listSources().filter(meta => (!ids || ids.includes(meta.id)) && healthMap[meta.id].status !== "checking");
+  const previousMap = { ...healthMap };
   const next: HealthMap = { ...healthMap };
-  for (const meta of listSources()) {
+  for (const meta of selected) {
     next[meta.id] = { status: "checking", checkedAt: Date.now() };
   }
   healthMap = next;
   notify();
 
   await Promise.all(
-    listSources().map(async (meta) => {
+    selected.map(async (meta) => {
       const adapter = getSource(meta.id);
       let result: SourceHealthResult;
       try {
@@ -96,11 +95,12 @@ export async function checkAllSourcesHealth(): Promise<HealthMap> {
           error: err instanceof Error ? err.message : String(err),
         };
       }
-      const previous = healthMap[meta.id] ?? { status: "unknown" as const };
+      const previous = previousMap[meta.id] ?? { status: "unknown" as const };
       // Going offline is a device condition, not evidence that a provider is
       // down. Preserve the last known visibility and retry on foreground.
-      const status = isOfflineError(result.error)
-        ? previous.status === "checking" ? "unknown" : previous.status
+      const inconclusive = isOfflineError(result.error) || /timeout|délai|clé api|abonn|connexion à la source|sonde indisponible|^Image |Aucun résultat|Pas d.URL/i.test(result.error ?? "");
+      const status = inconclusive
+        ? previous.status
         : result.ok ? "ok" : "down";
       healthMap = {
         ...healthMap,
@@ -115,7 +115,6 @@ export async function checkAllSourcesHealth(): Promise<HealthMap> {
     })
   );
 
-  checking = false;
   notify();
   return healthMap;
 }

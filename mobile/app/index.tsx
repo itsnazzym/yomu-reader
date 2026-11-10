@@ -206,7 +206,10 @@ export default function HomeScreen() {
   const sourceHealth = useSourceHealth();
 
   // Health indicators never override the user's source or restart its feed.
-  useEffect(() => { void checkAllSourcesHealth(); }, []);
+  useEffect(() => {
+    const timer = setTimeout(() => { void checkAllSourcesHealth(activeSource === "all" ? ["nhentai"] : [activeSource]); }, 500);
+    return () => clearTimeout(timer);
+  }, [activeSource]);
 
   const { settings: readerSettings } = useReaderSettings();
 

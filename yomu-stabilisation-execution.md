@@ -24,7 +24,7 @@ Préparation : préserver les changements locaux ; établir les contrôles de r�
 - [x] **6. Confidentialité et sauvegardes — audit 7, 11.** Source d’image directe prioritaire, relais tiers choisi explicitement, cache privé adapté, notifications discrètes ; sauvegardes rotatives avec remplacement récupérable, export externe et option chiffrée compatible avec l’import JSON. **Vérifier :** absence de relais non choisi, titres masqués, récupération après interruption et aller-retour chiffré avec rejet d’une mauvaise clé.
 ## Task 7
 
-- [ ] **7. Résilience des sources — audit 13, 14.** Corriger `sourceHealthStore.ts`, `probeHealth.ts`, `galleryLoader.ts` et adaptateurs : préserver le dernier résultat, distinguer réseau/authentification/source, cibler les sondes, borner les octets et propager annulation/échéance. **Vérifier :** succès → hors ligne → reconnexion, navigation annulée et serveur ignorant Range.
+- [x] **7. Résilience des sources — audit 13, 14.** Corriger `sourceHealthStore.ts`, `probeHealth.ts`, `galleryLoader.ts` et adaptateurs : préserver le dernier résultat, distinguer réseau/authentification/source, cibler les sondes, borner les octets et propager annulation/échéance. **Vérifier :** succès → hors ligne → reconnexion, navigation annulée et serveur ignorant Range.
 ## Task 8
 
 - [ ] **8. Capacité cloud — audit 10.** Mesurer 10 000 favoris réalistes, compacter les métadonnées, séparer l’avatar et afficher volume/limite ; segmenter le coffre seulement si nécessaire, avec migration récupérable. Préserver chiffrement, fusion et révisions. **Vérifier :** synchronisation à deux appareils, suppressions/éditions concurrentes, dépassement expliqué et permissions SQL si modifiées.

@@ -1,3 +1,4 @@
+import { linkSourceSignal } from "./requestDeadline";
 /**
  * Adaptateur fr.3hentai.net (3Hentai FR).
  *
@@ -41,8 +42,9 @@ const HEADERS: Record<string, string> = {
   "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.7",
 };
 
-async function fetchHtml(url: string): Promise<string> {
+async function fetchHtml(url: string, signal?: AbortSignal): Promise<string> {
   const controller = new AbortController();
+  const unlink = linkSourceSignal(signal, controller);
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
     const res = await fetch(url, {
@@ -55,6 +57,7 @@ async function fetchHtml(url: string): Promise<string> {
     return await res.text();
   } finally {
     clearTimeout(timer);
+    unlink();
   }
 }
 
@@ -159,7 +162,7 @@ export class ThreeHentaiSource implements SourceAdapter {
     supportsComments: false,
   };
 
-  async search(opts: SourceSearchOptions): Promise<{
+  async search(opts: SourceSearchOptions, request?: { signal?: AbortSignal }): Promise<{
     cards: SourceGalleryCard[];
     hasMore: boolean;
   }> {
@@ -184,7 +187,7 @@ export class ThreeHentaiSource implements SourceAdapter {
       url = `${BASE}/language/french`;
       if (page > 1) url += `/${page}`;
     }
-    const html = await fetchHtml(url);
+    const html = await fetchHtml(url, request?.signal);
     // Do not scrape every detail page from a listing: that was an N+1 burst
     // of up to twenty requests. Page count is resolved only for the opened
     // gallery, where its thumbnails provide the real extension as well.
@@ -192,8 +195,8 @@ export class ThreeHentaiSource implements SourceAdapter {
     return { cards, hasMore: cards.length >= 20 };
   }
 
-  async getGallery(nativeId: string): Promise<SourceGallery> {
-    const html = await fetchHtml(`${BASE}/d/${nativeId}`);
+  async getGallery(nativeId: string, _knownTitle?: string, request?: { signal?: AbortSignal }): Promise<SourceGallery> {
+    const html = await fetchHtml(`${BASE}/d/${nativeId}`, request?.signal);
 
     const titleM = html.match(/<h1 class="text-left font-weight-bold">([\s\S]*?)<\/h1>/);
     if (!titleM) {

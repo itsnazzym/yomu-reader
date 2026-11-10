@@ -33,9 +33,10 @@ export interface GalleryListParams {
 }
 
 export async function getGalleries(
-  params: GalleryListParams = {}
+  params: GalleryListParams = {}, signal?: AbortSignal
 ): Promise<Paginated<GalleryCard>> {
   return nhApi.get(`/galleries${buildQuery(params)}`, {
+    signal,
     public: true,
     timeoutMs: 7_000,
     maxRateLimitRetries: 0,
@@ -92,12 +93,13 @@ export interface GetGalleryParams {
 
 export async function getGallery(
   galleryId: number | string,
-  params: GetGalleryParams = {}
+  params: GetGalleryParams = {}, signal?: AbortSignal
 ): Promise<Gallery> {
   const include = Array.isArray(params.include)
     ? params.include.join(",")
     : params.include;
   return nhApi.get(`/galleries/${galleryId}${buildQuery({ include })}`, {
+    signal,
     public: true,
     timeoutMs: 7_000,
     maxRateLimitRetries: 0,
