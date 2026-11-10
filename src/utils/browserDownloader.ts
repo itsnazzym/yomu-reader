@@ -1,7 +1,7 @@
 import { Gallery, DownloadFormat, DownloadProgressPayload } from "../types";
 import {
   getGallery,
-  saveDownloadedArchive,
+  startDownload,
   fetchImageData,
   cleanCdnPath,
   logToTerminal,
@@ -97,6 +97,8 @@ export async function executeHighSpeedDownload(params: {
   onProgress: (payload: DownloadProgressPayload) => void;
 }): Promise<string> {
   const { gallery, formatType, pattern, destDir, cookies, apiKey, abortSignal, onProgress } = params;
+
+  if (isElectron()) return startDownload(gallery, formatType, pattern, destDir, cookies, apiKey);
 
   // 1. Fetch full gallery details if tags or full pages are missing
   let fullGallery = gallery;
@@ -209,16 +211,7 @@ export async function executeHighSpeedDownload(params: {
   // 2. Save and package into archive
   await logToTerminal(`[📦 EMPAQUETAGE #${fullGallery.id}] Création de l'archive ${formatType.toUpperCase()} (${totalPages} planches)...`);
 
-  let targetPath = "";
-  if (isElectron()) {
-    targetPath = await saveDownloadedArchive({
-      gallery: fullGallery,
-      formatType,
-      pattern,
-      destDir,
-      pagesData,
-    });
-  }
+  const targetPath = "";
 
   const totalElapsedSec = Math.max(0.1, (Date.now() - startTime) / 1000);
   const finalSpeedKbS = Math.round(totalBytes / 1024 / totalElapsedSec);

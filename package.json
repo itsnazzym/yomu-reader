@@ -50,7 +50,6 @@
     "@tauri-apps/plugin-dialog": "^2.7.2",
     "@tauri-apps/plugin-fs": "^2.5.1",
     "@tauri-apps/plugin-opener": "^2",
-    "adm-zip": "^0.6.0",
     "archiver": "^8.0.0",
     "axios": "^1.19.0",
     "cheerio": "^1.2.0",
@@ -83,5 +82,8 @@
     "electron-winstaller@5.4.0": true,
     "esbuild@0.28.2": true,
     "fsevents": false
+  },
+  "overrides": {
+    "brace-expansion@^5.0.9": "^5.0.12"
   }
 }

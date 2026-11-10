@@ -7,6 +7,15 @@ const path = require("path");
 
 const root = path.join(__dirname, "..", "..");
 
+test("le preload expose le téléchargement natif sans accepter une archive base64 complète", () => {
+  let api;
+  require("node:vm").runInNewContext(fs.readFileSync(path.join(root, "electron/preload.cjs"), "utf8"), {
+    require: () => ({ contextBridge: { exposeInMainWorld: (_name, value) => { api = value; } }, ipcRenderer: {} }),
+  });
+  assert.equal(typeof api.startDownload, "function");
+  assert.equal(api.saveDownloadedArchive, undefined);
+});
+
 test("le renderer Electron n'écrit plus cookies/api_key dans localStorage", () => {
   const src = fs.readFileSync(path.join(root, "src", "stores", "settingsStore.ts"), "utf8");
   assert.match(src, /function persistPublicSettings/);

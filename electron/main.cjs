@@ -2043,11 +2043,6 @@ ipcMain.handle("preload-gallery-images", async (event, { urls }) => {
   return { preloaded: limited.length };
 });
 
-ipcMain.handle("save-downloaded-archive", async (event, { gallery, formatType, pattern, destDir, pagesData }) => {
-  assertMainWindowSender(event);
-  throw new Error("Le téléchargement desktop n'accepte plus les archives base64 complètes. Utilisez start-download.");
-});
-
 ipcMain.handle("start-download", async (event, { gallery, formatType, pattern, destDir }) => {
   assertMainWindowSender(event);
   const auth = resolveAuth("", "");

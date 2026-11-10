@@ -17,7 +17,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   openAuthWindow: () => ipcRenderer.invoke("open-auth-window"),
   getImageData: (params) => ipcRenderer.invoke("get-image-data", params),
   preloadGalleryImages: (params) => ipcRenderer.invoke("preload-gallery-images", params),
-  saveDownloadedArchive: (params) => ipcRenderer.invoke("save-downloaded-archive", params),
   getCdnConfig: () => ipcRenderer.invoke("get-cdn-config"),
   getGalleryComments: (params) => ipcRenderer.invoke("get-gallery-comments", params),
   updateDnsSettings: (params) => ipcRenderer.invoke("update-dns-settings", params),

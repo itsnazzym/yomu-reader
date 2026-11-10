@@ -108,5 +108,10 @@
       }
     }
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "brace-expansion@^1.1.7": "^1.1.21",
+    "decode-uri-component": "^0.5.1",
+    "postcss": "^8.5.32"
+  }
 }

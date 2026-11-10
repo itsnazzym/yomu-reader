@@ -20,7 +20,6 @@ declare global {
       openAuthWindow: () => Promise<void>;
       getImageData: (params: { url: string; referer?: string; cookies?: string; apiKey?: string }) => Promise<string | null>;
       preloadGalleryImages: (params: { urls: string[]; referer?: string; cookies?: string; apiKey?: string }) => Promise<{ preloaded: number }>;
-      saveDownloadedArchive: (params: { gallery: Gallery; formatType: DownloadFormat; pattern: string; destDir: string; pagesData: Array<{ pageNum: number; ext: string; bufferBase64: string }> }) => Promise<string>;
       getCdnConfig?: () => Promise<import("../types").CdnConfig>;
       getGalleryComments?: (params: { galleryId: number; cookies?: string; apiKey?: string }) => Promise<import("../types").GalleryComment[]>;
       updateDnsSettings?: (params: { dns_provider: string; enable_custom_dns: boolean; enable_doh: boolean }) => Promise<{ success: boolean; error?: string }>;
@@ -509,19 +508,6 @@ export async function preloadGalleryImages(
   if (isElectron() && window.electronAPI?.preloadGalleryImages) {
     await window.electronAPI.preloadGalleryImages({ urls, referer, cookies, apiKey });
   }
-}
-
-export async function saveDownloadedArchive(params: {
-  gallery: Gallery;
-  formatType: DownloadFormat;
-  pattern: string;
-  destDir: string;
-  pagesData: Array<{ pageNum: number; ext: string; bufferBase64: string }>;
-}): Promise<string> {
-  if (isElectron() && window.electronAPI?.saveDownloadedArchive) {
-    return await window.electronAPI.saveDownloadedArchive(params);
-  }
-  return "";
 }
 
 export async function getCdnConfig(): Promise<import("../types").CdnConfig> {
