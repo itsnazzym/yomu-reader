@@ -7,13 +7,16 @@ export const PRIVACY_STORAGE_KEY = "@nhentai_privacy_v1";
 
 export interface PrivacySettings {
   incognito: boolean;
+  allowImageRelay: boolean;
 }
 
 const defaultSettings: PrivacySettings = {
   incognito: false,
+  allowImageRelay: false,
 };
 
 let currentSettings: PrivacySettings = { ...defaultSettings };
+let ready = false;
 const listeners = new Set<() => void>();
 const writes = createWriteQueue();
 
@@ -34,10 +37,14 @@ async function loadPrivacySettings(): Promise<void> {
     if (!isRecord(parsed)) return;
     currentSettings = {
       incognito: parsed.incognito === true,
+      allowImageRelay: parsed.allowImageRelay === true,
     };
     notify();
   } catch {
-    // Keep defaults if storage is unavailable.
+    currentSettings = { ...defaultSettings, incognito: true };
+  } finally {
+    ready = true;
+    notify();
   }
 }
 
@@ -65,15 +72,18 @@ export async function updatePrivacySettings(
 }
 
 export function usePrivacy(): {
+  ready: boolean;
   settings: PrivacySettings;
   incognito: boolean;
   setIncognito: (value: boolean) => Promise<void>;
 } {
   const [settings, setSettings] = useState<PrivacySettings>(currentSettings);
+  const [initialized, setInitialized] = useState(ready);
 
   useEffect(() => {
     const update = (): void => {
       setSettings({ ...currentSettings });
+      setInitialized(ready);
     };
     listeners.add(update);
     void initPrivacySettings();
@@ -83,6 +93,7 @@ export function usePrivacy(): {
   }, []);
 
   return {
+    ready: initialized,
     settings,
     incognito: settings.incognito,
     setIncognito: (value: boolean) => updatePrivacySettings({ incognito: value }),

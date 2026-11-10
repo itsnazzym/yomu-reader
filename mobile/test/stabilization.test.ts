@@ -15,6 +15,7 @@ import type { SourceId } from "@/lib/sources/types";
 import * as Persistence from "@/lib/persistQueue";
 import { isValidBackupData } from "@/lib/backupValidation";
 import { initAppLock, isAppUnlocked, setAppLockPin, verifyAppLockPin } from "@/lib/appLockStore";
+import { notifyDownloadFinished } from "@/lib/downloadNotifications";
 import { findDuplicateSourcesForGallery } from "@/lib/duplicateMatch";
 
 test("la fiche compare 10 000 favoris sans bloquer les timers ni comparer les favoris entre eux", async (t) => {
@@ -286,4 +287,33 @@ test("les essais PIN répétés imposent une attente avant même un PIN correct"
   assert.equal(await verifyAppLockPin("1234"), false);
   now += 60000;
   assert.equal(await verifyAppLockPin("1234"), true);
+});
+
+test("les notifications de téléchargement ne transmettent pas le titre privé au système", async () => {
+  let visible = "";
+  NativeModules.YomuDownloadNotification = { notifyCompleted: async (title: string) => { visible = title; } };
+  try {
+    await notifyDownloadFinished({ title: "Private book title", ok: true });
+    assert.doesNotMatch(visible, /Private book title/);
+    assert.ok(visible);
+  } finally { delete NativeModules.YomuDownloadNotification; }
+});
+
+test("les sauvegardes automatiques tournent sans écraser la dernière copie après une panne", async () => {
+  const writeBackup = (Persistence as Record<string, any>).writeRotatingBackup;
+  assert.equal(typeof writeBackup, "function");
+  const files = new Map<string,string>();
+  let fail = false;
+  const driver = {
+    writeAsStringAsync: async (path:string,value:string) => { if (fail) throw new Error("disk full"); files.set(path,value); },
+    moveAsync: async ({from,to}:{from:string;to:string}) => { files.set(to,files.get(from)!); files.delete(from); },
+    deleteAsync: async (path:string) => { files.delete(path); },
+    readDirectoryAsync: async () => [...files.keys()].map(path=>path.slice(5)),
+  };
+  for (let i=1;i<=4;i++) await writeBackup(driver,"root/",`backup-${i}`,i);
+  assert.equal(files.size,3);
+  assert.ok([...files.values()].includes("backup-4"));
+  const before = [...files]; fail=true;
+  await assert.rejects(writeBackup(driver,"root/","lost",5), /disk full/);
+  assert.deepEqual([...files],before);
 });

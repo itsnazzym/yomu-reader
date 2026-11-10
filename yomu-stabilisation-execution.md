@@ -1,27 +1,27 @@
 # Yomu — exécution de la stabilisation
 
-Objectif : résoudre les 18 constats de l’audit du 10 novembre 2026, en conservant lecteur, bibliothèque, adaptateurs, reprise et chiffrement. **Plan préparé ; corrections non exécutées.**
+Objectif : résoudre les 18 constats de l’audit du 10 novembre 2026, en conservant lecteur, bibliothèque, adaptateurs, reprise et chiffrement. **Exécution en cours ; jalons cochés validés localement, contrôles sur appareil réservés au jalon 10.**
 
 Préparation : préserver les changements locaux ; établir les contrôles de référence ; cartographier avec Graphify les contrats modifiés et lire leurs appelants. Chaque jalon sera découpé en actions vérifiables de 2–5 minutes pendant son exécution. Aucun sous-agent ; commits conventionnels atomiques, sans changements étrangers ni secrets.
 
 ## Task 1
 
-- [ ] **1. Identité des livres — audit 1, 17.** Corriger `sources/types.ts`, `galleryMapper.ts`, `favoritesStore.ts` et leurs appelants : conserver source/ID natif/globalId, corriger `origin`, rejeter une source inconnue hors migration legacy. **Vérifier :** ajout/lecture/retrait sur six sources, collisions numériques et ID E-Hentai complet ; ne pas réattribuer les anciens favoris ambigus sans preuve.
+- [x] **1. Identité des livres — audit 1, 17.** Corriger `sources/types.ts`, `galleryMapper.ts`, `favoritesStore.ts` et leurs appelants : conserver source/ID natif/globalId, corriger `origin`, rejeter une source inconnue hors migration legacy. **Vérifier :** ajout/lecture/retrait sur six sources, collisions numériques et ID E-Hentai complet ; ne pas réattribuer les anciens favoris ambigus sans preuve.
 ## Task 2
 
-- [ ] **2. Données récupérables — audit 2, 8, 9.** Dans `backupStore.ts` et les stores : validation versionnée/bornée, aperçu avant remplacement, attente des écritures, exclusion des mutations concurrentes et journal de restauration récupérable au redémarrage. **Vérifier :** panne sur chaque écriture et arrêt entre étapes ; état initial récupéré ou nouvel état complet, export contenant les dernières modifications.
+- [x] **2. Données récupérables — audit 2, 8, 9.** Dans `backupStore.ts` et les stores : validation versionnée/bornée, aperçu avant remplacement, attente des écritures, exclusion des mutations concurrentes et journal de restauration récupérable au redémarrage. **Vérifier :** panne sur chaque écriture et arrêt entre étapes ; état initial récupéré ou nouvel état complet, export contenant les dernières modifications.
 ## Task 3
 
-- [ ] **3. Verrouillage et images — audit 3, 12.** Corriger `appLockStore.ts`, `AppLockGate.tsx`, `_layout.tsx`, `SmartImage.tsx` : contenu masqué avant initialisation, erreur récupérable, délai après PIN incorrect, attente du flou et clé de recyclage transmise. **Vérifier :** stockage lent/illisible, reprise et défilement rapide sans exposition du contenu protégé.
+- [x] **3. Verrouillage et images — audit 3, 12.** Corriger `appLockStore.ts`, `AppLockGate.tsx`, `_layout.tsx`, `SmartImage.tsx` : contenu masqué avant initialisation, erreur récupérable, délai après PIN incorrect, attente du flou et clé de recyclage transmise. **Vérifier :** stockage lent/illisible, reprise et défilement rapide sans exposition du contenu protégé.
 ## Task 4
 
-- [ ] **4. Dépendances — audit 4 et suppressions.** Revalider les avis puis corriger Next/Sharp et dépendances concernées ; séparer runtime et outillage Expo. Retirer `adm-zip` et l’IPC base64 obsolète après vérification exhaustive des usages. **Vérifier :** installations reproductibles, tests/builds réussis, alertes applicables traitées ; aucune correction forcée globale.
+- [x] **4. Dépendances — audit 4 et suppressions.** Revalider les avis puis corriger Next/Sharp et dépendances concernées ; séparer runtime et outillage Expo. Retirer `adm-zip` et l’IPC base64 obsolète après vérification exhaustive des usages. **Vérifier :** installations reproductibles, tests/builds réussis, alertes applicables traitées ; aucune correction forcée globale.
 ## Task 5
 
-- [ ] **5. Téléchargements — audit 5, 6, 15.** Dans `downloadQueueStore.ts`, `imageIntegrity.ts` et la copie SAF : suspendre à la perte Wi-Fi, contrôler entre pages, conserver reprise et taille finale, contrôler les images suspectes ; proposer une relance de copie externe distincte du téléchargement. **Vérifier :** changement réseau, fichier tronqué, interruption et copie échouée sans perte d’original.
+- [x] **5. Téléchargements — audit 5, 6, 15.** Dans `downloadQueueStore.ts`, `imageIntegrity.ts` et la copie SAF : suspendre à la perte Wi-Fi, contrôler entre pages, conserver reprise et taille finale, contrôler les images suspectes ; proposer une relance de copie externe distincte du téléchargement. **Vérifier :** changement réseau, fichier tronqué, interruption et copie échouée sans perte d’original.
 ## Task 6
 
-- [ ] **6. Confidentialité et sauvegardes — audit 7, 11.** Source d’image directe prioritaire, relais tiers choisi explicitement, cache privé adapté, notifications discrètes ; sauvegardes rotatives avec remplacement récupérable, export externe et option chiffrée compatible avec l’import JSON. **Vérifier :** absence de relais non choisi, titres masqués, récupération après interruption et aller-retour chiffré avec rejet d’une mauvaise clé.
+- [x] **6. Confidentialité et sauvegardes — audit 7, 11.** Source d’image directe prioritaire, relais tiers choisi explicitement, cache privé adapté, notifications discrètes ; sauvegardes rotatives avec remplacement récupérable, export externe et option chiffrée compatible avec l’import JSON. **Vérifier :** absence de relais non choisi, titres masqués, récupération après interruption et aller-retour chiffré avec rejet d’une mauvaise clé.
 ## Task 7
 
 - [ ] **7. Résilience des sources — audit 13, 14.** Corriger `sourceHealthStore.ts`, `probeHealth.ts`, `galleryLoader.ts` et adaptateurs : préserver le dernier résultat, distinguer réseau/authentification/source, cibler les sondes, borner les octets et propager annulation/échéance. **Vérifier :** succès → hors ligne → reconnexion, navigation annulée et serveur ignorant Range.

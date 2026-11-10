@@ -13,6 +13,27 @@ export async function flushPersistQueues(): Promise<void> {
   await Promise.all([...queues].map(flush => flush()));
 }
 
+type BackupFiles = {
+  writeAsStringAsync(path: string, value: string): Promise<void>;
+  moveAsync(paths: { from: string; to: string }): Promise<void>;
+  deleteAsync(path: string, options?: { idempotent: boolean }): Promise<void>;
+  readDirectoryAsync(path: string): Promise<string[]>;
+};
+let backupSequence = 0;
+export async function writeRotatingBackup(files: BackupFiles, directory: string, json: string, now = Date.now()): Promise<void> {
+  const name = `nhentai_autobackup_${String(now).padStart(13, "0")}_${backupSequence++}.json`;
+  const temporary = `${directory}${name}.tmp`;
+  try {
+    await files.writeAsStringAsync(temporary, json);
+    await files.moveAsync({ from: temporary, to: `${directory}${name}` });
+  } catch (error) {
+    await files.deleteAsync(temporary, { idempotent: true }).catch(() => {});
+    throw error;
+  }
+  const backups = (await files.readDirectoryAsync(directory)).filter(name => /^nhentai_autobackup_\d+_\d+\.json$/.test(name)).sort().reverse();
+  for (const old of backups.slice(3)) await files.deleteAsync(`${directory}${old}`, { idempotent: true });
+}
+
 export function createWriteQueue() {
   let chain: Promise<void> = Promise.resolve();
 

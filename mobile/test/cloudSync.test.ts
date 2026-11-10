@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
+import * as VaultCrypto from "../lib/cloudSync/crypto";
 import test from "node:test";
 import { assertRecoveryKey, decryptVault, encryptVault, generateRecoveryKey, vaultRecordKey } from "@/lib/cloudSync/crypto";
+
+test("la sauvegarde portable est chiffrée avec un mot de passe et refuse une clé incorrecte", async () => {
+  const crypto = VaultCrypto as Record<string, any>;
+  assert.equal(typeof crypto.encryptBackupJson, "function");
+  const plain = JSON.stringify({ version:3, favorites:[{id:7}] });
+  const encrypted = await crypto.encryptBackupJson(plain, "a sufficiently long password");
+  assert.doesNotMatch(encrypted, /favorites/);
+  assert.equal(await crypto.decryptBackupJson(encrypted, "a sufficiently long password"), plain);
+  await assert.rejects(crypto.decryptBackupJson(encrypted, "another sufficiently long password"));
+  await assert.rejects(crypto.encryptBackupJson(plain, "short"));
+});
 
 test("le nonce Google est aléatoire, URL-safe et haché pour Credential Manager", async () => {
   const { createGoogleNonce } = await import("@/lib/cloudSync/googleNonce");

@@ -2,6 +2,7 @@ import * as Crypto from "expo-crypto";
 import { xchacha20poly1305 } from "@noble/ciphers/chacha.js";
 import { hmac } from "@noble/hashes/hmac.js";
 import { sha256 } from "@noble/hashes/sha2.js";
+import { scryptAsync } from "@noble/hashes/scrypt.js";
 import { fromByteArray, toByteArray } from "base64-js";
 import type { EncryptedVault } from "./types";
 
@@ -51,4 +52,34 @@ export function decryptVault<T>(vault: EncryptedVault, recoveryKey: string, aad:
 
 export function vaultRecordKey(recoveryKey: string): string {
   return base64Url(hmac(sha256, assertRecoveryKey(recoveryKey), encoder.encode("yomu:vault:v1")));
+}
+
+const BACKUP_AAD = "yomu-backup:v1:scrypt-65536-8-1";
+async function passwordKey(password: string, salt: Uint8Array): Promise<Uint8Array> {
+  if (password.length < 12 || password.length > 1024) throw new Error("Utilisez un mot de passe de 12 à 1 024 caractères.");
+  return scryptAsync(password.normalize("NFC"), salt, { N: 65536, r: 8, p: 1, dkLen: 32, maxmem: 80 * 1024 * 1024 });
+}
+
+export async function encryptBackupJson(json: string, password: string): Promise<string> {
+  const salt = await Crypto.getRandomBytesAsync(16);
+  const key = await passwordKey(password, salt);
+  try {
+    const encrypted = await encryptVault(json, base64Url(key), BACKUP_AAD);
+    return JSON.stringify({ format: "yomu-encrypted-backup", version: 1, salt: base64Url(salt), ...encrypted });
+  } finally { key.fill(0); }
+}
+
+export async function decryptBackupJson(json: string, password: string): Promise<string> {
+  if (json.length > 48 * 1024 * 1024) throw new Error("Sauvegarde chiffrée trop volumineuse.");
+  const envelope = JSON.parse(json);
+  if (envelope?.format !== "yomu-encrypted-backup" || envelope.version !== 1 || typeof envelope.salt !== "string" || typeof envelope.nonce !== "string" || typeof envelope.ciphertext !== "string" || envelope.schemaVersion !== 1) throw new Error("Format de sauvegarde chiffrée invalide.");
+  const salt = fromBase64Url(envelope.salt);
+  if (salt.length !== 16) throw new Error("Sel de sauvegarde invalide.");
+  const key = await passwordKey(password, salt);
+  try {
+    const value = decryptVault<unknown>(envelope, base64Url(key), BACKUP_AAD);
+    if (typeof value !== "string") throw new Error("Contenu de sauvegarde invalide.");
+    return value;
+  } catch { throw new Error("Mot de passe incorrect ou sauvegarde endommagée."); }
+  finally { key.fill(0); }
 }

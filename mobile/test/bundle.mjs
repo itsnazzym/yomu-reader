@@ -33,7 +33,7 @@ for (const entry of testEntries) {
               () => ({ path: path.join(here, "mockQueueRuntime.ts") }));
           }
           if (entry === "uiUx.test.tsx") {
-            b.onResolve({ filter: /^(?:expo-image|@\/lib\/readerSettingsStore|@\/lib\/sources\/ehentai)$/ },
+            b.onResolve({ filter: /^(?:expo-image|@\/lib\/readerSettingsStore|@\/lib\/sources\/ehentai|@\/lib\/privacyStore)$/ },
               () => ({ path: path.join(here, "mockImageRuntime.tsx") }));
             b.onResolve({ filter: /^react-native-reanimated$/ },
               () => ({ path: path.join(here, "mockReanimated.ts") }));

@@ -43,7 +43,7 @@ import * as Clipboard from "expo-clipboard";
 import Constants from "expo-constants";
 import { Image } from "expo-image";
 import { exportBackupToFile, restoreBackupFromFile, restoreBackupFromJson } from "@/lib/backupStore";
-import { usePrivacy } from "@/lib/privacyStore";
+import { usePrivacy, updatePrivacySettings } from "@/lib/privacyStore";
 import { hasStoredPin, useAppLock } from "@/lib/appLockStore";
 import {
   setPreventScreenCapture,
@@ -211,7 +211,24 @@ export default function SettingsScreen() {
     resetFolder,
   } = useDownloadSettings();
   const { tags: blacklistedTags, addTag, removeTag } = useBlacklist();
-  const { incognito, setIncognito } = usePrivacy();
+  const { incognito, setIncognito, settings: privacySettings } = usePrivacy();
+  const [backupPassword, setBackupPassword] = useState("");
+  const [backupPasswordRepeat, setBackupPasswordRepeat] = useState("");
+  const [backupBusy, setBackupBusy] = useState(false);
+  const runEncryptedBackup = async (restore: boolean): Promise<void> => {
+    if (backupBusy || backupPassword.length < 12) return;
+    if (!restore && backupPassword !== backupPasswordRepeat) { Alert.alert("Mot de passe", "Les deux saisies doivent être identiques."); return; }
+    setBackupBusy(true);
+    try {
+      if (restore) {
+        const result = await restoreBackupFromFile({ password: backupPassword });
+        Alert.alert(result.success ? "Restauration terminée" : "Restauration", result.error || "Vos données sont restaurées.");
+      } else {
+        const result = await exportBackupToFile({ password: backupPassword });
+        Alert.alert(result.success ? "Sauvegarde protégée" : "Export impossible", result.message || "Conservez le mot de passe pour restaurer ce fichier.");
+      }
+    } finally { setBackupBusy(false); setBackupPassword(""); setBackupPasswordRepeat(""); }
+  };
   const {
     enabled: appLockEnabled,
     biometric: appLockBiometric,
@@ -1254,7 +1271,7 @@ export default function SettingsScreen() {
               <View style={{ flex: 1, paddingRight: 10 }}>
                 <Text style={styles.rowToggleTitle}>Mode incognito</Text>
                 <Text style={styles.rowToggleSub}>
-                  N'écrit plus l'historique de lecture ni les recherches récentes.
+                  N’écrit plus l’historique ni les recherches et désactive le cache des nouvelles images. Les anciens fichiers restent présents ; ce mode n’anonymise pas le réseau.
                 </Text>
               </View>
               <Switch
@@ -1265,6 +1282,14 @@ export default function SettingsScreen() {
                 trackColor={{ false: "#28283a", true: colors.accent }}
                 thumbColor="#fff"
               />
+            </View>
+
+            <View style={styles.rowToggle}>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={styles.rowToggleTitle}>Relais d’images de secours</Text>
+                <Text style={styles.rowToggleSub}>Autorise un service tiers après échec de la source directe. Désactivé en mode incognito.</Text>
+              </View>
+              <Switch value={privacySettings.allowImageRelay} onValueChange={value => { void updatePrivacySettings({ allowImageRelay: value }).catch(() => Alert.alert("Réglage", "Enregistrement impossible.")); }} trackColor={{ false: "#28283a", true: colors.accent }} thumbColor="#fff" />
             </View>
 
             <View style={styles.divider} />
@@ -1464,7 +1489,7 @@ export default function SettingsScreen() {
           <View style={styles.groupCard}>
             <Text style={styles.rowToggleSub}>
               Exportez ou restaurez favoris, tags, packs, historique, filtres et recherches.
-              Une copie automatique est écrite chaque jour dans NHAppAndroid/autobackup.
+              Les trois dernières copies automatiques sont conservées dans NHAppAndroid/autobackup, au lancement et au plus une fois par jour. L’export JSON simple contient les données en clair.
             </Text>
 
             <CardPressable
@@ -1532,6 +1557,17 @@ export default function SettingsScreen() {
               <ButtonLabel style={[styles.btnActionText, { color: colors.txt }]}>
                 Restaurer depuis le presse-papier
               </ButtonLabel>
+            </CardPressable>
+            <View style={styles.divider} />
+            <Text style={styles.rowToggleTitle}>Sauvegarde protégée par mot de passe</Text>
+            <Text style={styles.rowToggleSub}>12 caractères minimum. Conservez ce mot de passe : il est indispensable pour restaurer le fichier.</Text>
+            <TextInput secureTextEntry autoCapitalize="none" autoCorrect={false} value={backupPassword} onChangeText={setBackupPassword} placeholder="Mot de passe de sauvegarde" accessibilityLabel="Mot de passe de sauvegarde" placeholderTextColor={colors.sub} style={[styles.cloudKeyInput, { color: colors.txt, borderColor: colors.tagBg }]} editable={!backupBusy} />
+            <TextInput secureTextEntry autoCapitalize="none" autoCorrect={false} value={backupPasswordRepeat} onChangeText={setBackupPasswordRepeat} placeholder="Confirmer pour exporter" accessibilityLabel="Confirmer le mot de passe pour exporter" placeholderTextColor={colors.sub} style={[styles.cloudKeyInput, { color: colors.txt, borderColor: colors.tagBg }]} editable={!backupBusy} />
+            <CardPressable disabled={backupBusy || backupPassword.length < 12} onPress={() => { void runEncryptedBackup(false); }} style={[styles.btnActionRow, { backgroundColor: colors.accent }]}>
+              <ButtonLabel style={styles.btnActionText}>{backupBusy ? "Patientez…" : "Exporter un fichier chiffré"}</ButtonLabel>
+            </CardPressable>
+            <CardPressable disabled={backupBusy || backupPassword.length < 12} onPress={() => { void runEncryptedBackup(true); }} style={[styles.btnActionRow, { backgroundColor: colors.page }]}>
+              <ButtonLabel style={{ color: colors.txt }}>Restaurer un fichier chiffré</ButtonLabel>
             </CardPressable>
           </View>
         </View>

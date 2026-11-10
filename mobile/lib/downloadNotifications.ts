@@ -16,7 +16,7 @@ export async function notifyDownloadFinished(params: {
   try {
     if (Platform.OS !== "android") return;
     const native = NativeModules.YomuDownloadNotification as NativeDownloadNotification | undefined;
-    await native?.notifyCompleted(params.title, params.ok, params.errorMessage ?? null);
+    await native?.notifyCompleted("Votre livre est disponible dans Yomu", params.ok, params.ok ? null : "Ouvrez Yomu pour consulter le détail.");
   } catch (error) {
     console.warn("[downloadNotifications] Post failed:", error);
   }

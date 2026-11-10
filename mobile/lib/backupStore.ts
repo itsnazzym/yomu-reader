@@ -2,7 +2,8 @@ import { withLibraryMutation } from "./persistQueue";
 import { isValidBackupData } from "./backupValidation";
 import { Alert } from "react-native";
 import AsyncStorage from "./durableStorage";
-import { flushPersistQueues } from "./persistQueue";
+import { flushPersistQueues, writeRotatingBackup } from "./persistQueue";
+import { encryptBackupJson, decryptBackupJson } from "./cloudSync/crypto";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import * as Clipboard from "expo-clipboard";
@@ -189,16 +190,17 @@ export async function createBackupPayload(): Promise<BackupData> {
   });
 }
 
-export async function exportBackupToFile(): Promise<{
+export async function exportBackupToFile(options?: { password?: string }): Promise<{
   success: boolean;
   path?: string;
   message?: string;
 }> {
   try {
     const payload = await createBackupPayload();
-    const jsonStr = JSON.stringify(payload, null, 2);
+    const plain = JSON.stringify(payload, null, 2);
+    const jsonStr = options?.password ? await encryptBackupJson(plain, options.password) : plain;
     const dateStr = new Date().toISOString().slice(0, 10);
-    const fileName = `nhentai_backup_${dateStr}.json`;
+    const fileName = `yomu_backup_${dateStr}${options?.password ? "_encrypted" : ""}.json`;
     const filePath = `${FileSystem.cacheDirectory}${fileName}`;
 
     await FileSystem.writeAsStringAsync(filePath, jsonStr, {
@@ -235,15 +237,21 @@ function emptyRestoredCounts(): BackupRestoredCounts {
   };
 }
 
-export async function restoreBackupFromJson(jsonString: string, options?: { confirm?: boolean }): Promise<{
+export async function restoreBackupFromJson(jsonString: string, options?: { confirm?: boolean; password?: string }): Promise<{
   success: boolean;
   restoredItems: BackupRestoredCounts;
   error?: string;
 }> {
   return withLibraryMutation(async () => {
   try {
+    if (new TextEncoder().encode(jsonString).byteLength > 48 * 1024 * 1024) throw new Error("Sauvegarde trop volumineuse.");
+    let parsed: unknown = JSON.parse(jsonString);
+    if (isPlainObject(parsed) && parsed.format === "yomu-encrypted-backup") {
+      if (!options?.password) throw new Error("Cette sauvegarde est chiffrée. Utilisez l’import avec mot de passe.");
+      jsonString = await decryptBackupJson(jsonString, options.password);
+      parsed = JSON.parse(jsonString);
+    }
     if (new TextEncoder().encode(jsonString).byteLength > 32 * 1024 * 1024) throw new Error("Sauvegarde trop volumineuse (32 Mio maximum).");
-    const parsed: unknown = JSON.parse(jsonString);
 
     if (!isValidBackupData(parsed)) {
       return {
@@ -358,7 +366,7 @@ export async function restoreBackupFromJson(jsonString: string, options?: { conf
   });
 }
 
-export async function restoreBackupFromFile(): Promise<{
+export async function restoreBackupFromFile(options?: { password?: string }): Promise<{
   success: boolean;
   restoredItems: BackupRestoredCounts;
   error?: string;
@@ -377,11 +385,11 @@ export async function restoreBackupFromFile(): Promise<{
       };
     }
     const info = await FileSystem.getInfoAsync(result.assets[0].uri);
-    if (info.exists && info.size > 32 * 1024 * 1024) throw new Error("Sauvegarde trop volumineuse (32 Mio maximum).");
+    if (info.exists && info.size > 48 * 1024 * 1024) throw new Error("Sauvegarde trop volumineuse.");
     const jsonString = await FileSystem.readAsStringAsync(result.assets[0].uri, {
       encoding: FileSystem.EncodingType.UTF8,
     });
-    return restoreBackupFromJson(jsonString, { confirm: true });
+    return restoreBackupFromJson(jsonString, { confirm: true, password: options?.password });
   } catch (error: unknown) {
     return {
       success: false,
@@ -401,11 +409,7 @@ export async function maybeRunAutobackup(): Promise<void> {
     const payload = await createBackupPayload();
     const dir = `${FileSystem.documentDirectory || ""}${LIBRARY_DIR_NAME}/autobackup/`;
     await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-    await FileSystem.writeAsStringAsync(
-      `${dir}nhentai_autobackup.json`,
-      JSON.stringify(payload, null, 2),
-      { encoding: FileSystem.EncodingType.UTF8 }
-    );
+    await writeRotatingBackup(FileSystem, dir, JSON.stringify(payload, null, 2));
     await AsyncStorage.setItem(LAST_AUTOBACKUP_KEY, String(Date.now()));
   } catch (error) {
     console.warn("[backup] Autobackup failed:", error);

@@ -43,7 +43,7 @@ class DownloadForegroundService : Service() {
       channel(context)
       val text = if (ok) title else title + " — " + (error ?: "erreur")
       val notification = NotificationCompat.Builder(context, DOWNLOAD_CHANNEL).setSmallIcon(R.mipmap.ic_launcher)
-        .setContentTitle(if (ok) "Téléchargement terminé" else "Échec du téléchargement").setContentText(text).setAutoCancel(true).build()
+        .setContentTitle(if (ok) "Téléchargement terminé" else "Échec du téléchargement").setContentText(text).setVisibility(NotificationCompat.VISIBILITY_PRIVATE).setAutoCancel(true).build()
       (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(COMPLETED_NOTIFICATION_ID, notification)
     }
     private fun channel(context: Context) { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(NotificationChannel(DOWNLOAD_CHANNEL, "Téléchargements", NotificationManager.IMPORTANCE_LOW)) }

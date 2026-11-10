@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { SmartImage } from "../components/SmartImage";
-import { __setImagePrivacyReady } from "./mockImageRuntime";
+import { __setImagePrivacyReady, __setIncognito } from "./mockImageRuntime";
 import { CardPressable } from "@/components/ui/CardPressable";
 import { ButtonLabel } from "@/components/ui/ButtonLabel";
 import { getHomeSearchQuery, setHomeSearchQuery, toggleHomeSearchTerm } from "@/lib/homeSearchStore";
@@ -21,6 +21,16 @@ test("une couverture sensible attend la préférence et reçoit sa clé de recyc
   const shown = renderToStaticMarkup(<SmartImage uri="https://example.test/cover.jpg" sensitive recyclingKey="hitomi:123" />);
   assert.match(shown, /data-recycling-key="hitomi:123"/);
   assert.match(shown, /data-blur="24"/);
+});
+
+test("les images utilisent leur source directe et aucun cache en mode privé", () => {
+  __setImagePrivacyReady(true); __setIncognito(true);
+  try {
+    const html = renderToStaticMarkup(<SmartImage uri="https://t3.nhentai.net/galleries/123/thumb.jpg" cachePolicy="disk" />);
+    assert.match(html, /src="https:\/\/t3\.nhentai\.net\/galleries\/123\/thumb.jpg"/);
+    assert.doesNotMatch(html, /wp\.com/);
+    assert.match(html, /data-cache="none"/);
+  } finally { __setIncognito(false); }
 });
 
 for (const [id, guide] of Object.entries(AUTH_GUIDES)) {

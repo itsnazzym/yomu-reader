@@ -4,6 +4,7 @@ import { Image, ImageProps, ImageStyle } from "expo-image";
 import { IconReload } from "@tabler/icons-react-native";
 import { useTheme } from "@/lib/ThemeContext";
 import { useReaderSettings } from "@/lib/readerSettingsStore";
+import { usePrivacy, getPrivacySettings } from "@/lib/privacyStore";
 import { resolveEhentaiPageImage, getCachedEhentaiPageImage } from "@/lib/sources/ehentai";
 
 export interface SmartImageProps extends Omit<ImageProps, "source"> {
@@ -71,17 +72,14 @@ function refererForImage(imageUri: string): string {
 }
 
 export function getSmartImageUri(uri: string): string {
-  if (!uri) return "";
-  const { host: targetHost, path: pathOnly } = resolveCdnHostAndPath(uri);
-  if (!targetHost || !pathOnly) return uri;
-  return `https://i0.wp.com/${targetHost}/${pathOnly}`;
+  return uri;
 }
 
 /**
  * Préchauffe une image dans le cache mémoire/disque pour affichage instantané
  */
 export async function preloadSmartImage(uri: string): Promise<boolean> {
-  if (!uri) return false;
+  if (!uri || getPrivacySettings().incognito) return false;
   try {
     const resolved = /hentai\.org\/s\//.test(uri) ? await resolveEhentaiPageImage(uri) : uri;
     return await Image.prefetch(resolved, { cachePolicy: "memory-disk", headers: { Referer: refererForImage(resolved) } });
@@ -103,6 +101,7 @@ export function SmartImage({
 }: SmartImageProps) {
   const { colors } = useTheme();
   const { settings, ready: privacyReady } = useReaderSettings();
+  const privacy = usePrivacy();
   const [retryIndex, setRetryIndex] = useState(0);
   const [softAttempt, setSoftAttempt] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -188,11 +187,11 @@ export function SmartImage({
     }
 
     return [...new Set([
-      `https://i0.wp.com/${targetHost}/${pathOnly}`,
-      `https://${targetHost}/${pathOnly}`,
       activeSourceUri,
+      `https://${targetHost}/${pathOnly}`,
+      ...(privacy.settings.allowImageRelay && !privacy.incognito ? [`https://i0.wp.com/${targetHost}/${pathOnly}`] : []),
     ])];
-  }, [activeSourceUri]);
+  }, [activeSourceUri, privacy.settings.allowImageRelay, privacy.incognito]);
 
   // Subtle shimmer pulse when loading
   useEffect(() => {
@@ -318,8 +317,8 @@ export function SmartImage({
           contentFit={contentFit}
           transition={0}
           priority={priority}
-          cachePolicy="memory-disk"
           {...rest}
+          cachePolicy={privacy.incognito || !privacy.ready ? "none" : rest.cachePolicy ?? "memory-disk"}
           recyclingKey={effectiveRecyclingKey}
           blurRadius={sensitive && settings.blurNsfwCovers ? 24 : rest.blurRadius}
           onError={handleError}
