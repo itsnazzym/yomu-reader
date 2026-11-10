@@ -304,7 +304,7 @@ export function SmartImage({
 
   return (
     <View style={[styles.container, containerStyle]}>
-      {currentUri && (!isEhPage || resolvedUri) ? (
+      {currentUri && (!sensitive || privacyReady) && (!isEhPage || resolvedUri) ? (
         <Image
           source={{
             uri: currentUri,
@@ -320,6 +320,7 @@ export function SmartImage({
           priority={priority}
           cachePolicy="memory-disk"
           {...rest}
+          recyclingKey={effectiveRecyclingKey}
           blurRadius={sensitive && settings.blurNsfwCovers ? 24 : rest.blurRadius}
           onError={handleError}
           onLoad={handleLoad}

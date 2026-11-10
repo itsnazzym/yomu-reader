@@ -16,17 +16,22 @@ import { ButtonLabel } from "@/components/ui/ButtonLabel";
 export function AppLockGate(): React.ReactElement | null {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { enabled, unlocked, biometric, unlockWithPin, tryBiometricUnlock } = useAppLock();
+  const { enabled, unlocked, biometric, unlockWithPin, tryBiometricUnlock, ready, error: loadError, retry } = useAppLock();
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (!enabled || unlocked || !biometric) return;
+    if (!ready || !enabled || unlocked || !biometric) return;
     void tryBiometricUnlock();
-  }, [enabled, unlocked, biometric, tryBiometricUnlock]);
+  }, [ready, enabled, unlocked, biometric, tryBiometricUnlock]);
 
-  if (!enabled || unlocked) return null;
+  if (ready && (!enabled || unlocked)) return null;
+  if (!ready) return (
+    <View style={[styles.root, { backgroundColor: colors.bg }]} accessibilityViewIsModal>
+      {loadError ? <><Text style={[styles.sub, { color: colors.txt }]}>{loadError}</Text><Pressable accessibilityRole="button" onPress={() => { void retry().catch(() => {}); }}><ButtonLabel style={{ color: colors.accent }}>Réessayer</ButtonLabel></Pressable></> : <ActivityIndicator color={colors.accent} accessibilityLabel="Vérification du verrouillage" />}
+    </View>
+  );
 
   const handleSubmit = async (): Promise<void> => {
     if (busy) return;
@@ -35,7 +40,7 @@ export function AppLockGate(): React.ReactElement | null {
     try {
       const ok = await unlockWithPin(pin);
       if (!ok) {
-        setError("Code incorrect");
+        setError("Code incorrect ou attente nécessaire avant un nouvel essai.");
         setPin("");
       }
     } finally {

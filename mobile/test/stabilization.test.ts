@@ -14,6 +14,7 @@ import { toggleFavorite, getFavorites, initFavorites, isFavorite, removeFavorite
 import type { SourceId } from "@/lib/sources/types";
 import * as Persistence from "@/lib/persistQueue";
 import { isValidBackupData } from "@/lib/backupValidation";
+import { initAppLock, isAppUnlocked, setAppLockPin, verifyAppLockPin } from "@/lib/appLockStore";
 import { findDuplicateSourcesForGallery } from "@/lib/duplicateMatch";
 
 test("la fiche compare 10 000 favoris sans bloquer les timers ni comparer les favoris entre eux", async (t) => {
@@ -263,4 +264,26 @@ test("la restauration et les mutations de bibliothèque sont exclusives", async 
   release();
   await Promise.all([first, second]);
   assert.deepEqual(events, ["restore", "restored", "favorite"]);
+});
+
+test("un stockage de verrouillage indisponible garde le contenu fermé et permet de réessayer", async () => {
+  await initAppLock(true);
+  const original = AsyncStorage.getItem;
+  AsyncStorage.getItem = async () => { throw new Error("storage unavailable"); };
+  try {
+    await assert.rejects(initAppLock(true), /storage unavailable/);
+    assert.equal(isAppUnlocked(), false);
+  } finally { AsyncStorage.getItem = original; }
+  await initAppLock(true);
+  assert.equal(isAppUnlocked(), true);
+});
+
+test("les essais PIN répétés imposent une attente avant même un PIN correct", async (t) => {
+  let now = 100000;
+  t.mock.method(Date, "now", () => now);
+  await setAppLockPin("1234");
+  for (let i = 0; i < 5; i++) assert.equal(await verifyAppLockPin("0000"), false);
+  assert.equal(await verifyAppLockPin("1234"), false);
+  now += 60000;
+  assert.equal(await verifyAppLockPin("1234"), true);
 });

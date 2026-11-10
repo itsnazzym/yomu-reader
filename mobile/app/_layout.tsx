@@ -36,7 +36,7 @@ import { initFavorites } from "@/lib/favoritesStore";
 import { initHistory } from "@/lib/historyStore";
 import { initDownloadSettings } from "@/lib/downloadSettingsStore";
 import { initDownloadQueue } from "@/lib/downloadQueueStore";
-import { initAppLock } from "@/lib/appLockStore";
+import { initAppLock, useAppLock } from "@/lib/appLockStore";
 import { initOnboarding } from "@/lib/useOnboarding";
 import { initPrivacyCaptureStore } from "@/lib/privacyCaptureStore";
 
@@ -74,6 +74,7 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
 }
 
 function AppShell() {
+  const appLock = useAppLock();
   const reduceMotion = useReduceMotion();
   const { colors } = useTheme();
   const { isOpen, openDrawer, closeDrawer, swipeEnabled } = useDrawer();
@@ -129,6 +130,7 @@ function AppShell() {
     };
   }, [router]);
 
+  if (!appLock.ready || (appLock.enabled && !appLock.unlocked)) return <AppLockGate />;
   return (
     <TexturedBackground backgroundColor={colors.bg}>
       <StatusBar style="light" backgroundColor="transparent" translucent />

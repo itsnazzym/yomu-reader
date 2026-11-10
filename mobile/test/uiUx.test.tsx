@@ -2,6 +2,8 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { SmartImage } from "../components/SmartImage";
+import { __setImagePrivacyReady } from "./mockImageRuntime";
 import { CardPressable } from "@/components/ui/CardPressable";
 import { ButtonLabel } from "@/components/ui/ButtonLabel";
 import { getHomeSearchQuery, setHomeSearchQuery, toggleHomeSearchTerm } from "@/lib/homeSearchStore";
@@ -10,6 +12,16 @@ import { __getTouchHandlers, __setReduceMotion } from "./mockUiReactNative";
 import { __getLastAnimatedValue } from "./mockReanimated";
 import { GuideIllustration } from "@/components/auth/GuideIllustration";
 import { AUTH_GUIDES } from "@/lib/authGuides";
+
+test("une couverture sensible attend la préférence et reçoit sa clé de recyclage", () => {
+  __setImagePrivacyReady(false);
+  const hidden = renderToStaticMarkup(<SmartImage uri="https://example.test/cover.jpg" sensitive recyclingKey="hitomi:123" />);
+  assert.doesNotMatch(hidden, /<img /);
+  __setImagePrivacyReady(true);
+  const shown = renderToStaticMarkup(<SmartImage uri="https://example.test/cover.jpg" sensitive recyclingKey="hitomi:123" />);
+  assert.match(shown, /data-recycling-key="hitomi:123"/);
+  assert.match(shown, /data-blur="24"/);
+});
 
 for (const [id, guide] of Object.entries(AUTH_GUIDES)) {
   test(`le guide ${id} affiche ses repères complets sans chargeur d’images`, () => {

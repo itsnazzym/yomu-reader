@@ -21,9 +21,12 @@ export const StyleSheet = {
   },
 };
 export const Animated = {
+  View,
   Value: class { constructor(public value: number) {} setValue(value: number) { this.value = value; } },
   createAnimatedComponent: (component: any) => component,
 };
+export const Pressable = TouchableOpacity;
+export function ActivityIndicator() { return React.createElement("span", { role: "progressbar" }); }
 const motionListeners = new Set<(enabled: boolean) => void>();
 export function __setReduceMotion(enabled: boolean) { for (const listener of motionListeners) listener(enabled); }
 export const AccessibilityInfo = {

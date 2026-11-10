@@ -3,6 +3,7 @@ export const Platform = {
   Version: 35,
 };
 export const NativeModules: Record<string, unknown> = {};
+export const AppState = { addEventListener: () => ({ remove() {} }) };
 export const PermissionsAndroid = {
   PERMISSIONS: { POST_NOTIFICATIONS: "notifications", READ_MEDIA_IMAGES: "media", READ_EXTERNAL_STORAGE: "read", WRITE_EXTERNAL_STORAGE: "write" },
   RESULTS: { GRANTED: "granted", DENIED: "denied" },

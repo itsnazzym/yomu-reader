@@ -19,7 +19,11 @@ const defaultSettings: AppLockSettings = {
 };
 
 let currentSettings: AppLockSettings = { ...defaultSettings };
-let unlocked = true;
+let unlocked = false;
+let ready = false;
+let loadError: string | null = null;
+let failedPinAttempts = 0;
+let pinRetryAt = 0;
 let biometricPromptOpen = false;
 const listeners = new Set<() => void>();
 const writes = createWriteQueue();
@@ -29,8 +33,12 @@ function notify(): void {
 }
 
 async function loadAppLock(): Promise<void> {
-  await writes.flush();
+  ready = false;
+  unlocked = false;
+  loadError = null;
+  notify();
   try {
+    await writes.flush();
     const [enabledRaw, biometricRaw] = await Promise.all([
       AsyncStorage.getItem(APP_LOCK_ENABLED_KEY),
       AsyncStorage.getItem(APP_LOCK_BIOMETRIC_KEY),
@@ -40,9 +48,12 @@ async function loadAppLock(): Promise<void> {
       biometric: biometricRaw === "1",
     };
     unlocked = !currentSettings.enabled;
+    ready = true;
     notify();
   } catch (error) {
-    console.warn("[appLock] load failed:", error);
+    loadError = "Impossible de vérifier le verrouillage. Réessayez.";
+    notify();
+    throw error;
   }
 }
 
@@ -62,7 +73,7 @@ export function getAppLockSettings(): AppLockSettings {
 }
 
 export function isAppUnlocked(): boolean {
-  return unlocked;
+  return ready && unlocked;
 }
 
 export function lockApp(): void {
@@ -72,6 +83,7 @@ export function lockApp(): void {
 }
 
 export function unlockApp(): void {
+  if (!ready) return;
   unlocked = true;
   notify();
 }
@@ -98,10 +110,17 @@ export async function setAppLockPin(pin: string): Promise<boolean> {
 }
 
 export async function verifyAppLockPin(pin: string): Promise<boolean> {
+  if (Date.now() < pinRetryAt) return false;
   try {
     const stored = await SecureStore.getItemAsync(APP_LOCK_PIN_KEY);
     if (!stored) return false;
-    return stored === pin.replace(/\D/g, "");
+    const ok = /^\d{4,8}$/.test(pin) && stored === pin;
+    if (ok) { failedPinAttempts = 0; pinRetryAt = 0; }
+    else {
+      failedPinAttempts++;
+      if (failedPinAttempts >= 5) pinRetryAt = Date.now() + Math.min(300000, 1000 * 2 ** Math.min(failedPinAttempts - 5, 8));
+    }
+    return ok;
   } catch {
     return false;
   }
@@ -126,7 +145,7 @@ export async function updateAppLockSettings(
 }
 
 export async function tryBiometricUnlock(): Promise<boolean> {
-  if (!currentSettings.biometric) return false;
+  if (!ready || !currentSettings.enabled || !currentSettings.biometric) return false;
   try {
     biometricPromptOpen = true;
     const LocalAuth = await import("expo-local-authentication");
@@ -166,6 +185,9 @@ function onAppState(next: AppStateStatus): void {
 AppState.addEventListener("change", onAppState);
 
 export function useAppLock(): {
+  ready: boolean;
+  error: string | null;
+  retry: () => Promise<void>;
   enabled: boolean;
   biometric: boolean;
   unlocked: boolean;
@@ -178,20 +200,24 @@ export function useAppLock(): {
 } {
   const [settings, setSettings] = useState<AppLockSettings>(currentSettings);
   const [isUnlocked, setIsUnlocked] = useState(unlocked);
+  const [loadState, setLoadState] = useState({ ready, error: loadError });
 
   useEffect(() => {
     const update = (): void => {
       setSettings({ ...currentSettings });
       setIsUnlocked(unlocked);
+      setLoadState({ ready, error: loadError });
     };
     listeners.add(update);
-    void initAppLock();
+    void initAppLock().catch(() => {});
     return () => {
       listeners.delete(update);
     };
   }, []);
 
   return {
+    ...loadState,
+    retry: () => initAppLock(true),
     enabled: settings.enabled,
     biometric: settings.biometric,
     unlocked: isUnlocked,
@@ -204,4 +230,4 @@ export function useAppLock(): {
   };
 }
 
-void initAppLock();
+void initAppLock().catch(() => {});
