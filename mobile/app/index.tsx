@@ -1,3 +1,4 @@
+import { sourceCardToGallery } from "@/lib/sources/galleryMapper";
 import { withSourceDeadline } from "@/lib/sources/requestDeadline";
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
@@ -333,24 +334,7 @@ export default function HomeScreen() {
                 minRating: opts.minRating,
               });
               // Map les cartes sources vers un pseudo-Gallery pour l'affichage.
-              return r.cards.map((c) => ({
-                id: Number.parseInt(c.globalId.split(":")[1], 10) || 0,
-                media_id: c.globalId.split(":")[1] || "",
-                globalId: c.globalId,
-                title: { english: c.title, japanese: "", pretty: c.title },
-                images: {
-                  pages: [],
-                  cover: { url: c.coverUrl } as any,
-                  thumbnail: { url: c.coverUrl } as any,
-                },
-                scanlator: sid,
-                upload_date: c.uploadDate || 0,
-                tags: (c.tags || []).map((t) => ({ id: 0, type: (t.type || "tag") as any, name: t.name, url: "", count: 0 })),
-                num_pages: c.numPages || 0,
-                num_favorites: 0,
-                category: c.category,
-                rating: c.rating,
-              })) as Gallery[];
+              return r.cards.map(sourceCardToGallery) as Gallery[];
             } catch (e) {
               console.warn(`Source ${sid} indisponible:`, e);
               return [] as Gallery[];
@@ -428,24 +412,7 @@ export default function HomeScreen() {
             minRating: opts.minRating,
           }));
           if (requestId !== latestRequestRef.current) return;
-          const mapped: Gallery[] = res.cards.map((c) => ({
-            id: Number.parseInt(c.globalId.split(":")[1], 10) || 0,
-            media_id: c.globalId.split(":")[1] || "",
-            globalId: c.globalId,
-            title: { english: c.title, japanese: "", pretty: c.title },
-            images: {
-              pages: [],
-              cover: { url: c.coverUrl } as any,
-              thumbnail: { url: c.coverUrl } as any,
-            },
-            scanlator: activeSource,
-            upload_date: c.uploadDate || 0,
-            tags: (c.tags || []).map((t) => ({ id: 0, type: (t.type || "tag") as any, name: t.name, url: "", count: 0 })),
-            num_pages: c.numPages || 0,
-            num_favorites: 0,
-            category: c.category,
-            rating: c.rating,
-          }));
+          const mapped: Gallery[] = res.cards.map(sourceCardToGallery);
           const dedupKey = (g: Gallery) => (g as any).globalId;
           if (isPagination) {
             setGalleries((prev) => {

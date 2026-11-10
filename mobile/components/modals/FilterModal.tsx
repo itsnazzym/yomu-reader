@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import {
   StyleSheet,
   View,
@@ -75,7 +75,7 @@ export function FilterModal({
   source = "all",
 }: FilterModalProps) {
   const { colors } = useTheme();
-  const support = getSourceFilterSupport(source);
+  const support = useMemo(() => getSourceFilterSupport(source), [source]);
 
   const [activeSubmenu, setActiveSubmenu] = useState<"none" | "language" | "date">("none");
   const [currentSort, setCurrentSort] = useState(options.sort);
@@ -136,7 +136,7 @@ export function FilterModal({
         }),
       ]).start();
     }
-  }, [visible, options, opacity, slideY, source]);
+  }, [visible, options, opacity, slideY, source, support.supportedCategories]);
 
   const toggleCategory = (catName: string) => {
     setSelectedCategories((prev) => {
@@ -357,6 +357,7 @@ export function FilterModal({
                               isSelected ? styles.catBtnTextSelected : styles.catBtnTextUnselected,
                             ]}
                             numberOfLines={1}
+                            ellipsizeMode="tail"
                           >
                             {catName}
                           </Text>

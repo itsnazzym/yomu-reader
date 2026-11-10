@@ -7,6 +7,7 @@ import { initPrivacyCaptureStore, getPreventScreenCapture } from "@/lib/privacyC
 import { requestNotificationPermissions } from "@/lib/permissions";
 import { initHistory, recordReadingProgress, findHistoryEntry, getHistory, flushHistoryPersist } from "@/lib/historyStore";
 import { sourceGalleryToGallery } from "@/lib/sources/galleryMapper";
+import * as GalleryMapping from "@/lib/sources/galleryMapper";
 import { createSyncBaseline, mergeBackups, backupsEqual } from "@/lib/cloudSync/merge";
 import { userFacingError } from "@/lib/userFacingError";
 import type { BackupData } from "@/lib/backupStore";
@@ -316,4 +317,11 @@ test("les sauvegardes automatiques tournent sans écraser la dernière copie apr
   const before = [...files]; fail=true;
   await assert.rejects(writeBackup(driver,"root/","lost",5), /disk full/);
   assert.deepEqual([...files],before);
+});
+
+test("la carte d'accueil conserve l'identité E-Hentai et normalise la date", () => {
+  const map=(GalleryMapping as Record<string,any>).sourceCardToGallery;
+  assert.equal(typeof map,"function");
+  const result=map({globalId:"ehentai:123_abcdef",title:"Fixture",coverUrl:"https://example.test/c.jpg",numPages:2,uploadDate:1700000000000,tags:[]});
+  assert.equal(result.globalId,"ehentai:123_abcdef");assert.equal(result.media_id,"123_abcdef");assert.equal(result.upload_date,1700000000);
 });

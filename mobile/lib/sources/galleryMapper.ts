@@ -5,7 +5,12 @@
  */
 
 import type { Gallery, TagType } from "../api/types";
-import type { SourceGallery, SourceId } from "./types";
+import { splitGlobalId, type SourceGallery, type SourceId, type SourceGalleryCard } from "./types";
+
+export function sourceCardToGallery(card: SourceGalleryCard): Gallery {
+  const { source, nativeId } = splitGlobalId(card.globalId);
+  return sourceGalleryToGallery({ ...card, nativeId, numPages: card.numPages ?? 0, tags: card.tags ?? [], pageUrls: [] }, source);
+}
 
 function unixSeconds(value: number | undefined): number {
   if (!value || !Number.isFinite(value) || value < 0) return 0;

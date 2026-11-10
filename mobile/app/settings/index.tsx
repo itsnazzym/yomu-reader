@@ -1,3 +1,4 @@
+import { EncryptedBackupControls } from "@/components/settings/EncryptedBackupControls";
 import React, { useState, useEffect, useSyncExternalStore } from "react";
 import {
   StyleSheet,
@@ -212,23 +213,6 @@ export default function SettingsScreen() {
   } = useDownloadSettings();
   const { tags: blacklistedTags, addTag, removeTag } = useBlacklist();
   const { incognito, setIncognito, settings: privacySettings } = usePrivacy();
-  const [backupPassword, setBackupPassword] = useState("");
-  const [backupPasswordRepeat, setBackupPasswordRepeat] = useState("");
-  const [backupBusy, setBackupBusy] = useState(false);
-  const runEncryptedBackup = async (restore: boolean): Promise<void> => {
-    if (backupBusy || backupPassword.length < 12) return;
-    if (!restore && backupPassword !== backupPasswordRepeat) { Alert.alert("Mot de passe", "Les deux saisies doivent être identiques."); return; }
-    setBackupBusy(true);
-    try {
-      if (restore) {
-        const result = await restoreBackupFromFile({ password: backupPassword });
-        Alert.alert(result.success ? "Restauration terminée" : "Restauration", result.error || "Vos données sont restaurées.");
-      } else {
-        const result = await exportBackupToFile({ password: backupPassword });
-        Alert.alert(result.success ? "Sauvegarde protégée" : "Export impossible", result.message || "Conservez le mot de passe pour restaurer ce fichier.");
-      }
-    } finally { setBackupBusy(false); setBackupPassword(""); setBackupPasswordRepeat(""); }
-  };
   const {
     enabled: appLockEnabled,
     biometric: appLockBiometric,
@@ -1558,17 +1542,7 @@ export default function SettingsScreen() {
                 Restaurer depuis le presse-papier
               </ButtonLabel>
             </CardPressable>
-            <View style={styles.divider} />
-            <Text style={styles.rowToggleTitle}>Sauvegarde protégée par mot de passe</Text>
-            <Text style={styles.rowToggleSub}>12 caractères minimum. Conservez ce mot de passe : il est indispensable pour restaurer le fichier.</Text>
-            <TextInput secureTextEntry autoCapitalize="none" autoCorrect={false} value={backupPassword} onChangeText={setBackupPassword} placeholder="Mot de passe de sauvegarde" accessibilityLabel="Mot de passe de sauvegarde" placeholderTextColor={colors.sub} style={[styles.cloudKeyInput, { color: colors.txt, borderColor: colors.tagBg }]} editable={!backupBusy} />
-            <TextInput secureTextEntry autoCapitalize="none" autoCorrect={false} value={backupPasswordRepeat} onChangeText={setBackupPasswordRepeat} placeholder="Confirmer pour exporter" accessibilityLabel="Confirmer le mot de passe pour exporter" placeholderTextColor={colors.sub} style={[styles.cloudKeyInput, { color: colors.txt, borderColor: colors.tagBg }]} editable={!backupBusy} />
-            <CardPressable disabled={backupBusy || backupPassword.length < 12} onPress={() => { void runEncryptedBackup(false); }} style={[styles.btnActionRow, { backgroundColor: colors.accent }]}>
-              <ButtonLabel style={styles.btnActionText}>{backupBusy ? "Patientez…" : "Exporter un fichier chiffré"}</ButtonLabel>
-            </CardPressable>
-            <CardPressable disabled={backupBusy || backupPassword.length < 12} onPress={() => { void runEncryptedBackup(true); }} style={[styles.btnActionRow, { backgroundColor: colors.page }]}>
-              <ButtonLabel style={{ color: colors.txt }}>Restaurer un fichier chiffré</ButtonLabel>
-            </CardPressable>
+            <EncryptedBackupControls />
           </View>
         </View>
 

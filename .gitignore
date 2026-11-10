@@ -173,3 +173,7 @@ backupdepackagejson.txt
 
 
 BACKUP_FILE_MANIFEST_*.json
+
+# Local access-bearing upload results and chat attachments
+mobile/gofile-result.json
+.codex-attachments/

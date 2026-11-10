@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "nHentai Launcher",
+  "productName": "Yomu Reader",
   "version": "0.1.0",
   "identifier": "com.nhentai.launcher",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "nHentai Launcher & Downloader",
+        "title": "Yomu Reader — Tauri expérimental",
         "width": 1280,
         "height": 840,
         "minWidth": 980,
@@ -41,4 +41,3 @@
     ]
   }
 }
-

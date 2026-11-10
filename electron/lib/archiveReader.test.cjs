@@ -1,5 +1,14 @@
 "use strict";
 
+require("node:test")("l'écriture d'archive préserve l'ancien fichier si la préparation échoue", async () => {
+  const assert=require("node:assert/strict"),fs=require("node:fs"),path=require("node:path"),os=require("node:os");
+  let write;try{write=require("./archiveWriter.cjs").writeZipArchiveAtomic;}catch{}
+  assert.equal(typeof write,"function");
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),"yomu-archive-test-")),file=path.join(dir,"book.cbz");
+  try {fs.writeFileSync(file,"old");await assert.rejects(write(file,{},()=>{throw new Error("fixture failure");}),/fixture failure/);assert.equal(fs.readFileSync(file,"utf8"),"old");await write(file,{},archive=>archive.append("page",{name:"001.jpg"}));assert.equal(fs.readFileSync(file).subarray(0,2).toString(),"PK");}
+  finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");

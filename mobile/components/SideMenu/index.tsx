@@ -50,6 +50,7 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const { session, isLoggedIn } = useAccount();
+  const [showTools, setShowTools] = useState(false);
   const [randomLoading, setRandomLoading] = useState(false);
   const menuAvatarUri = displayAvatarUri(session);
   const [isSignInOpen, setIsSignInOpen] = useState(false);
@@ -70,7 +71,7 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
     },
     { label: "Téléchargements", icon: IconDownload, route: "/downloaded", hasArrow: true },
     { label: "Étagères", icon: IconFolder, route: "/collections", hasArrow: true },
-    { label: "Favoris locaux", icon: IconBookmark, route: "/favorites", hasArrow: true },
+    { label: "Signets Yomu", icon: IconBookmark, route: "/favorites", hasArrow: true },
     {
       label: isLoggedIn ? `Favoris nHentai (${session.cloudFavoritesCount || 0})` : "Favoris nHentai",
       icon: IconHeart,
@@ -86,7 +87,7 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
     },
     { label: "Historique", icon: IconClock, route: "/history", hasArrow: true },
     { label: "Tags & Packs", icon: IconTag, route: "/tags", hasArrow: true },
-    { label: "Recommandations", icon: IconSparkles, route: "/recommendations", hasArrow: true },
+    { label: "Découvertes nHentai", icon: IconSparkles, route: "/recommendations", hasArrow: true },
     { label: "Téléchargement groupé", icon: IconCloudDownload, route: "/batch", hasArrow: true },
     { label: "Clés API", icon: IconKey, route: "/api-keys", hasArrow: true },
     { label: "Paramètres", icon: IconSettings, route: "/settings", hasArrow: true },
@@ -163,8 +164,9 @@ export function SideMenu({ closeDrawer }: SideMenuProps) {
       <ScrollView key={fontScale} style={styles.menuScroll} showsVerticalScrollIndicator={false}>
         <Text style={styles.sectionHeader}>BIBLIOTHÈQUE</Text>
 
+        <TouchableOpacity accessibilityRole="button" accessibilityState={{ expanded: showTools }} onPress={() => setShowTools(value => !value)} style={styles.menuItem}><Text style={[styles.menuText, { color: colors.sub }]}>{showTools ? "Masquer les outils" : "Plus d’outils"}</Text></TouchableOpacity>
         <View style={styles.menuList}>
-          {menuItems.map((item) => {
+          {menuItems.filter(item => showTools || !["/tags", "/recommendations", "/batch", "/api-keys"].includes(item.route)).map((item) => {
             const isActive = pathname?.startsWith(item.route);
             const tint = isActive ? colors.accent : colors.sub;
             const IconComp = item.icon;

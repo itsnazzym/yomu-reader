@@ -2,8 +2,8 @@
   "name": "nhentai-launcher",
   "private": true,
   "version": "2.0.0",
-  "description": "Yomu Reader — unofficial desktop reader & downloader",
-  "author": "Your Name",
+  "description": "Yomu Reader \u2014 unofficial desktop reader & downloader",
+  "author": "Yomu Reader contributors",
   "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
@@ -14,7 +14,7 @@
     "electron": "electron .",
     "proxy": "node proxy/nhentai-mirror.mjs",
     "check:electron": "node --check electron/main.cjs && node --check electron/preload.cjs",
-    "test:electron": "node --test electron/lib/archiveReader.test.cjs electron/lib/secretVault.test.cjs electron/lib/secretsContract.test.cjs src/utils/globalId.test.cjs",
+    "test:electron": "node --test electron/lib/archiveReader.test.cjs electron/lib/secretVault.test.cjs electron/lib/secretsContract.test.cjs src/utils/globalId.test.cjs .github/scripts/release-manifest.test.cjs",
     "test:proxy": "node --test proxy/nhentai-mirror.test.mjs",
     "dist:win": "tsc && vite build && electron-builder --win",
     "tauri": "tauri"

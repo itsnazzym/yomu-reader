@@ -479,6 +479,11 @@ jobs:
           pattern: "{apk-*,windows-portable-exe,source-code-zip}"
           merge-multiple: true
 
+      - name: Generate installer manifest
+        env:
+          APP_VERSION: ${{ needs.prepare-version.outputs.version }}
+        run: node .github/scripts/create-release-manifest.cjs release-assets
+
       - name: Generate Structured Release Notes & Checksums
         id: release_meta
         env:
@@ -567,6 +572,7 @@ jobs:
             release-assets/*.apk
             release-assets/*.exe
             release-assets/*.zip
+            release-assets/release-manifest.json
           draft: false
           prerelease: false
           make_latest: true
