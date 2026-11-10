@@ -12,6 +12,7 @@ export interface CloudSyncState {
   email?: string;
   lastSyncedAt?: string;
   message?: string;
+  vaultBytes?: number;
 }
 
 export interface EncryptedVault {

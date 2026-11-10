@@ -4,7 +4,8 @@ import * as WebBrowser from "expo-web-browser";
 import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
 import "react-native-url-polyfill/auto";
 import { createBackupPayload, restoreBackupFromJson, type BackupData } from "../backupStore";
-import { decryptVault, encryptVault, generateRecoveryKey, vaultRecordKey } from "./crypto";
+import { decryptVault, encryptCloudVault, compactCloudBackup, generateRecoveryKey, vaultRecordKey } from "./crypto";
+import { isValidBackupData } from "../backupValidation";
 import {
   getNativeGoogleIdToken,
   GoogleNativeUnavailableError,
@@ -21,7 +22,6 @@ const RECOVERY_KEY = "yomu.cloud.recovery-key.v1";
 const META_KEY = "@yomu_cloud_sync_meta_v1";
 const VAULT_KIND = "vault";
 const VAULT_SCHEMA = 1;
-const MAX_VAULT_BYTES = 4 * 1024 * 1024;
 
 type VaultRow = { nonce: string; ciphertext: string; schema_version: number; revision: number; updated_at: string };
 type Meta = { revision: number; lastSyncedAt?: string; baseline?: SyncBaseline };
@@ -38,10 +38,12 @@ let inFlight: Promise<void> | null = null;
 const completedCallbackUrls = new Set<string>();
 const callbackInFlight = new Map<string, Promise<void>>();
 let state: CloudSyncState = { status: "unconfigured" };
+let lastVaultBytes: number | undefined;
 const listeners = new Set<() => void>();
 
 function emit(next: CloudSyncState): void {
-  state = next;
+  if (["signed_out", "unconfigured", "locked"].includes(next.status) || next.email !== state.email) lastVaultBytes = undefined;
+  state = { ...next, vaultBytes: lastVaultBytes };
   for (const listener of listeners) listener();
 }
 
@@ -118,14 +120,14 @@ const DEVICE_DOWNLOAD_KEYS = ["treeUri", "folderUri", "directoryUri", "downloadD
 function portableBackup(data: BackupData): BackupData {
   const downloadSettings = { ...(data.downloadSettings || {}) };
   for (const key of DEVICE_DOWNLOAD_KEYS) delete downloadSettings[key];
-  return { ...data, version: VAULT_SCHEMA, downloadSettings };
+  return compactCloudBackup({ ...data, version: VAULT_SCHEMA, downloadSettings });
 }
 async function applyBackup(data: BackupData, device: BackupData): Promise<void> {
   const downloadSettings = { ...(data.downloadSettings || {}) };
   for (const key of DEVICE_DOWNLOAD_KEYS) if (Object.hasOwn(device.downloadSettings || {}, key)) downloadSettings[key] = device.downloadSettings![key];
   applyingRemote = true;
   try {
-    const restored = await restoreBackupFromJson(JSON.stringify({ ...data, downloadSettings }));
+    const restored = await restoreBackupFromJson(JSON.stringify({ ...data, downloadSettings, localAvatarBase64: device.localAvatarBase64, localAvatarMime: device.localAvatarMime }));
     if (!restored.success) throw new Error(restored.error || "Restauration impossible.");
   } finally { applyingRemote = false; }
 }
@@ -155,19 +157,24 @@ async function readVault(userId: string, recoveryKey: string): Promise<{ row: Va
   if (error) throw error;
   if (!data) return null;
   const row = data as VaultRow;
-  return { row, data: decryptVault<BackupData>({ nonce: row.nonce, ciphertext: row.ciphertext, schemaVersion: row.schema_version }, recoveryKey, aad(userId)) };
+  const payload = decryptVault<BackupData>({ nonce: row.nonce, ciphertext: row.ciphertext, schemaVersion: row.schema_version }, recoveryKey, aad(userId));
+  if (!isValidBackupData(payload)) throw new Error("Le coffre contient des données incompatibles. Mettez Yomu à jour.");
+  lastVaultBytes = Math.floor(row.ciphertext.length * 3 / 4);
+  return { row, data: payload };
 }
 
-async function writeVault(userId: string, recoveryKey: string, data: BackupData, expectedRevision: number): Promise<number> {
+async function writeVault(userId: string, recoveryKey: string, data: BackupData, expectedRevision: number, previousSchema = 1): Promise<number> {
   const session = await requireUser(userId);
-  const serialized = JSON.stringify(data);
-  if (new TextEncoder().encode(serialized).byteLength > MAX_VAULT_BYTES) throw new Error("Le coffre Yomu dépasse 4 Mio. Exportez manuellement vos données.");
-  const encrypted = await encryptVault(data, recoveryKey, aad(userId));
+  const encrypted = await encryptCloudVault(compactCloudBackup(data), recoveryKey, aad(userId), previousSchema === 2);
+  lastVaultBytes = Math.floor(encrypted.ciphertext.length * 3 / 4);
   const { data: result, error } = await getClient().rpc("save_yomu_vault", {
     p_record_key: vaultRecordKey(recoveryKey), p_nonce: encrypted.nonce, p_ciphertext: encrypted.ciphertext,
     p_schema_version: encrypted.schemaVersion, p_expected_revision: expectedRevision,
   }).setHeader("Authorization", `Bearer ${session.access_token}`);
-  if (error) throw error;
+  if (error) {
+    if (encrypted.schemaVersion === 2 && error.code === "22023") throw new Error("La mise à jour du serveur Yomu Cloud est nécessaire pour synchroniser cette grande bibliothèque.");
+    throw error;
+  }
   const row = Array.isArray(result) ? result[0] : result;
   if (!row?.applied) throw new VaultConflictError("Conflit de synchronisation. Réessayez.");
   return Number(row.revision);
@@ -328,7 +335,7 @@ export async function syncNow(): Promise<void> {
           ? (!meta.baseline && !hasMeaningfulLocalData(local) ? remote.data : mergeBackup(remote.data, local, meta.baseline))
           : local;
         try {
-          revision = remote && backupsEqual(remote.data, merged) ? remote.row.revision : await writeVault(userId, key, merged, remote?.row.revision || 0);
+          revision = remote && backupsEqual(remote.data, merged) ? remote.row.revision : await writeVault(userId, key, merged, remote?.row.revision || 0, remote?.row.schema_version || 1);
           synced = merged;
           break;
         } catch (error) { if (!(error instanceof VaultConflictError) || attempt === 2) throw error; }

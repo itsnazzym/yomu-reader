@@ -5,6 +5,8 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { scryptAsync } from "@noble/hashes/scrypt.js";
 import { fromByteArray, toByteArray } from "base64-js";
 import type { EncryptedVault } from "./types";
+import type { BackupData } from "../backupStore";
+import { zlibSync, unzlibSync } from "fflate";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -43,11 +45,41 @@ export function decryptVault<T>(vault: EncryptedVault, recoveryKey: string, aad:
     const key = assertRecoveryKey(recoveryKey);
     const nonce = fromBase64Url(vault.nonce);
     if (nonce.length !== NONCE_BYTES) throw new Error("nonce invalide");
-    const plain = xchacha20poly1305(key, nonce, encoder.encode(aad)).decrypt(fromBase64Url(vault.ciphertext));
+    if (vault.schemaVersion !== 1 && vault.schemaVersion !== 2) throw new Error("Version de coffre inconnue.");
+    let plain = xchacha20poly1305(key, nonce, encoder.encode(vault.schemaVersion === 2 ? `${aad}:compressed:v2` : aad)).decrypt(fromBase64Url(vault.ciphertext));
+    if (vault.schemaVersion === 2) {
+      if (plain.length < 5) throw new Error("Coffre incomplet.");
+      const length = new DataView(plain.buffer, plain.byteOffset, 4).getUint32(0);
+      if (length > 32 * 1024 * 1024) throw new Error("Coffre trop volumineux.");
+      plain = unzlibSync(plain.subarray(4), { out: new Uint8Array(length + 1) });
+      if (plain.length !== length) throw new Error("Taille du coffre incohérente.");
+    }
     return JSON.parse(decoder.decode(plain)) as T;
   } catch {
     throw new Error("Impossible de déchiffrer le coffre. Vérifiez la clé de récupération.");
   }
+}
+
+export function compactCloudBackup(data: BackupData): BackupData {
+  const { localAvatarBase64: _avatar, localAvatarMime: _mime, ...portable } = data;
+  return { ...portable, favorites: data.favorites?.map(gallery => {
+    const images = gallery.images && typeof gallery.images === "object" ? gallery.images as Record<string, unknown> : {};
+    return { ...gallery, images: { ...images, pages: [] } };
+  }) };
+}
+
+export async function encryptCloudVault(data: BackupData, recoveryKey: string, aad: string, forceCompressed = false): Promise<EncryptedVault> {
+  const plain = encoder.encode(JSON.stringify(data));
+  if (plain.length > 32 * 1024 * 1024) throw new Error("Le coffre dépasse 32 Mio de données. Exportez une sauvegarde avant de réduire son contenu.");
+  if (!forceCompressed && plain.length <= 4 * 1024 * 1024 - 16) return encryptVault(data, recoveryKey, aad);
+  const compressed = zlibSync(plain, { level: 6 });
+  const payload = new Uint8Array(compressed.length + 4);
+  new DataView(payload.buffer).setUint32(0, plain.length);
+  payload.set(compressed, 4);
+  if (payload.length > 4 * 1024 * 1024 - 16) throw new Error("Le coffre dépasse 4 Mio après compression. Exportez une sauvegarde avant de réduire son contenu.");
+  const nonce = await Crypto.getRandomBytesAsync(NONCE_BYTES);
+  const ciphertext = xchacha20poly1305(assertRecoveryKey(recoveryKey), nonce, encoder.encode(`${aad}:compressed:v2`)).encrypt(payload);
+  return { nonce: base64Url(nonce), ciphertext: base64Url(ciphertext), schemaVersion: 2 };
 }
 
 export function vaultRecordKey(recoveryKey: string): string {

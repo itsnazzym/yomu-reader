@@ -30,6 +30,17 @@ begin
 end $$;
 
 reset role;
+select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', false);
+set role authenticated;
+do $$
+declare result record;
+begin
+  select * into result from public.save_yomu_vault(repeat('z',43),repeat('b',32),repeat('c',22),2::smallint,0::bigint);
+  if not result.applied or result.revision <> 1 then raise exception 'compressed vault rejected'; end if;
+  select * into result from public.save_yomu_vault(repeat('z',43),repeat('b',32),repeat('c',22),1::smallint,1::bigint);
+  if result.applied then raise exception 'old client overwrote compressed vault'; end if;
+end $$;
+reset role;
 select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', false);
 set role authenticated;
 do $$

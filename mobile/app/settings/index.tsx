@@ -1586,6 +1586,7 @@ export default function SettingsScreen() {
                 : cloud.status === "locked" ? "Entrez votre clé de récupération pour déverrouiller le coffre chiffré."
                 : `Connecté${cloud.email ? ` : ${cloud.email}` : ""}${cloud.lastSyncedAt ? ` · dernière synchro ${new Date(cloud.lastSyncedAt).toLocaleString()}` : ""}.`}
             </Text>
+            <Text style={styles.rowToggleSub}>Coffre : {cloud.vaultBytes === undefined ? "volume disponible après synchronisation" : `${(cloud.vaultBytes / (1024 * 1024)).toFixed(2)} Mio`} · limite 4 Mio. L’avatar et les pages téléchargées restent propres à chaque appareil.</Text>
             {newRecoveryKey ? <View style={[styles.cloudKeyBox, { borderColor: colors.accent }]}>
               <Text style={[styles.cloudKeyTitle, { color: colors.txt }]}>Clé de récupération — conservez-la hors de l’application</Text>
               <Text selectable style={[styles.cloudKeyValue, { color: colors.accent }]}>{newRecoveryKey}</Text>
