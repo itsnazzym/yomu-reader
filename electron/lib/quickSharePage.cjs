@@ -449,7 +449,7 @@ function generateMobileWebClientHtml(ip, port) {
         renderCards(allFiles);
         return;
       }
-      const filtered = allFiles.filter(f => 
+      const filtered = allFiles.filter(f =>
         (f.title && f.title.toLowerCase().includes(q)) ||
         (f.artist && f.artist.toLowerCase().includes(q)) ||
         (f.id && String(f.id).includes(q)) ||

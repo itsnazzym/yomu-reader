@@ -40,3 +40,5 @@ Préparation : préserver les changements locaux ; établir les contrôles de r�
 **Terminé lorsque :** critères applicables attestés, aucun contrôle manquant présenté comme réussi ; validation locale, CI, appareil et production distinguées. Publication et migrations distantes restent des opérations distinctes, sans déclenchement automatique.
 
 Respecter l’ADR-041 Yomu de SecondBrain ; actualiser une décision structurante seulement si elle est effectivement retenue. Aucune fiche Yomu trouvée dans `01_Projects`.
+
+**État au 11 novembre 2026 :** lots 1–9 réalisés et contrôlés localement ; 169 tests mobiles, 17 desktop et 1 proxy réussis, typage/lint mobiles et builds desktop/web réussis. Lot 10 ouvert : compilation Android bloquée après trois stratégies distinctes sur les chemins natifs Windows de Google Sign-In ; lint Android incomplet, aucun APK final validé. Téléphone physique, sources authentifiées et cloud à deux appareils non validés. Migration cloud préparée/testée localement, non déployée. Voir [le bilan et les arbitrages](yomu-stabilisation-resultats.md). ADR-042 ajouté à SecondBrain.

@@ -118,4 +118,3 @@ export function isValidBackupData(value: unknown): value is BackupData {
   }
   return true;
 }
-
